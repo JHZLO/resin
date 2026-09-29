@@ -1,0 +1,29 @@
+erd
+  %% 주문 도메인 — SPEC §1 의 예시를 키운 것. 문법의 거의 모든 요소를 한 번씩 쓴다
+  table ts_order "주문" {
+    id          bigint    pk
+    user_id     bigint    "주문자 ID"   index(idx_user_id)
+    order_no    varchar   uk            "주문번호"
+    buyer_name  varchar?  enc           "주문자명"
+    status      varchar   enum(PENDING, PAID, CANCELED)  index(idx_status)
+    created_at  datetime
+    updated_at  datetime
+  } audit(user_id, status)
+
+  table ts_order_item "주문 항목" {
+    id          bigint  pk
+    order_id    bigint  -> ts_order.id  index(ix_order_id)
+    product_id  bigint  "상품 ID (svc_catalog)"
+    quantity    int
+    created_at  datetime
+    unique(order_id, product_id)
+  }
+
+  table ts_order_payment "결제" {
+    id             bigint    pk
+    order_id       bigint    uk ~> ts_order  "결제 1:1 확장"
+    payer_user_id  bigint?   "svc_accounts 논리 참조"
+    method         varchar   enum(CARD, BANK_TRANSFER)
+    created_at     datetime
+    updated_at     datetime?
+  } audit

@@ -1,0 +1,56 @@
+erDiagram
+    %% solid(--)=physical FK / dotted(..)=logical reference
+    ts_order ||--o{ ts_order_item : "order_id"
+    ts_order ||..o| ts_order_payment : "order_id"
+
+    revinfo ||..o{ ts_order_aud : "Envers rev"
+    revinfo ||..o{ ts_order_payment_aud : "Envers rev"
+
+    ts_order {
+        bigint id PK
+        bigint user_id "주문자 ID (idx_user_id)"
+        varchar order_no UK "주문번호"
+        varchar? buyer_name "주문자명 (enc)"
+        varchar status "PENDING/PAID/CANCELED (idx_status)"
+        datetime created_at
+        datetime updated_at
+    }
+
+    ts_order_item {
+        bigint id PK
+        bigint order_id FK "-> ts_order.id (ix_order_id); uk(order_id,product_id)"
+        bigint product_id "상품 ID (svc_catalog)"
+        int quantity
+        datetime created_at
+    }
+
+    ts_order_payment {
+        bigint id PK
+        bigint order_id FK,UK "결제 1:1 확장; ~> ts_order.id"
+        bigint? payer_user_id "svc_accounts 논리 참조"
+        varchar method "CARD/BANK_TRANSFER"
+        datetime created_at
+        datetime? updated_at
+    }
+
+    revinfo {
+        int rev PK
+        bigint revtstmp
+    }
+
+    ts_order_aud {
+        bigint id PK
+        int rev PK,FK
+        tinyint revtype
+        bigint user_id
+        varchar status
+    }
+
+    ts_order_payment_aud {
+        bigint id PK
+        int rev PK,FK
+        tinyint revtype
+        bigint order_id
+        bigint payer_user_id
+        varchar method
+    }
