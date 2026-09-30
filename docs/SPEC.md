@@ -1,64 +1,69 @@
-# Resin 언어 명세 (v0.2 초안)
+# resin language reference (v0.2)
 
-Resin 은 ER 다이어그램만 그리는 작은 언어다. 스키마의 사실(널 허용, 키, 참조, 인덱스, 암호화,
-감사 테이블)을 **문자열 규칙이 아니라 문법으로** 적는다. 지금은 Mermaid `erDiagram` 으로
-컴파일해 그린다.
+resin is a small language for entity-relationship diagrams. It records the facts a schema carries
+(nullability, keys, physical and logical references, indexes, encryption, audit tables) **as syntax
+rather than as comment conventions**, checks them, and draws them: as Mermaid `erDiagram` source
+and as resin's own SVG.
 
-이 문서가 문법의 정본이다. 구현(`src/`)과 이 문서가 다르면 구현이 틀린 것이다.
+This document is the definition of the language. When the implementation (`src/`) disagrees with
+it, the implementation is wrong.
 
-## 1. 한눈에 보기
+## 1. Overview
 
 ```erd
-%% 주문 도메인
-external table users "svc_accounts 회원" {
+%% Orders
+external table users "Accounts service" {
   id  bigint  pk
 }
 
-table ts_order "주문" {
+table orders "Customer orders" {
   id          bigint       pk
-  user_id     bigint       ~> users  "주문자"  index as idx_user_id
-  order_no    varchar(32)  uk as uk_order_no  "주문번호"
-  buyer_name  varchar?     enc  "주문자명"
+  user_id     bigint       ~> users  "Customer"  index as idx_user_id
+  order_no    varchar(32)  uk as uk_order_no  "Order number"
+  buyer_name  varchar?     enc  "Buyer name"
   status      varchar      enum(PENDING, PAID, CANCELED)  index as idx_status
   created_at  datetime
   updated_at  datetime
 } audit envers(user_id, status)
 
-table ts_order_item "주문 항목" {
+table order_items "Order lines" {
   id          bigint  pk
-  order_id    bigint  -> ts_order.id  index as ix_order_id
-  product_id  bigint  "상품 ID"
+  order_id    bigint  -> orders.id  index as ix_order_id
+  product_id  bigint  "Product in the catalog service"
   quantity    int
   created_at  datetime
   unique(order_id, product_id) as uk_order_product
 }
 ```
 
-## 2. 어휘
+## 2. Lexical structure
 
-| 요소 | 형태 | 비고 |
+| Element | Form | Notes |
 |---|---|---|
-| 식별자 | `[A-Za-z_][A-Za-z0-9_]*` | 테이블, 컬럼, 타입, 이름, enum 값 |
-| 백틱 식별자 | `` `...` `` | 백틱과 줄바꿈을 뺀 아무 글자. 하이픈, 공백, 한글 이름용. 키워드로 읽히지 않는다 |
-| 수 | `[0-9]+` | 타입 인자와 enum 값에만 쓴다 |
-| 문자열 | `"..."` | 이스케이프는 `\"` `\\` 두 가지. 한 줄 안에서 끝나야 한다 |
-| 주석 | `%%` 부터 줄 끝까지 | mermaid 와 같다 |
-| 기호 | `{ } ( ) , . ?` | |
-| 참조 화살표 | `->` `~>` | 물리 FK / 논리 참조 |
-| 줄바꿈 | `\n` | **문장 구분자다.** 괄호 `( )` 안에서는 무시한다 |
+| Identifier | `[A-Za-z_][A-Za-z0-9_]*` | Tables, columns, types, names, enum values |
+| Backtick identifier | `` `...` `` | Any characters except a backtick or a newline. For hyphens, spaces, Hangul. Never a keyword |
+| Number | `[0-9]+` | Only in type arguments and enum values |
+| String | `"..."` | Two escapes: `\"` and `\\`. Must end on the same line |
+| Comment | `%%` to the end of the line | As in Mermaid |
+| Punctuation | `{ } ( ) , . ?` | |
+| Reference arrows | `->` `~>` | Physical FK / logical reference |
+| Newline | `\n` | **Ends a statement.** Ignored inside parentheses |
 
-키워드(`table` `external` `pk` `uk` `enc` `enum` `index` `unique` `as` `audit`)는 **문맥 키워드**다.
-예약어가 아니라서 `index` 라는 이름의 컬럼도 쓸 수 있고, 자리로 구분한다. 백틱으로 감싼 이름은
-어느 자리에서도 키워드가 아니다. `` `users` `` 와 `users` 는 같은 이름이다.
+Keywords (`table` `external` `pk` `uk` `enc` `enum` `index` `unique` `as` `audit`) are
+**contextual**: they are not reserved, so a column may be called `index`; the position decides.
+A backtick name is never a keyword. `` `users` `` and `users` are the same name.
 
-## 3. 문법 (EBNF)
+A name made of non-ASCII letters must be written in backticks (`` `주문` ``); the lexer reports it
+once and suggests the backticks.
+
+## 3. Grammar (EBNF)
 
 ```ebnf
 document    = { NL | table } EOF ;
 table       = [ "external" ] "table" name [ STRING ] "{" { member | NL } "}" [ audit ] ( NL | EOF ) ;
 member      = constraint | column ;
 
-column      = name type { modifier } ( NL | "}" ) ;   (* "}" 는 소비하지 않는다 — 한 줄 테이블용 *)
+column      = name type { modifier } ( NL | "}" ) ;   (* "}" is not consumed, for one-line tables *)
 type        = IDENT [ "(" NUMBER { "," NUMBER } ")" ] [ "?" ] ;
 modifier    = "pk" | "enc"
             | "uk" [ "as" name ]
@@ -67,7 +72,7 @@ modifier    = "pk" | "enc"
             | ( "->" | "~>" ) name [ "." name ]
             | STRING ;
 
-constraint  = ( "unique" | "index" ) list [ "as" name ] ;  (* 키워드 바로 뒤가 "(" 일 때만 제약 *)
+constraint  = ( "unique" | "index" ) list [ "as" name ] ;  (* only when "(" directly follows the keyword *)
 audit       = "audit" IDENT [ list ] ;
 list        = "(" [ name { "," name } [ "," ] ] ")" ;
 values      = "(" [ value { "," value } [ "," ] ] ")" ;
@@ -75,127 +80,159 @@ value       = name | NUMBER ;
 name        = IDENT | QUOTED ;
 ```
 
-## 4. 의미
+## 4. Semantics
 
-### 4.1 테이블
+### 4.1 Tables
 
-- `table 이름 ["설명"] { ... }` — 이름은 문서 안에서 유일하다(`external table` 까지 통틀어).
-  설명은 사람이 읽을 말이다.
-- `external table 이름 ["설명"] { ... }` — **이 문서 밖**(다른 서비스, 다른 DB)에 있는 테이블이다.
-  가리키는 데 필요한 컬럼만 적는다(보통 기본키 하나). 다른 테이블처럼 참조를 받고 검사된다.
-  external table 의 컬럼에는 참조(`->`, `~>`)를 적을 수 없고, `audit` 을 붙일 수 없다.
+- `table name ["description"] { ... }`: names are unique within a document, external tables
+  included. The description is for people.
+- `external table name ["description"] { ... }`: a table that lives **outside this document**
+  (another service, another database). List only the columns you point at, usually the primary
+  key. It receives references and is checked like any other table. Its columns cannot hold
+  references (`->`, `~>`), and it cannot have `audit`.
 
-### 4.2 컬럼
+### 4.2 Columns
 
-`이름 타입[?] 수식어...` — SQL DDL 과 같은 순서(이름 먼저)다.
+`name type[?] modifiers...`: the name comes first, as in SQL DDL.
 
-- **타입**은 물리 타입 이름에 인자를 붙일 수 있다: `bigint`, `varchar(32)`, `decimal(12,2)`.
-  인자는 적힌 그대로 싣고, 적지 않아도 된다.
-- **`?`** 는 널 허용이다(`varchar?`, `varchar(32)?`). `?` 가 없으면 NOT NULL 이라는 **적극적 주장**이다.
-- 수식어는 순서가 자유롭다. 같은 수식어를 두 번 쓰면 오류다.
+- The **type** is a physical type name, optionally with arguments: `bigint`, `varchar(32)`,
+  `decimal(12,2)`. Arguments are kept as written and may be left out.
+- **`?`** marks a nullable column (`varchar?`, `varchar(32)?`). No `?` is a positive claim that
+  the column is NOT NULL.
+- Modifiers come in any order. Writing the same modifier twice is an error.
 
-| 수식어 | 뜻 |
+| Modifier | Meaning |
 |---|---|
-| `pk` | 기본키. 여러 컬럼에 붙이면 복합 기본키. 널 허용(`?`)과 함께 쓸 수 없다 |
-| `uk` / `uk as 이름` | 단일 컬럼 UNIQUE |
-| `enc` | 암호화되어 저장된다 |
-| `enum(A, B)` | 값 후보. 이름이나 수(`enum(0, 1, 2)`). 스키마나 코멘트가 뒷받침하는 값만 적는다 |
-| `index` / `index as 이름` | 이 컬럼이 첫 컬럼인 인덱스. 이름을 모르면 `as` 없이 |
-| `-> t.c` | 물리 FK (DB 에 `FOREIGN KEY` 제약이 있다) |
-| `~> t.c` | 논리 참조 (앱이 참조로 쓰지만 DB 제약은 없다) |
-| `"..."` | 사람이 읽을 설명. **설명에는 사실을 넣지 않는다** — 위 수식어로 적을 수 있는 건 수식어로 |
+| `pk` | Primary key. On several columns: a composite primary key. Cannot be combined with `?` |
+| `uk` / `uk as name` | Single-column UNIQUE |
+| `enc` | Stored encrypted |
+| `enum(A, B)` | Allowed values: names or numbers (`enum(0, 1, 2)`). Write only values the schema or its comments support |
+| `index` / `index as name` | An index whose first column is this one. Leave out `as` when the name is unknown |
+| `-> t.c` | Physical FK: the database declares a `FOREIGN KEY` constraint |
+| `~> t.c` | Logical reference: the application treats it as a reference, the database has no constraint |
+| `"..."` | A description for people. **Descriptions carry no facts**: anything a modifier can say goes in a modifier |
 
-### 4.3 참조와 카디널리티
+### 4.3 References and cardinality
 
-- 참조는 **컬럼에 붙는다.** 관계선을 따로 쓰지 않는다.
-- `.c` 를 생략하면 대상 테이블의 기본키를 가리킨다. 기본키가 한 컬럼이 아니면 오류다.
-- 대상은 같은 문서의 `table` 이나 `external table` 이어야 한다.
-- **몇 대 몇인가**는 참조 컬럼의 유일성으로 정한다. 참조 컬럼에 `uk` 가 있거나 그 컬럼이
-  테이블의 유일한 기본키면 1:1, 아니면 1:N.
-- **부모가 꼭 있는가**는 참조 컬럼의 널 허용으로 정한다. NOT NULL 이면 자식마다 부모가 정확히 하나,
-  `?` 면 없거나 하나.
-- 대상 컬럼과 타입 이름이 다르면 경고한다. 타입 인자(길이)는 비교하지 않는다.
+- A reference is **attached to a column**. There are no separate relationship lines.
+- Without `.c`, the reference points at the target's primary key, which must be a single column.
+- The target must be a `table` or an `external table` of the same document.
+- **How many**: when the referencing column has `uk`, or is the table's only primary key, the
+  relation is one-to-one; otherwise one-to-many.
+- **Whether a parent must exist**: a NOT NULL referencing column means every child has exactly
+  one parent; a `?` column means zero or one.
+- When the type name differs from the target column's type name, a warning is reported. Type
+  arguments (lengths) are not compared.
 
-### 4.4 이름 (`as`)
+### 4.4 Names (`as`)
 
-인덱스와 유니크 제약의 이름은 `as` 뒤에 적는다. 괄호에는 늘 목록만 들어간다.
+Index and unique constraint names follow `as`. Parentheses only ever hold lists.
 
-- 컬럼: `uk as uk_order_no`, `index as idx_user_id`
-- 테이블 제약: `unique(a, b) as uk_ab`, `index(a, b) as ix_ab`
+- On a column: `uk as uk_order_no`, `index as idx_user_id`
+- On a table constraint: `unique(a, b) as uk_ab`, `index(a, b) as ix_ab`
 
-같은 테이블 안에서 이름이 겹치면 오류다.
+A name used twice within one table is an error.
 
-### 4.5 테이블 제약
+### 4.5 Table constraints
 
-테이블 블록 안의 한 줄로 적는다. 키워드 바로 뒤에 `(` 가 와야 제약이다(`index int` 는 컬럼이다).
+Written as a line inside the table block. A constraint starts only when `(` directly follows the
+keyword, so `index int` is a column called `index`.
 
-- `unique(a, b)` / `unique(a, b) as 이름` — 복합 UNIQUE
-- `index(a, b)` / `index(a, b) as 이름` — 복합 인덱스
+- `unique(a, b)` / `unique(a, b) as name`: composite UNIQUE
+- `index(a, b)` / `index(a, b) as name`: composite index
 
-단일 컬럼이면 컬럼 수식어(`uk`, `index`)를 쓴다. 한 컬럼짜리 제약은 경고한다.
+For a single column use the column modifiers `uk` and `index`; a single-column constraint is
+reported as a warning.
 
-### 4.6 감사 테이블 (`audit`)
+### 4.6 Audit tables (`audit`)
 
-감사 테이블을 한 줄로 선언한다. `audit` 뒤에 **방식**을 적는다. 지금 있는 방식은 `envers`
-(Hibernate Envers) 하나다.
+Declares audit tables in one line. `audit` is followed by a **method**; the only method today is
+`envers` (Hibernate Envers).
 
-- `} audit envers(c1, c2)` — `<table>_aud` 에 기본키, `rev`, `revtype`, 그리고 적은 컬럼만 싣는다.
-- `} audit envers` — 기본키와 `created_at`, `updated_at` 을 뺀 모든 컬럼을 싣는다.
-- 한 테이블이라도 `audit envers` 가 있으면 `revinfo` 테이블과 관계선이 자동으로 생긴다.
-  그래서 `revinfo` 나 `<table>_aud` 라는 이름을 직접 선언하면 충돌 오류다.
-- 기본키가 없는 테이블과 external table 에는 쓸 수 없다.
+- `} audit envers(c1, c2)`: `<table>_aud` holds the primary key, `rev`, `revtype` and the listed columns.
+- `} audit envers`: every column except the primary key, `created_at` and `updated_at`.
+- As soon as one table uses `audit envers`, a `revinfo` table and its relations are generated.
+  Declaring `revinfo` or `<table>_aud` yourself is therefore an error.
+- Not allowed on tables without a primary key, nor on external tables.
 
-## 5. Mermaid 로의 대응 (컴파일 규칙)
+## 5. Mermaid mapping
 
-| Resin | Mermaid `erDiagram` |
+| resin | Mermaid `erDiagram` |
 |---|---|
-| `table t "설명"` | `t["t (설명)"] { ... }` — 설명이 없으면 `t { ... }` |
-| `external table u` | 블록 줄에 `:::external`, 맨 끝에 `classDef external stroke-dasharray:4 3` |
-| `a_id bigint -> a.id` (in `b`) | `a \|\|--o{ b : "a_id"` + 속성 `bigint a_id FK "-> a.id"` |
-| `~>` | 점선 `..` |
-| 참조가 1:1 | 오른쪽 `o\|` |
-| 참조 컬럼이 `?` | 왼쪽 `\|o` |
-| 타입 | 적힌 그대로: `varchar(32)?` |
-| `pk` `uk` 참조 | 키 마커 `PK` `UK` `FK` (순서 PK, FK, UK) |
-| 설명, `enc`, `enum` | 속성 코멘트: `"설명 (enc) A/B"` |
-| 참조 대상 | 그 뒤에 `; -> a.id` |
-| `index` / `index as n`, `uk as n` | 코멘트 끝에 `(ix)` / `(n)` |
-| `unique(a, b)` / `unique(a, b) as n` | 첫 컬럼 코멘트에 `uk(a,b)` / `n(a,b)` |
-| `index(a, b)` / `index(a, b) as n` | 첫 컬럼 코멘트에 `ix(a,b)` / `n(a,b)` |
-| `audit envers` | `revinfo` 블록 + `<table>_aud` 블록 + `revinfo \|\|..o{ <table>_aud : "Envers rev"` |
+| `table t "description"` | `t["t (description)"] { ... }`; without a description `t { ... }` |
+| `external table u` | `:::external` on the block line and `classDef external stroke-dasharray:4 3` at the end |
+| `a_id bigint -> a.id` (in `b`) | `a \|\|--o{ b : "a_id"` and the attribute `bigint a_id FK "-> a.id"` |
+| `~>` | Dotted line `..` |
+| One-to-one reference | Right end `o\|` |
+| Nullable referencing column | Left end `\|o` |
+| Type | As written: `varchar(32)?` |
+| `pk`, `uk`, reference | Key markers `PK`, `UK`, `FK` (in the order PK, FK, UK) |
+| Description, `enc`, `enum` | Attribute comment: `"description (enc) A/B"` |
+| Reference target | Then `; -> a.id` |
+| `index` / `index as n`, `uk as n` | `(ix)` / `(n)` at the end of the comment |
+| `unique(a, b)` / `unique(a, b) as n` | `uk(a,b)` / `n(a,b)` in the comment of the first column |
+| `index(a, b)` / `index(a, b) as n` | `ix(a,b)` / `n(a,b)` in the comment of the first column |
+| `audit envers` | A `revinfo` block, `<table>_aud` blocks and `revinfo \|\|..o{ <table>_aud : "Envers rev"` |
 
-### 5.1 이름 옮기기
+### 5.1 Names
 
-mermaid 는 일부 이름을 그대로 읽지 못한다(11.16 에서 확인).
+Mermaid cannot read some names as they are (measured with Mermaid 11.16).
 
-- **테이블 이름**이 영문, 숫자, `_` 로만 되어 있지 않거나 mermaid 예약어(`class` `classDef`
-  `style` `erDiagram` `direction` `accTitle` `accDescr` `title` `to` `one` `many`, 대소문자 무시)면
-  `"..."` 로 감싼다.
-- **컬럼 이름**은 mermaid 에서 따옴표를 쓸 수 없다. 글자, 숫자, `_`, `-` 밖의 글자는 `_` 로 바꾸고,
-  숫자나 `-` 로 시작하면 앞에 `_` 를, `pk` `fk` `uk`(대소문자 무시)와 같으면 뒤에 `_` 를 붙인다.
-  이름을 바꿨으면 코멘트 맨 앞에 원래 이름을 `` `...` `` 로 적는다.
-- 문자열 안의 `"` 는 `#quot;` 로 바꾼다. mermaid 는 `\"` 를 모른다.
+- A **table name** that is not a plain ASCII identifier, or is a Mermaid keyword (`class`
+  `classDef` `style` `erDiagram` `direction` `accTitle` `accDescr` `title` `to` `one` `many`,
+  case-insensitive), is written in double quotes.
+- A **column name** cannot be quoted in Mermaid. Characters other than letters, digits, `_` and `-`
+  become `_`; a leading digit or `-` gets a `_` prefix; `pk`, `fk` and `uk` (case-insensitive) get
+  a `_` suffix. When a name had to change, its original is written in backticks at the start of
+  its comment.
+- A `"` inside a string becomes `#quot;`, because Mermaid has no `\"` escape.
 
-### 5.2 출력 순서
+### 5.2 Output order
 
-`erDiagram` → 범례 주석(참조가 있을 때) → 도메인 관계선(자식 테이블, 컬럼의 문서 순서) → 빈 줄 →
-감사 관계선 → 엔티티 블록(문서 순서, external 포함) → `revinfo` → `*_aud` → `classDef`.
-같은 입력이면 바이트 단위로 같은 출력이 나온다.
+`erDiagram` → a legend comment (when there are references) → domain relations (in document order
+of the child table and column) → a blank line → audit relations → entity blocks (document order,
+external tables included) → `revinfo` → `*_aud` → `classDef`. The same input always yields
+byte-identical output.
 
-## 6. 진단
+## 6. SVG rendering
 
-모든 오류와 경고는 `줄:열` 위치를 가진다. 파서는 오류가 난 줄을 건너뛰고 계속 읽어서
-**한 번에 여러 오류를 보고한다.** 구문 오류가 있으면 의미 검사를 하지 않고(가짜 오류를 막으려고),
-오류가 하나라도 있으면 컴파일(mermaid 출력)은 하지 않는다.
+`toSvg(model, elk, options)` draws the model itself. Layout uses [ELK](https://eclipse.dev/elk/)'s
+layered algorithm with a port on every column row, so each connector runs from a foreign key row to
+the primary key row it points at.
 
-## 7. v0.1 에서 옮기기
+- **Cards**: the table name and description in the header, then one row per column: a dot for a
+  primary key, a ring for a unique column, the column name, its description, and the type at the
+  right edge (with `?` for nullable columns). Markers `enum`, `enc`, `ix` and `fk` sit before the
+  type. Composite constraints are listed under the rows.
+- **Connectors**: grey and orthogonal. Solid for physical FKs, dashed for logical references. An
+  arrowhead at the primary key end, as in `->`; a dot and `N` (one-to-many) or `1` (one-to-one)
+  at the foreign key end. Nullability is shown by the `?` on the foreign key row rather than at
+  the arrowhead, because many relations can share one primary key.
+- **External tables** have a dashed border and an `external` tag. **Audit tables** are folded into
+  an `envers` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
+- `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
+- **Ink** is `currentColor` with a fixed ramp of opacities; nothing paints a background, so the
+  drawing reads on any page. `standalone: true` adds a `<style>` that picks the ink color from
+  `prefers-color-scheme`, for SVG files embedded with `<img>`.
+- **Deterministic**: text is never measured. Widths follow fixed rules (monospace: 0.6em per
+  cell; proportional: 0.56em per Latin letter, 1em per CJK character), so the same input yields the
+  same SVG in a browser and on the command line.
 
-v0.1 문법을 만나면 파서가 오류와 함께 고치는 법을 알려 준다.
+## 7. Diagnostics
+
+Every error and warning has a `line:column` position, and most have a hint. The parser skips the
+line an error is on and keeps going, **so one run reports several errors**. When there are syntax
+errors, semantic checks do not run (they would report bogus follow-up errors). When there is any
+error, no model and no output are produced.
+
+## 8. Migrating from v0.1
+
+The parser recognizes v0.1 syntax and says how to write it in v0.2.
 
 | v0.1 | v0.2 |
 |---|---|
-| 첫 줄 `erd` | 지운다 |
+| `erd` on the first line | Delete it |
 | `index(idx_name)` | `index as idx_name` |
 | `unique name(a, b)` / `index name(a, b)` | `unique(a, b) as name` / `index(a, b) as name` |
 | `} audit(a, b)` / `} audit` | `} audit envers(a, b)` / `} audit envers` |
-| 문서 밖 참조를 설명 문자열로 | `external table` 을 선언하고 `~>` |
+| An outside reference written as a description | Declare an `external table` and use `~>` |
