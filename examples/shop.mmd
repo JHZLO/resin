@@ -1,0 +1,129 @@
+erDiagram
+    %% solid(--)=physical FK / dotted(..)=logical reference
+    categories |o--o{ categories : "parent_id"
+    categories ||--o{ products : "category_id"
+    products ||--o{ product_options : "product_id"
+    users ||..o| carts : "user_id"
+    carts ||--o{ cart_items : "cart_id"
+    product_options ||--o{ cart_items : "option_id"
+    users ||..o{ orders : "user_id"
+    coupons |o..o{ orders : "coupon_id"
+    orders ||--o{ order_items : "order_id"
+    product_options ||..o{ order_items : "option_id"
+    orders ||..o| payments : "order_id"
+    payments ||--o{ refunds : "payment_id"
+    coupons ||--o{ coupon_usages : "coupon_id"
+    users ||..o{ coupon_usages : "user_id"
+    orders ||..o| coupon_usages : "order_id"
+    orders ||--o{ shipments : "order_id"
+
+    revinfo ||..o{ orders_aud : "Envers rev"
+
+    users["users (svc_accounts 회원)"]:::external {
+        bigint id PK
+    }
+
+    categories["categories (카테고리)"] {
+        bigint id PK
+        bigint? parent_id FK "상위 카테고리; -> categories.id"
+        varchar(50) name
+    }
+
+    products["products (상품)"] {
+        bigint id PK
+        bigint category_id FK "-> categories.id (ix_category_id)"
+        varchar(100) name
+        decimal(12,2) price
+        varchar status "ON_SALE/SOLD_OUT/HIDDEN (ix_status)"
+        datetime created_at
+    }
+
+    product_options["product_options (상품 옵션)"] {
+        bigint id PK
+        bigint product_id FK "-> products.id (ix_product_id)"
+        varchar(50) name
+        decimal(12,2) extra_price
+        int stock
+    }
+
+    carts["carts (장바구니)"] {
+        bigint id PK
+        bigint user_id FK,UK "~> users.id (uk_user_id)"
+        datetime updated_at
+    }
+
+    cart_items["cart_items (장바구니 항목)"] {
+        bigint id PK
+        bigint cart_id FK "-> carts.id; uk_cart_option(cart_id,option_id)"
+        bigint option_id FK "-> product_options.id"
+        int quantity
+    }
+
+    coupons["coupons (쿠폰)"] {
+        bigint id PK
+        varchar(20) code UK "(uk_code)"
+        decimal(12,2) discount
+        datetime expires_at
+    }
+
+    orders["orders (주문)"] {
+        bigint id PK
+        bigint user_id FK "~> users.id (ix_user_id)"
+        varchar(32) order_no UK "(uk_order_no)"
+        bigint? coupon_id FK "~> coupons.id"
+        varchar status "PENDING/PAID/CANCELED"
+        datetime created_at
+    }
+
+    order_items["order_items (주문 항목)"] {
+        bigint id PK
+        bigint order_id FK "-> orders.id"
+        bigint option_id FK "~> product_options.id"
+        int quantity
+        decimal(12,2) price
+    }
+
+    payments["payments (결제)"] {
+        bigint id PK
+        bigint order_id FK,UK "~> orders.id"
+        decimal(12,2) amount
+        varchar method "CARD/BANK_TRANSFER"
+        datetime? paid_at
+    }
+
+    refunds["refunds (환불)"] {
+        bigint id PK
+        bigint payment_id FK "-> payments.id"
+        decimal(12,2) amount
+        varchar(200)? reason
+    }
+
+    coupon_usages["coupon_usages (쿠폰 사용)"] {
+        bigint id PK
+        bigint coupon_id FK "-> coupons.id"
+        bigint user_id FK "~> users.id"
+        bigint order_id FK,UK "~> orders.id"
+        datetime used_at
+    }
+
+    shipments["shipments (배송)"] {
+        bigint id PK
+        bigint order_id FK "-> orders.id"
+        varchar(20) carrier
+        varchar(40)? tracking_no
+        datetime? shipped_at
+    }
+
+    revinfo {
+        int rev PK
+        bigint revtstmp
+    }
+
+    orders_aud {
+        bigint id PK
+        int rev PK,FK
+        tinyint revtype
+        varchar status
+    }
+
+    classDef external stroke-dasharray:4 3

@@ -1,0 +1,97 @@
+%% 커머스 — 설명용으로 지은 스키마. 테이블이 여럿일 때의 배치를 본다:
+%% 한 PK 로 여러 관계가 모이고(users.id, orders.id), 자기참조(categories)가 있다
+external table users "svc_accounts 회원" {
+  id  bigint  pk
+}
+
+table categories "카테고리" {
+  id         bigint       pk
+  parent_id  bigint?      -> categories  "상위 카테고리"
+  name       varchar(50)
+}
+
+table products "상품" {
+  id           bigint         pk
+  category_id  bigint         -> categories  index as ix_category_id
+  name         varchar(100)
+  price        decimal(12,2)
+  status       varchar        enum(ON_SALE, SOLD_OUT, HIDDEN)  index as ix_status
+  created_at   datetime
+}
+
+table product_options "상품 옵션" {
+  id           bigint         pk
+  product_id   bigint         -> products  index as ix_product_id
+  name         varchar(50)
+  extra_price  decimal(12,2)
+  stock        int
+}
+
+table carts "장바구니" {
+  id          bigint    pk
+  user_id     bigint    uk as uk_user_id ~> users
+  updated_at  datetime
+}
+
+table cart_items "장바구니 항목" {
+  id         bigint  pk
+  cart_id    bigint  -> carts
+  option_id  bigint  -> product_options
+  quantity   int
+  unique(cart_id, option_id) as uk_cart_option
+}
+
+table coupons "쿠폰" {
+  id          bigint         pk
+  code        varchar(20)    uk as uk_code
+  discount    decimal(12,2)
+  expires_at  datetime
+}
+
+table orders "주문" {
+  id          bigint       pk
+  user_id     bigint       ~> users  index as ix_user_id
+  order_no    varchar(32)  uk as uk_order_no
+  coupon_id   bigint?      ~> coupons
+  status      varchar      enum(PENDING, PAID, CANCELED)
+  created_at  datetime
+} audit envers(status)
+
+table order_items "주문 항목" {
+  id         bigint         pk
+  order_id   bigint         -> orders
+  option_id  bigint         ~> product_options
+  quantity   int
+  price      decimal(12,2)
+}
+
+table payments "결제" {
+  id        bigint         pk
+  order_id  bigint         uk ~> orders
+  amount    decimal(12,2)
+  method    varchar        enum(CARD, BANK_TRANSFER)
+  paid_at   datetime?
+}
+
+table refunds "환불" {
+  id          bigint         pk
+  payment_id  bigint         -> payments
+  amount      decimal(12,2)
+  reason      varchar(200)?
+}
+
+table coupon_usages "쿠폰 사용" {
+  id         bigint    pk
+  coupon_id  bigint    -> coupons
+  user_id    bigint    ~> users
+  order_id   bigint    uk ~> orders
+  used_at    datetime
+}
+
+table shipments "배송" {
+  id           bigint        pk
+  order_id     bigint        -> orders
+  carrier      varchar(20)
+  tracking_no  varchar(40)?
+  shipped_at   datetime?
+}
