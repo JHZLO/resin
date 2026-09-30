@@ -1,23 +1,25 @@
-// 모델 → SVG. resin 이 직접 그리는 ERD("문서 카드").
+// Model → SVG: the ERD resin draws itself ("document cards").
 //
-// 순서: 카드 크기 계산 → ELK 배치(컬럼 행마다 포트, 직교 배선) → SVG 문자열.
+// Steps: size every card → lay out with ELK (a port on every column row, orthogonal routing) → SVG string.
 //
-// 결정적이어야 한다: 글자 폭을 재지 않고 규칙으로 계산한다(고정폭 = 칸 수 × 0.6em, 비례폭 = 영문
-// 0.56em, 한글 1em 추정). 그래서 브라우저든 CLI 든 같은 입력이면 같은 SVG 가 나온다.
+// Output is deterministic. Text is never measured; widths follow fixed rules (monospace = cells ×
+// 0.6em, proportional = 0.56em per Latin letter and 1em per CJK character). The same input gives the
+// same SVG in a browser and on the command line.
 //
-// 잉크는 currentColor 하나에 투명도 단계만 쓴다. 바탕을 칠하지 않아서 어느 페이지에 붙여도 읽힌다.
-// standalone 이면 <img> 로 붙여도 읽히게 prefers-color-scheme 에 따라 잉크 색을 정하는 <style> 을 싣는다.
+// Ink is currentColor with a fixed ramp of opacities, and nothing paints a background, so the drawing
+// reads on any page. With `standalone`, a <style> picks the ink color from prefers-color-scheme so the
+// file also reads when embedded with <img>.
 //
-// ELK 는 인자로 받는다 — 코어가 elkjs 에 묶이지 않게(런타임 의존성 0). 쓰는 쪽이 `new ELK()` 를 넘긴다.
+// ELK is passed in, so the core does not depend on elkjs (zero runtime dependencies). Callers pass `new ELK()`.
 
 import type { Model, ModelColumn, ModelTable, Relation } from "./model.ts";
 
 export interface SvgOptions {
-  /** all = 모든 컬럼, keys = 키와 참조에 쓰이는 컬럼만(나머지는 "+N 컬럼") */
+  /** all = every column, keys = key and reference columns only (the rest become "+N columns") */
   columns?: "all" | "keys";
-  /** collapse = 감사 테이블을 원래 테이블 머리의 표로 접는다, expand = revinfo 와 *_aud 를 따로 그린다 */
+  /** collapse = fold audit tables into a tag on the audited table, expand = draw revinfo and *_aud */
   audit?: "collapse" | "expand";
-  /** 파일로 내보낼 때: 밝은/어두운 바탕에 맞춰 잉크 색을 정하는 <style> 을 싣는다 */
+  /** For files: embed a <style> that picks the ink color for light and dark backgrounds */
   standalone?: boolean;
 }
 
@@ -27,7 +29,7 @@ export interface SvgResult {
   height: number;
 }
 
-// ELK 에서 쓰는 모양만 — elkjs 의 타입에 묶이지 않으려고 구조로 적는다
+// Only the parts of ELK's graph format used here, declared structurally to avoid depending on elkjs types
 interface Point {
   x: number;
   y: number;
@@ -66,9 +68,10 @@ export interface ElkLike {
 const MONO = "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
 const SANS = "'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif";
 
-// ---- 글자 폭 ----
+// ---- text width ----
 
-const WIDE = /[ᄀ-ᇿ⺀-꓏가-힯豈-﫿︰-﹏＀-｠￠-￦]/;
+// Hangul Jamo, CJK radicals through Yi, Hangul syllables, CJK compatibility forms, fullwidth forms
+const WIDE = /[\u1100-\u11FF\u2E80-\uA4CF\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/;
 const cells = (s: string): number => [...s].reduce((n, ch) => n + (WIDE.test(ch) ? 2 : 1), 0);
 const monoW = (s: string, size: number): number => cells(s) * size * 0.6;
 const sansW = (s: string, size: number): number => [...s].reduce((w, ch) => w + (WIDE.test(ch) ? size : size * 0.56), 0);
@@ -78,7 +81,7 @@ const f = (v: number): number => Math.round(v * 10) / 10;
 const up8 = (v: number): number => Math.ceil(v / 8) * 8;
 const maxOf = (xs: number[], floor = 0): number => xs.reduce((m, x) => Math.max(m, x), floor);
 
-// ---- 카드 치수 (8 단위 격자 위에서) ----
+// ---- card metrics (on an 8-unit grid) ----
 
 const PAD_X = 14;
 const HEAD_H = 36;
@@ -90,7 +93,7 @@ interface View {
   table: ModelTable;
   shown: ModelColumn[];
   hidden: number;
-  /** 이 테이블 컬럼 중 관계의 자식 쪽으로 쓰이는 것 */
+  /** Columns of this table on the child side of a relation */
   refCols: Set<string>;
   tag: string | null;
   foot: string[];
@@ -199,9 +202,9 @@ function card(v: View): string {
   return s.join("");
 }
 
-// ---- 관계선 ----
+// ---- connectors ----
 
-/** 직교 경로의 꺾임을 반지름 r 로 둥글린다 */
+/** Round the bends of an orthogonal path with radius r */
 function pathD(pts: Point[], r: number): string {
   let d = `M${f(pts[0].x)},${f(pts[0].y)}`;
   for (let i = 1; i < pts.length - 1; i++) {
@@ -217,7 +220,7 @@ function pathD(pts: Point[], r: number): string {
   return `${d} L${f(last.x)},${f(last.y)}`;
 }
 
-/** 겹친 점과, 한 직선 위의 가운데 점을 뺀다 — 직선 한가운데 둥근 모서리가 생기지 않게 */
+/** Drop repeated points and points in the middle of a straight run, so no corner is rounded mid-line */
 function clean(pts: Point[]): Point[] {
   const same = (a: number, b: number) => Math.abs(a - b) < 0.01;
   const out: Point[] = [];
@@ -232,16 +235,16 @@ function clean(pts: Point[]): Point[] {
   return out;
 }
 
-/** 부모(PK) 쪽: 화살촉 — 선은 resin 의 `->` 처럼 FK 에서 PK 로 간다 */
+/** Parent (PK) end: an arrowhead. Like resin's `->`, a connector runs from the FK to the PK */
 const arrowHead = (x: number, y: number): string =>
   `<path d="M${f(x + 7)},${f(y - 6)} L${f(x)},${f(y)} L${f(x + 7)},${f(y + 6)}" stroke-linejoin="round" stroke-linecap="round"/>`;
 
-/** 자식(FK) 쪽: 점과 다중도 — N(여럿) / 1(하나) */
+/** Child (FK) end: a dot and the multiplicity, N (many) or 1 (one) */
 const tail = (x: number, y: number, one: boolean): string =>
   `<circle cx="${f(x)}" cy="${f(y)}" r="2.5" fill="currentColor" fill-opacity="${TONE.muted}" stroke="none"/>` +
   `<text x="${f(x - 8)}" y="${f(y - 5)}" text-anchor="end" font-family="${MONO}" font-size="10" fill="currentColor" fill-opacity="${TONE.muted}" stroke="none">${one ? "1" : "N"}</text>`;
 
-// ---- 조립 ----
+// ---- assembly ----
 
 function views(model: Model, opts: Required<Omit<SvgOptions, "standalone">>): { views: View[]; relations: Relation[] } {
   const expand = opts.audit === "expand";
@@ -257,7 +260,7 @@ function views(model: Model, opts: Required<Omit<SvgOptions, "standalone">>): { 
     const tag =
       table.origin === "external" ? "external" : table.origin === "audit" || (table.audit && !expand) ? (table.audit?.method ?? "envers") : null;
     const foot = table.constraints.map((k) => `${k.name ?? (k.kind === "unique" ? "unique" : "index")} (${k.columns.join(", ")})`);
-    if (hidden) foot.push(`+${hidden} 컬럼`);
+    if (hidden) foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
     const base = { table, shown, hidden, refCols, tag, foot };
     return { ...base, ...measure(base) };
   });
@@ -340,7 +343,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const cv = byName.get(r.child)!;
     const pp = pos.get(r.parent)!;
     const cp = pos.get(r.child)!;
-    // 끝점은 ELK 가 준 좌표가 아니라 행의 앵커로 맞춘다 — 끝점은 늘 앵커다
+    // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor
     const start = { x: pp.x + pv.w, y: pp.y + rowY(pv.shown.findIndex((c) => c.name === r.parentColumn)) };
     const end = { x: cp.x, y: cp.y + rowY(cv.shown.findIndex((c) => c.name === r.childColumn)) };
     const pts = clean([start, ...(sec?.bendPoints ?? []), end]);

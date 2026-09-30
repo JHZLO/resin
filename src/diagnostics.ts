@@ -1,7 +1,7 @@
-// 진단(오류, 경고) 모델과 사람이 읽는 출력 형식.
+// Diagnostics (errors and warnings) and their human-readable form.
 //
-// 형식은 컴파일러 관례를 따른다: `file:line:col: error: message` 다음 줄에 원문 한 줄과 밑줄.
-// 에디터와 터미널이 이 형식을 링크로 인식하고, 에이전트도 위치를 그대로 따라간다.
+// The format follows compiler conventions: `file:line:col: error: message`, then the source line
+// with a caret underline. Editors and terminals turn that first line into a link.
 
 import type { Span } from "./ast.ts";
 
@@ -11,7 +11,7 @@ export interface Diagnostic {
   severity: Severity;
   message: string;
   span: Span;
-  /** 고치는 방법 한 줄. 없으면 생략 */
+  /** One line on how to fix it, when there is one */
   hint?: string;
 }
 
@@ -26,7 +26,7 @@ export const warning = (message: string, span: Span, hint?: string): Diagnostic 
 export const hasErrors = (ds: readonly Diagnostic[]): boolean =>
   ds.some((d) => d.severity === "error");
 
-/** 원문 위치 순으로 정렬 — 여러 단계(렉서, 파서, 검사기)의 진단을 합쳐도 읽는 순서가 원문 순서가 되게 */
+/** Sort by source position, so diagnostics merged from the lexer, parser and checker read top to bottom */
 export function sortDiagnostics(ds: readonly Diagnostic[]): Diagnostic[] {
   return [...ds].sort((a, b) => a.span.line - b.span.line || a.span.col - b.span.col);
 }

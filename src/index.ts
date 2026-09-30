@@ -1,5 +1,6 @@
-// 공개 진입점. 원문 한 덩어리를 받아 파싱 → 검사 → (오류가 없으면) 모델 → mermaid 로 컴파일한다.
-// 패키지의 공개 API 는 여기서만 내보낸다 — 쓰는 쪽이 내부 파일 경로에 기대지 않게.
+// Public entry point. Takes one source text through parse → check → (when there are no errors)
+// model → Mermaid. The package's public API is exported from here only, so callers never depend on
+// internal file paths.
 
 import type { Document } from "./ast.ts";
 import { check } from "./checker.ts";
@@ -22,17 +23,17 @@ export type { ElkLike, SvgOptions, SvgResult } from "./svg.ts";
 
 export interface CompileResult {
   doc: Document;
-  /** 오류가 하나라도 있으면 null */
+  /** null when there is at least one error */
   model: Model | null;
-  /** 오류가 하나라도 있으면 null */
+  /** null when there is at least one error */
   mermaid: string | null;
-  /** 원문 위치 순 */
+  /** In source order */
   diagnostics: Diagnostic[];
 }
 
 export function compile(source: string): CompileResult {
   const parsed = parse(source);
-  // 구문 오류가 있으면 트리가 불완전하다 — 의미 검사를 돌리면 가짜 오류("테이블이 없습니다")가 섞인다
+  // With syntax errors the tree is incomplete; checking it would add bogus errors ("no such table")
   const diagnostics = hasErrors(parsed.diagnostics) ? parsed.diagnostics : [...parsed.diagnostics, ...check(parsed.doc)];
   const model = hasErrors(diagnostics) ? null : lower(parsed.doc);
   return {

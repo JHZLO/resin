@@ -1,9 +1,10 @@
-// 원문 → 토큰 열. 키워드는 따로 두지 않고 전부 ident 로 낸다 — Resin 의 키워드는 문맥 키워드라
-// (`index` 라는 컬럼도 된다) 무엇이 키워드인지는 자리를 아는 파서가 정한다.
+// Source text → tokens. Keywords are not a separate token kind: resin's keywords are contextual
+// (a column may be called `index`), so the parser, which knows the position, decides what is a keyword.
 //
-// 백틱 이름(`order-items`)도 ident 로 내되 quoted 를 붙인다 — 어느 자리에서도 키워드가 아니다.
-// 줄바꿈은 토큰이다(문장 구분자). 빈 줄이 여러 개여도 그대로 내고, 파서가 건너뛴다.
-// 모르는 글자와 닫히지 않은 문자열은 진단을 남기고 계속 읽는다 — 한 번에 여러 오류를 보여주려고.
+// Backtick names (`order-items`) are emitted as idents marked `quoted` — they are never keywords.
+// Newlines are tokens (they end statements). Runs of blank lines are kept; the parser skips them.
+// Unknown characters and unterminated strings leave a diagnostic and lexing goes on, so that one
+// run can report several errors.
 
 import type { Span } from "./ast.ts";
 import { type Diagnostic, error } from "./diagnostics.ts";
@@ -26,10 +27,10 @@ export type TokenKind =
 
 export interface Token {
   kind: TokenKind;
-  /** ident 는 이름(백틱은 벗긴 것), string 은 이스케이프를 푼 값, 나머지는 원문 그대로 */
+  /** The name for idents (backticks stripped), the unescaped value for strings, the source text otherwise */
   value: string;
   span: Span;
-  /** 백틱으로 감싼 ident */
+  /** An ident written in backticks */
   quoted?: boolean;
 }
 
@@ -104,8 +105,8 @@ export function lex(source: string): { tokens: Token[]; diagnostics: Diagnostic[
       const closed = source[i] === "`";
       const value = source.slice(start + 1, i);
       if (closed) i++;
-      if (!closed) diagnostics.push(error("백틱 이름이 닫히지 않았습니다", span(start, i), "이름은 한 줄 안에서 `` ` `` 로 닫아야 합니다"));
-      else if (value.length === 0) diagnostics.push(error("빈 백틱 이름입니다", span(start, i)));
+      if (!closed) diagnostics.push(error("unterminated backtick name", span(start, i), "close the name with a backtick on the same line"));
+      else if (value.length === 0) diagnostics.push(error("empty backtick name", span(start, i)));
       tokens.push({ kind: "ident", value, span: span(start, i), quoted: true });
       continue;
     }
@@ -135,23 +136,22 @@ export function lex(source: string): { tokens: Token[]; diagnostics: Diagnostic[
         value += ch;
         i++;
       }
-      if (!closed)
-        diagnostics.push(error("문자열이 닫히지 않았습니다", span(start, i), '문자열은 한 줄 안에서 `"` 로 닫아야 합니다'));
+      if (!closed) diagnostics.push(error("unterminated string", span(start, i), 'close the string with `"` on the same line'));
       push("string", value, start, i);
       continue;
     }
 
-    // 영문 밖의 글자로 된 이름(한글 등) — 글자마다 오류를 내지 않고 한 덩어리로 묶어 백틱을 권한다.
-    // 토큰은 이름으로 내서 뒤따르는 문법 오류("테이블 이름 필요")가 줄줄이 생기지 않게 한다
+    // A name made of non-ASCII letters (Hangul and the like). Report it once as a whole instead of
+    // once per character, and emit it as a name so no follow-up errors ("expected a table name") pile up.
     if (/\p{L}/u.test(c)) {
       const start = i;
       while (i < source.length && /[\p{L}\p{N}_]/u.test(source[i])) i++;
       const value = source.slice(start, i);
-      diagnostics.push(error("영문 밖의 글자로 된 이름은 백틱으로 감싸야 합니다", span(start, i), `\`${value}\` 처럼 적어 주세요`));
+      diagnostics.push(error("names with non-ASCII letters must be wrapped in backticks", span(start, i), `write it as \`${value}\``));
       tokens.push({ kind: "ident", value, span: span(start, i), quoted: true });
       continue;
     }
-    diagnostics.push(error(`알 수 없는 문자 \`${c}\``, span(i, i + 1)));
+    diagnostics.push(error(`unexpected character \`${c}\``, span(i, i + 1)));
     i++;
   }
 

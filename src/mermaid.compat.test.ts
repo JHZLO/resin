@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// mermaid 가 우리 출력을 실제로 읽는가 — 출력의 계약은 문자열 모양이 아니라 "mermaid 가 파싱한다" 이다.
-// 버전은 package.json 에 11.16.0 으로 고정해 두고, 올릴 때 이 테스트로 확인한다.
+// Does Mermaid actually read our output? The contract of this backend is not a string shape but
+// "Mermaid parses it". The version is pinned to 11.16.0 in package.json; bump it through this test.
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -16,14 +16,14 @@ beforeAll(async () => {
   mermaid.initialize({ startOnLoad: false });
 });
 
-/** 파싱하고 엔티티 이름 목록을 돌려준다 */
+/** Parse and return the entity names */
 async function entities(src: string): Promise<string[]> {
   await mermaid.parse(src);
   const d = await mermaid.mermaidAPI.getDiagramFromText(src);
   return [...(d.db as { getEntities(): Map<string, unknown> }).getEntities().keys()];
 }
 
-describe("mermaid 11.16 이 출력을 읽는다", () => {
+describe("Mermaid 11.16 reads the output", () => {
   for (const file of readdirSync(EXAMPLES).filter((f) => f.endsWith(".mmd")).sort()) {
     it(file, async () => {
       const src = readFileSync(join(EXAMPLES, file), "utf8");
@@ -31,9 +31,9 @@ describe("mermaid 11.16 이 출력을 읽는다", () => {
     });
   }
 
-  it("예약어, 하이픈, 한글 테이블 이름과 고친 컬럼 이름", async () => {
+  it("with keyword, hyphenated and Hangul table names and rewritten column names", async () => {
     const r = compile(`
-      external table \`order-items\` "외부" {
+      external table \`order-items\` "Outside" {
         id bigint pk
       }
       table style {

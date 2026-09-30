@@ -1,16 +1,16 @@
-%% 커머스 — 설명용으로 지은 스키마. 테이블이 여럿일 때의 배치를 본다:
-%% 한 PK 로 여러 관계가 모이고(users.id, orders.id), 자기참조(categories)가 있다
-external table users "svc_accounts 회원" {
+%% A small shop, made up to show layout with more tables: several relations
+%% meet at one primary key (users.id, orders.id) and categories references itself.
+external table users "Accounts service" {
   id  bigint  pk
 }
 
-table categories "카테고리" {
+table categories "Categories" {
   id         bigint       pk
-  parent_id  bigint?      -> categories  "상위 카테고리"
+  parent_id  bigint?      -> categories  "Parent category"
   name       varchar(50)
 }
 
-table products "상품" {
+table products "Products" {
   id           bigint         pk
   category_id  bigint         -> categories  index as ix_category_id
   name         varchar(100)
@@ -19,7 +19,7 @@ table products "상품" {
   created_at   datetime
 }
 
-table product_options "상품 옵션" {
+table product_options "Product options" {
   id           bigint         pk
   product_id   bigint         -> products  index as ix_product_id
   name         varchar(50)
@@ -27,13 +27,13 @@ table product_options "상품 옵션" {
   stock        int
 }
 
-table carts "장바구니" {
+table carts "Carts" {
   id          bigint    pk
   user_id     bigint    uk as uk_user_id ~> users
   updated_at  datetime
 }
 
-table cart_items "장바구니 항목" {
+table cart_items "Cart items" {
   id         bigint  pk
   cart_id    bigint  -> carts
   option_id  bigint  -> product_options
@@ -41,14 +41,14 @@ table cart_items "장바구니 항목" {
   unique(cart_id, option_id) as uk_cart_option
 }
 
-table coupons "쿠폰" {
+table coupons "Coupons" {
   id          bigint         pk
   code        varchar(20)    uk as uk_code
   discount    decimal(12,2)
   expires_at  datetime
 }
 
-table orders "주문" {
+table orders "Orders" {
   id          bigint       pk
   user_id     bigint       ~> users  index as ix_user_id
   order_no    varchar(32)  uk as uk_order_no
@@ -57,7 +57,7 @@ table orders "주문" {
   created_at  datetime
 } audit envers(status)
 
-table order_items "주문 항목" {
+table order_items "Order items" {
   id         bigint         pk
   order_id   bigint         -> orders
   option_id  bigint         ~> product_options
@@ -65,7 +65,7 @@ table order_items "주문 항목" {
   price      decimal(12,2)
 }
 
-table payments "결제" {
+table payments "Payments" {
   id        bigint         pk
   order_id  bigint         uk ~> orders
   amount    decimal(12,2)
@@ -73,14 +73,14 @@ table payments "결제" {
   paid_at   datetime?
 }
 
-table refunds "환불" {
+table refunds "Refunds" {
   id          bigint         pk
   payment_id  bigint         -> payments
   amount      decimal(12,2)
   reason      varchar(200)?
 }
 
-table coupon_usages "쿠폰 사용" {
+table coupon_usages "Coupon usages" {
   id         bigint    pk
   coupon_id  bigint    -> coupons
   user_id    bigint    ~> users
@@ -88,7 +88,7 @@ table coupon_usages "쿠폰 사용" {
   used_at    datetime
 }
 
-table shipments "배송" {
+table shipments "Shipments" {
   id           bigint        pk
   order_id     bigint        -> orders
   carrier      varchar(20)

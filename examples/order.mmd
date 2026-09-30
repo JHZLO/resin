@@ -1,38 +1,38 @@
 erDiagram
     %% solid(--)=physical FK / dotted(..)=logical reference
-    users ||..o{ ts_order : "user_id"
-    ts_order ||--o{ ts_order_item : "order_id"
-    ts_order ||..o| ts_order_payment : "order_id"
-    users |o..o{ ts_order_payment : "payer_user_id"
+    users ||..o{ orders : "user_id"
+    orders ||--o{ order_items : "order_id"
+    orders ||..o| payments : "order_id"
+    users |o..o{ payments : "payer_user_id"
 
-    revinfo ||..o{ ts_order_aud : "Envers rev"
-    revinfo ||..o{ ts_order_payment_aud : "Envers rev"
+    revinfo ||..o{ orders_aud : "Envers rev"
+    revinfo ||..o{ payments_aud : "Envers rev"
 
-    users["users (svc_accounts 회원)"]:::external {
+    users["users (Accounts service)"]:::external {
         bigint id PK
     }
 
-    ts_order["ts_order (주문)"] {
+    orders["orders (Customer orders)"] {
         bigint id PK
-        bigint user_id FK "주문자; ~> users.id (idx_user_id)"
-        varchar(32) order_no UK "주문번호 (uk_order_no)"
-        varchar? buyer_name "주문자명 (enc)"
+        bigint user_id FK "Customer; ~> users.id (idx_user_id)"
+        varchar(32) order_no UK "Order number (uk_order_no)"
+        varchar? buyer_name "Buyer name (enc)"
         varchar status "PENDING/PAID/CANCELED (idx_status)"
         datetime created_at
         datetime updated_at
     }
 
-    ts_order_item["ts_order_item (주문 항목)"] {
+    order_items["order_items (Order lines)"] {
         bigint id PK
-        bigint order_id FK "-> ts_order.id (ix_order_id); uk_order_product(order_id,product_id)"
-        bigint product_id "상품 ID (svc_catalog)"
+        bigint order_id FK "-> orders.id (ix_order_id); uk_order_product(order_id,product_id)"
+        bigint product_id "Product in the catalog service"
         int quantity
         datetime created_at
     }
 
-    ts_order_payment["ts_order_payment (결제)"] {
+    payments["payments (Payments)"] {
         bigint id PK
-        bigint order_id FK,UK "결제 1:1 확장; ~> ts_order.id"
+        bigint order_id FK,UK "One payment per order; ~> orders.id"
         bigint? payer_user_id FK "~> users.id"
         decimal(12,2) amount
         varchar method "CARD/BANK_TRANSFER"
@@ -45,7 +45,7 @@ erDiagram
         bigint revtstmp
     }
 
-    ts_order_aud {
+    orders_aud {
         bigint id PK
         int rev PK,FK
         tinyint revtype
@@ -53,7 +53,7 @@ erDiagram
         varchar status
     }
 
-    ts_order_payment_aud {
+    payments_aud {
         bigint id PK
         int rev PK,FK
         tinyint revtype

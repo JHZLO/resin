@@ -1,15 +1,24 @@
-// 개발용 CLI — `pnpm resin <file.erd> [--ast | --model | --svg [--keys] [--expand-audit]]`
-// 진단은 stderr 에 컴파일러 형식으로, 결과(mermaid, 구문 트리 JSON, 모델 JSON, SVG)는 stdout 에 쓴다.
-// 오류가 있으면 종료 코드 1.
+// Command-line entry: `pnpm resin <file.erd> [--ast | --model | --svg [--keys] [--expand-audit]]`
+// Diagnostics go to stderr in compiler format; the result (Mermaid, syntax tree JSON, model JSON
+// or SVG) goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync } from "node:fs";
 import { compile, formatDiagnostic, toSvg } from "./index.ts";
 
+const USAGE = `usage: resin <file.erd> [options]
+
+  (no option)      print Mermaid erDiagram
+  --svg            print SVG (needs elkjs)
+    --keys         show key and reference columns only
+    --expand-audit draw audit tables instead of folding them
+  --model          print the resolved model as JSON
+  --ast            print the syntax tree as JSON`;
+
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
-if (!file) {
-  console.error("usage: pnpm resin <file.erd> [--ast | --model | --svg [--keys] [--expand-audit]]");
-  process.exit(2);
+if (!file || args.includes("--help")) {
+  console.error(USAGE);
+  process.exit(file ? 0 : 2);
 }
 
 const source = readFileSync(file, "utf8");
@@ -20,7 +29,7 @@ if (args.includes("--ast")) console.log(JSON.stringify(result.doc, null, 2));
 else if (args.includes("--model")) console.log(JSON.stringify(result.model, null, 2));
 else if (args.includes("--svg")) {
   if (result.model) {
-    // SVG 는 배치에 elkjs 가 필요하다 — 코어는 elkjs 에 묶이지 않고 여기서만 불러온다
+    // Layout needs elkjs. The core does not depend on it; only this entry point loads it.
     const { default: ELK } = await import("elkjs");
     const { svg } = await toSvg(result.model, new ELK(), {
       standalone: true,
@@ -29,7 +38,6 @@ else if (args.includes("--svg")) {
     });
     process.stdout.write(svg + "\n");
   }
-}
-else if (result.mermaid) process.stdout.write(result.mermaid);
+} else if (result.mermaid) process.stdout.write(result.mermaid);
 
 process.exit(result.mermaid === null ? 1 : 0);

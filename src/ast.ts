@@ -1,21 +1,23 @@
-// Resin 의 구문 트리. 파서(parser.ts)가 만들고, 검사기(checker.ts)와 모델(model.ts)이 읽는다.
+// resin's syntax tree. Built by the parser (parser.ts), read by the checker (checker.ts) and the
+// model (model.ts).
 //
-// 모든 노드가 원문 위치(span)를 들고 다닌다 — 진단 메시지와, 나중에 에디터 기능(호버, 이동)이
-// 원문의 어느 글자를 가리키는지 알아야 하기 때문이다. 문법의 정본은 docs/SPEC.md 다.
+// Every node carries its source position (span): diagnostics, and later editor features such as
+// hover and go-to, need to know which characters a node came from. The grammar itself is defined in
+// docs/SPEC.md.
 
-/** 원문 위치. 줄, 열은 1부터. 한 줄 안의 구간만 표현한다(여러 줄에 걸친 노드는 시작 줄만). */
+/** A source position. Lines and columns start at 1. Spans stay on one line (multi-line nodes keep their first line). */
 export interface Span {
   line: number;
   col: number;
-  /** 글자 수(코드 유닛). 0 이면 지점 하나 */
+  /** Length in UTF-16 code units. 0 marks a single point */
   len: number;
 }
 
-/** 이름 하나 — 원문 위치를 함께 들고 있어야 "이 이름이 없다" 같은 진단이 정확한 자리를 짚는다 */
+/** A name with its position, so a diagnostic like "no such column" can point at it */
 export interface Ident {
   text: string;
   span: Span;
-  /** 백틱으로 감싼 이름. 키워드로 읽히지 않는다 */
+  /** Written in backticks. Never read as a keyword */
   quoted?: boolean;
 }
 
@@ -25,9 +27,9 @@ export interface Document {
 
 export interface Table {
   name: Ident;
-  /** `external table` — 이 문서 밖에 있는 테이블. 참조를 받기만 한다 */
+  /** `external table`: lives outside this document and only receives references */
   external: boolean;
-  /** 사람이 읽을 테이블 설명(`table t "주문"`). 없으면 null */
+  /** Human-readable description (`table orders "Customer orders"`), or null */
   description: string | null;
   columns: Column[];
   constraints: TableConstraint[];
@@ -37,7 +39,7 @@ export interface Table {
 
 export interface TypeRef {
   name: Ident;
-  /** `varchar(32)`, `decimal(12,2)` 의 인자. 없으면 null */
+  /** Arguments of `varchar(32)` or `decimal(12,2)`, or null */
   args: number[] | null;
   span: Span;
 }
@@ -47,12 +49,12 @@ export interface Column {
   type: TypeRef;
   nullable: boolean;
   pk: boolean;
-  /** `uk` / `uk as 이름`. 없으면 null */
+  /** `uk` or `uk as name`, or null */
   uk: { name: Ident | null; span: Span } | null;
   enc: boolean;
-  /** `enum(A, B)` / `enum(0, 1)`. 없으면 null */
+  /** `enum(A, B)` or `enum(0, 1)`, or null */
   enumValues: EnumValue[] | null;
-  /** `index` / `index as 이름`. 없으면 null, 이름을 모르면 name = null */
+  /** `index` or `index as name`, or null; name is null when the index name is unknown */
   index: { name: Ident | null; span: Span } | null;
   ref: Ref | null;
   description: string | null;
@@ -65,10 +67,10 @@ export interface EnumValue {
 }
 
 export interface Ref {
-  /** physical = `->` (DB FK 제약), logical = `~>` (앱 레벨 참조) */
+  /** physical = `->` (a FOREIGN KEY constraint), logical = `~>` (application-level reference) */
   kind: "physical" | "logical";
   table: Ident;
-  /** 생략하면 null — 검사기가 대상 테이블의 단일 기본키로 푼다 */
+  /** null when omitted; the checker resolves it to the target's single primary key */
   column: Ident | null;
   span: Span;
 }
@@ -81,12 +83,12 @@ export interface TableConstraint {
 }
 
 export interface Audit {
-  /** 감사 방식. 지금은 `envers` 하나 */
+  /** The audit method. Only `envers` exists today */
   method: Ident;
-  /** null = 괄호 없이 — 기본키와 created_at/updated_at 을 뺀 전부 */
+  /** null when written without a list: every column except the primary key, created_at and updated_at */
   columns: Ident[] | null;
   span: Span;
 }
 
-/** `varchar(32)` — 타입 이름과 인자를 적힌 그대로 */
+/** `varchar(32)`: the type name with its arguments, as written */
 export const typeText = (t: TypeRef): string => (t.args ? `${t.name.text}(${t.args.join(",")})` : t.name.text);

@@ -1,26 +1,26 @@
-// 모델 → Mermaid `erDiagram` 원문. 대응 규칙은 docs/SPEC.md §5.
+// Model → Mermaid `erDiagram` source. The mapping is defined in docs/SPEC.md §5.
 //
-// 결정적이어야 한다: 같은 입력이면 바이트 단위로 같은 출력. 순서는 전부 모델 순서(= 문서 순서)에서
-// 유도하고 Map/Set 순회 순서나 로케일 정렬에 기대지 않는다. 출력 형식을 바꾸면 examples/*.mmd 골든이
-// 바뀌므로, 골든 diff 를 눈으로 확인하고 `pnpm test -u` 로 갱신한다.
+// Output is deterministic: the same input gives byte-identical output. Every order comes from model
+// order (which is document order), never from Map/Set iteration or locale-aware sorting. Changing the
+// format changes the examples/*.mmd golden files: review the diff, then update with `pnpm test -u`.
 
 import type { Model, ModelColumn, ModelTable } from "./model.ts";
 
 const I1 = "    ";
 const I2 = "        ";
 
-/** mermaid 는 `\"` 이스케이프를 모른다 — 따옴표는 엔티티 코드로 */
+/** Mermaid has no `\"` escape; quotes become an entity code */
 const quote = (s: string): string => `"${s.replace(/"/g, "#quot;")}"`;
 
-// mermaid 11.16 이 따옴표 없이 읽지 못하는 테이블 이름(실측) + 같은 부류의 예약어. 대소문자 무시
+// Table names Mermaid 11.16 cannot read unquoted (measured), plus keywords of the same family. Case-insensitive
 const RESERVED = new Set(["class", "classdef", "style", "erdiagram", "direction", "acctitle", "accdescr", "title", "to", "one", "many"]);
 
-/** 테이블 이름 — 영문, 숫자, `_` 로만 된 예약어 아닌 이름만 그대로 쓰고 나머지는 따옴표로 감싼다 */
+/** Table names: plain ASCII identifiers that are not keywords stay as they are, everything else is quoted */
 export function entityName(name: string): string {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !RESERVED.has(name.toLowerCase()) ? name : quote(name);
 }
 
-/** 컬럼 이름 — mermaid 는 속성 이름에 따옴표를 받지 않아서 고쳐 쓴다. 바뀌었으면 changed */
+/** Column names: Mermaid does not accept quoted attribute names, so they are rewritten. `changed` says whether they were */
 export function attributeName(name: string): { text: string; changed: boolean } {
   let text = name.replace(/[^\p{L}\p{N}_-]/gu, "_");
   if (/^[\p{N}-]/u.test(text)) text = "_" + text;
@@ -53,7 +53,7 @@ function entity(t: ModelTable): string[] {
   if (t.description) head += `[${quote(`${t.name} (${t.description})`)}]`;
   if (t.origin === "external") head += ":::external";
 
-  // 복합 제약은 mermaid 에 자리가 없어 첫 컬럼의 코멘트에 싣는다
+  // Mermaid has no place for composite constraints; they go into the comment of their first column
   const notes = new Map<string, string[]>();
   for (const k of t.constraints) {
     const tag = k.name ?? (k.kind === "unique" ? "uk" : "ix");
@@ -71,7 +71,7 @@ function keys(c: ModelColumn): string {
 
 function attribute(c: ModelColumn, notes: string[]): string {
   const name = attributeName(c.name);
-  // "`원래 이름`; 설명 (enc) A/B; -> t.c (uk_name) (ix_name); uk(a,b)"
+  // "`original name`; description (enc) A/B; -> t.c (uk_name) (ix_name); uk(a,b)"
   const facts = [
     [c.description, c.enc ? "(enc)" : null, c.enumValues ? c.enumValues.join("/") : null].filter((x) => x !== null && x !== "").join(" "),
     c.ref ? `${c.ref.kind === "physical" ? "->" : "~>"} ${c.ref.table}.${c.ref.column}` : "",
@@ -90,7 +90,7 @@ function attribute(c: ModelColumn, notes: string[]): string {
   return line;
 }
 
-/** 감사 테이블은 무엇이 버전 관리되는지만 적는다 — 널 여부와 설명은 원래 테이블에 있다 */
+/** Audit tables only list what is versioned; nullability and descriptions live on the original table */
 function auditAttribute(c: ModelColumn): string {
   const name = attributeName(c.name);
   const k = [c.pk && "PK", c.ref && "FK"].filter(Boolean).join(",");

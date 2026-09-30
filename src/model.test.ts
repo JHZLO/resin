@@ -9,7 +9,7 @@ const model = (src: string): Model => {
 };
 
 describe("lower", () => {
-  it("관계: 1:1 은 uk 이거나 유일한 기본키, 부모가 없을 수 있음은 널 허용", () => {
+  it("derives one-to-one from uk or a sole primary key, and optional parents from nullability", () => {
     const m = model(`
       table a {
         id bigint pk
@@ -35,19 +35,19 @@ describe("lower", () => {
     ]);
   });
 
-  it("컬럼은 타입 인자와 이름까지 풀어 둔다", () => {
+  it("keeps type arguments and names on columns", () => {
     const m = model(`
       table a {
         id bigint pk
         code varchar(32) uk as uk_code index
-        amount decimal(12,2)? enc enum(1, 2) "금액"
+        amount decimal(12,2)? enc enum(1, 2) "Amount"
       }`);
     const [, code, amount] = m.tables[0].columns;
     expect(code).toMatchObject({ type: "varchar(32)", uk: true, ukName: "uk_code", index: { name: null } });
-    expect(amount).toMatchObject({ type: "decimal(12,2)", nullable: true, enc: true, enumValues: ["1", "2"], description: "금액" });
+    expect(amount).toMatchObject({ type: "decimal(12,2)", nullable: true, enc: true, enumValues: ["1", "2"], description: "Amount" });
   });
 
-  it("참조 대상 컬럼을 푼다 — 생략하면 기본키", () => {
+  it("resolves reference targets, defaulting to the primary key", () => {
     const m = model("external table u {\n  id bigint pk\n}\ntable o {\n  id bigint pk\n  u_id bigint ~> u\n}");
     expect(m.tables.map((t) => [t.name, t.origin])).toEqual([
       ["u", "external"],
@@ -56,7 +56,7 @@ describe("lower", () => {
     expect(m.tables[1].columns[1].ref).toEqual({ table: "u", column: "id", kind: "logical" });
   });
 
-  it("audit envers 는 revinfo 와 *_aud 를 펼치고 관계를 잇는다", () => {
+  it("expands audit envers into revinfo and *_aud tables and links them", () => {
     const m = model(`
       table o {
         id bigint pk

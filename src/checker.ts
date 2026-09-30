@@ -1,20 +1,20 @@
-// 구문 트리의 의미 검사. 문법으로는 맞지만 뜻이 성립하지 않는 것을 잡는다 —
-// 없는 테이블을 가리키는 참조, 같은 이름 두 번, 널 허용 기본키 같은 것. 규칙은 docs/SPEC.md §4.
+// Semantic checks on the syntax tree: things that parse but do not make sense — a reference to a
+// table that does not exist, a name used twice, a nullable primary key. The rules are in docs/SPEC.md §4.
 //
-// 모델(model.ts)은 오류 없이 이 검사를 통과한 트리만 받는다고 가정한다.
-// 참조 대상을 푸는 규칙(resolveRef)은 모델도 같이 써야 해서 여기서 내보낸다.
+// The model (model.ts) assumes it only ever sees trees that passed these checks without errors.
+// resolveRef is exported because the model resolves references with exactly the same rule.
 
 import type { Column, Document, Ident, Table } from "./ast.ts";
 import { type Diagnostic, error, warning } from "./diagnostics.ts";
 
 export const AUDIT_SUFFIX = "_aud";
 export const REVINFO = "revinfo";
-/** 지금 있는 감사 방식 */
+/** Audit methods that exist today */
 export const AUDIT_METHODS = ["envers"] as const;
-/** 괄호 없는 `audit envers` 가 싣지 않는 컬럼 — 감사 테이블에 타임스탬프를 복제할 이유가 없다 */
+/** Columns a bare `audit envers` leaves out: there is no point in versioning timestamps */
 export const AUDIT_SKIP = new Set(["created_at", "updated_at"]);
 
-/** 참조 컬럼이 가리키는 대상 컬럼. 풀 수 없으면 null(검사기가 이미 오류로 보고했다) */
+/** The column a reference points at, or null when it cannot be resolved (the checker has reported it) */
 export function resolveRef(doc: Document, col: Column): { table: Table; column: Column } | null {
   const ref = col.ref;
   if (!ref) return null;
@@ -29,7 +29,7 @@ export function resolveRef(doc: Document, col: Column): { table: Table; column: 
   return pks.length === 1 ? { table, column: pks[0] } : null;
 }
 
-/** `audit` 이 감사 테이블에 싣는 컬럼(기본키 제외). audit 이 없으면 빈 배열 */
+/** Columns that `audit` copies into the audit table (primary key excluded). Empty without audit */
 export function auditedColumns(table: Table): Column[] {
   if (!table.audit) return [];
   const list = table.audit.columns;
@@ -43,7 +43,7 @@ export function check(doc: Document): Diagnostic[] {
   const tables = new Map<string, Table>();
 
   for (const t of doc.tables) {
-    if (tables.has(t.name.text)) out.push(error(`테이블 \`${t.name.text}\` 을 두 번 선언했습니다`, t.name.span));
+    if (tables.has(t.name.text)) out.push(error(`table \`${t.name.text}\` is declared twice`, t.name.span));
     else tables.set(t.name.text, t);
   }
 
@@ -54,9 +54,9 @@ export function check(doc: Document): Diagnostic[] {
       if (generated.has(t.name.text))
         out.push(
           error(
-            `\`${t.name.text}\` 는 \`audit\` 이 자동으로 만드는 테이블 이름과 겹칩니다`,
+            `\`${t.name.text}\` clashes with a table that \`audit\` generates`,
             t.name.span,
-            "직접 선언하지 말고 `audit` 에 맡기거나, 이 테이블 이름을 바꿔 주세요",
+            "remove it and let `audit` generate it, or rename this table",
           ),
         );
   }
@@ -68,24 +68,23 @@ export function check(doc: Document): Diagnostic[] {
 function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
   const cols = new Map<string, Column>();
   for (const c of t.columns) {
-    if (cols.has(c.name.text))
-      out.push(error(`테이블 \`${t.name.text}\` 에 컬럼 \`${c.name.text}\` 이 두 번 있습니다`, c.name.span));
+    if (cols.has(c.name.text)) out.push(error(`column \`${c.name.text}\` appears twice in table \`${t.name.text}\``, c.name.span));
     else cols.set(c.name.text, c);
   }
 
   const known = (i: Ident) => {
-    if (!cols.has(i.text)) out.push(error(`테이블 \`${t.name.text}\` 에 컬럼 \`${i.text}\` 이 없습니다`, i.span));
+    if (!cols.has(i.text)) out.push(error(`table \`${t.name.text}\` has no column \`${i.text}\``, i.span));
   };
 
   for (const c of t.columns) {
     if (c.pk && c.nullable)
-      out.push(error(`기본키 \`${c.name.text}\` 는 널을 허용할 수 없습니다`, c.type.span, "타입 뒤의 `?` 를 지워 주세요"));
+      out.push(error(`primary key \`${c.name.text}\` cannot be nullable`, c.type.span, "remove the `?` after the type"));
     if (c.ref && t.external)
       out.push(
         error(
-          "external table 의 컬럼에는 참조를 적을 수 없습니다",
+          "columns of an external table cannot hold references",
           c.ref.span,
-          "문서 밖 테이블은 참조를 받기만 합니다. 이 관계를 그리려면 테이블을 `table` 로 선언해 주세요",
+          "external tables only receive references; declare it as `table` to draw this relation",
         ),
       );
     else if (c.ref) checkRef(doc, c, out);
@@ -97,19 +96,19 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
       const modifier = k.kind === "unique" ? "uk" : "index";
       out.push(
         warning(
-          `한 컬럼짜리 \`${k.kind}(...)\` 입니다`,
+          `\`${k.kind}(...)\` over a single column`,
           k.span,
-          `컬럼 수식어 \`${modifier}\`${k.name ? ` 와 \`${modifier} as ${k.name.text}\`` : ""} 로 적어 주세요`,
+          `use the column modifier \`${modifier}\`${k.name ? ` (\`${modifier} as ${k.name.text}\`)` : ""}`,
         ),
       );
     }
   }
 
-  // 인덱스와 유니크 이름은 표시용이지만, 한 테이블 안에서 같은 이름이면 어느 쪽인지 알 수 없다
+  // Index and unique names are only shown, but two constraints with the same name in one table are ambiguous
   const names = new Map<string, Ident>();
   const named = (i: Ident | null) => {
     if (!i) return;
-    if (names.has(i.text)) out.push(error(`이름 \`${i.text}\` 이 테이블 \`${t.name.text}\` 에서 두 번 쓰였습니다`, i.span));
+    if (names.has(i.text)) out.push(error(`name \`${i.text}\` is used twice in table \`${t.name.text}\``, i.span));
     else names.set(i.text, i);
   };
   for (const c of t.columns) {
@@ -120,18 +119,18 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
 
   if (t.audit) {
     const a = t.audit;
-    if (t.external) out.push(error("external table 에는 `audit` 을 쓸 수 없습니다", a.span));
+    if (t.external) out.push(error("`audit` cannot be used on an external table", a.span));
     else if (!(AUDIT_METHODS as readonly string[]).includes(a.method.text))
       out.push(
-        error(`알 수 없는 감사 방식 \`${a.method.text}\``, a.method.span, `지금 있는 방식은 ${AUDIT_METHODS.map((m) => `\`${m}\``).join(", ")} 입니다`),
+        error(`unknown audit method \`${a.method.text}\``, a.method.span, `available methods: ${AUDIT_METHODS.map((m) => `\`${m}\``).join(", ")}`),
       );
     else {
       if (!t.columns.some((c) => c.pk))
-        out.push(error(`기본키가 없는 테이블 \`${t.name.text}\` 에는 \`audit\` 을 쓸 수 없습니다`, a.span));
+        out.push(error(`\`audit\` needs a primary key, and table \`${t.name.text}\` has none`, a.span));
       for (const i of a.columns ?? []) {
         known(i);
         if (cols.get(i.text)?.pk)
-          out.push(warning(`기본키 \`${i.text}\` 는 감사 테이블에 항상 실립니다`, i.span, "목록에서 빼도 됩니다"));
+          out.push(warning(`primary key \`${i.text}\` is always part of the audit table`, i.span, "you can drop it from the list"));
       }
     }
   }
@@ -143,33 +142,33 @@ function checkRef(doc: Document, c: Column, out: Diagnostic[]): void {
   if (!target) {
     out.push(
       error(
-        `참조하는 테이블 \`${ref.table.text}\` 이 이 문서에 없습니다`,
+        `referenced table \`${ref.table.text}\` is not in this document`,
         ref.table.span,
-        "문서 밖 테이블이면 `external table` 로 선언해 주세요",
+        "declare it with `external table` if it lives outside this document",
       ),
     );
     return;
   }
   if (ref.column && !target.columns.some((x) => x.name.text === ref.column!.text)) {
-    out.push(error(`테이블 \`${target.name.text}\` 에 컬럼 \`${ref.column.text}\` 이 없습니다`, ref.column.span));
+    out.push(error(`table \`${target.name.text}\` has no column \`${ref.column.text}\``, ref.column.span));
     return;
   }
   if (!ref.column && target.columns.filter((x) => x.pk).length !== 1) {
     out.push(
       error(
-        `\`${target.name.text}\` 의 기본키가 한 컬럼이 아니라 참조 대상을 정할 수 없습니다`,
+        `cannot pick a target column: the primary key of \`${target.name.text}\` is not a single column`,
         ref.table.span,
-        `\`${target.name.text}.컬럼\` 처럼 컬럼을 적어 주세요`,
+        `name the column, e.g. \`${target.name.text}.column\``,
       ),
     );
     return;
   }
   const resolved = resolveRef(doc, c);
-  // 타입 이름만 비교한다 — 길이(varchar(32) 와 varchar(64))는 FK 로 흔히 섞여 쓴다
+  // Only the type name is compared: foreign keys often mix lengths (varchar(32) against varchar(64))
   if (resolved && resolved.column.type.name.text !== c.type.name.text)
     out.push(
       warning(
-        `타입이 다릅니다: \`${c.name.text}\` 는 ${c.type.name.text}, \`${resolved.table.name.text}.${resolved.column.name.text}\` 는 ${resolved.column.type.name.text}`,
+        `type mismatch: \`${c.name.text}\` is ${c.type.name.text} but \`${resolved.table.name.text}.${resolved.column.name.text}\` is ${resolved.column.type.name.text}`,
         c.type.span,
       ),
     );
