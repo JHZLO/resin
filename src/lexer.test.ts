@@ -45,6 +45,36 @@ describe("lex", () => {
     expect(t.span).toEqual({ line: 2, col: 9, len: 1 });
   });
 
+  it("수는 number 토큰이다 — 타입 인자와 enum 값에 쓴다", () => {
+    const { tokens } = lex("decimal(12,2)");
+    expect(tokens.map((t) => [t.kind, t.value])).toEqual([
+      ["ident", "decimal"], ["lparen", "("], ["number", "12"], ["comma", ","], ["number", "2"], ["rparen", ")"], ["eof", ""],
+    ]);
+  });
+
+  it("백틱 이름은 벗겨서 quoted ident 로 낸다", () => {
+    const { tokens, diagnostics } = lex("`order-items` `주문 번호`");
+    expect(diagnostics).toEqual([]);
+    expect(tokens.slice(0, 2).map((t) => [t.kind, t.value, t.quoted])).toEqual([
+      ["ident", "order-items", true],
+      ["ident", "주문 번호", true],
+    ]);
+    expect(tokens[0].span).toEqual({ line: 1, col: 1, len: 13 });
+  });
+
+  it("닫히지 않은 백틱과 빈 백틱은 오류", () => {
+    expect(lex("`abc\nx").diagnostics.map((d) => d.message)).toEqual(["백틱 이름이 닫히지 않았습니다"]);
+    expect(lex("``").diagnostics.map((d) => d.message)).toEqual(["빈 백틱 이름입니다"]);
+  });
+
+  it("영문 밖의 글자로 된 이름은 한 덩어리로 묶어 백틱을 권한다", () => {
+    const { tokens, diagnostics } = lex("table 주문 {");
+    expect(diagnostics.map((d) => [d.message, d.hint, d.span])).toEqual([
+      ["영문 밖의 글자로 된 이름은 백틱으로 감싸야 합니다", "`주문` 처럼 적어 주세요", { line: 1, col: 7, len: 2 }],
+    ]);
+    expect(tokens.map((t) => t.kind)).toEqual(["ident", "ident", "lbrace", "eof"]);
+  });
+
   it("모르는 글자는 오류로 남기고 건너뛴다", () => {
     const { tokens, diagnostics } = lex("a @ b");
     expect(diagnostics[0].span).toEqual({ line: 1, col: 3, len: 1 });
