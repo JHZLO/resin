@@ -7,7 +7,7 @@
     "types": ["node"],
     "skipLibCheck": true,
 
-    /* Node 가 .ts 를 직접 실행한다(타입 스트리핑) — 지울 수 있는 문법만, 임포트는 .ts 확장자까지 */
+    /* Node runs the .ts files directly (type stripping): erasable syntax only, imports keep the .ts extension */
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,

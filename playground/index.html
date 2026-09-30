@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>resin playground</title>
+<meta name="description" content="Write resin, a small language for entity-relationship diagrams, and watch the ERD as you type.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='5' width='12' height='14' rx='2' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3Crect x='18' y='13' width='12' height='14' rx='2' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3Cpath d='M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<script>
+  // Apply a saved theme before the first paint
+  try {
+    var saved = localStorage.getItem("resin.theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch (e) {}
+</script>
+<style>
+/* Layout: a toolbar over two panes (source | diagram) with a draggable splitter; one column on phones.
+   The diagram inherits `color` from the canvas, because resin's SVG draws everything in currentColor. */
+:root {
+  --bg: #F3F4F6;
+  --panel: #FFFFFF;
+  --canvas: #FAFAFA;
+  --ink: #181C21;
+  --muted: #586271;
+  --faint: #8A929E;
+  --rule: #DDE1E6;
+  --code: #EEF0F3;
+  --accent: #9A5A0C;
+  --on-accent: #FFFFFF;
+  --accent-soft: rgba(205, 138, 30, 0.14);
+  --active-line: rgba(24, 28, 33, 0.035);
+  --selection: rgba(205, 138, 30, 0.22);
+  --grid-dot: rgba(24, 28, 33, 0.12);
+  --syn-kw: #1D57A3;
+  --syn-type: #0F6F74;
+  --syn-str: #2C7437;
+  --syn-num: #8A3FA0;
+  --danger: #B42318;
+  --warn: #9A6700;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1013;
+    --panel: #15181C;
+    --canvas: #111316;
+    --ink: #E3E6EA;
+    --muted: #97A1AD;
+    --faint: #69727E;
+    --rule: #262B32;
+    --code: #1B1F24;
+    --accent: #E2A64D;
+    --on-accent: #1B1307;
+    --accent-soft: rgba(226, 166, 77, 0.14);
+    --active-line: rgba(236, 237, 239, 0.035);
+    --selection: rgba(226, 166, 77, 0.24);
+    --grid-dot: rgba(236, 237, 239, 0.09);
+    --syn-kw: #86B4F2;
+    --syn-type: #6FD0C9;
+    --syn-str: #93CC92;
+    --syn-num: #D6A2E8;
+    --danger: #F97066;
+    --warn: #E3B341;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1013;
+  --panel: #15181C;
+  --canvas: #111316;
+  --ink: #E3E6EA;
+  --muted: #97A1AD;
+  --faint: #69727E;
+  --rule: #262B32;
+  --code: #1B1F24;
+  --accent: #E2A64D;
+  --on-accent: #1B1307;
+  --accent-soft: rgba(226, 166, 77, 0.14);
+  --active-line: rgba(236, 237, 239, 0.035);
+  --selection: rgba(226, 166, 77, 0.24);
+  --grid-dot: rgba(236, 237, 239, 0.09);
+  --syn-kw: #86B4F2;
+  --syn-type: #6FD0C9;
+  --syn-str: #93CC92;
+  --syn-num: #D6A2E8;
+  --danger: #F97066;
+  --warn: #E3B341;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  -webkit-font-smoothing: antialiased;
+}
+button, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* toolbar */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+}
+.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; margin-right: 4px; }
+.brand svg { width: 22px; height: 22px; color: var(--accent); }
+.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.brand-sub { color: var(--muted); font-size: 13px; }
+.bar-controls, .bar-actions { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+.bar-actions { margin-left: auto; }
+.field { display: inline-flex; align-items: center; gap: 8px; }
+.label { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; }
+select {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.seg { display: inline-flex; align-items: center; gap: 8px; }
+.seg-buttons { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; }
+.seg-buttons button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+.seg-buttons button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--faint); }
+.btn.ghost { border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); }
+.btn.icon { padding: 4px 7px; }
+.btn.icon svg { width: 16px; height: 16px; }
+#theme .i { display: none; }
+#theme[data-mode="auto"] .i-auto, #theme[data-mode="light"] .i-light, #theme[data-mode="dark"] .i-dark { display: block; }
+
+/* panes */
+.work {
+  --split: 42%;
+  display: grid;
+  grid-template-columns: minmax(0, var(--split)) 6px minmax(0, 1fr);
+  min-height: 0;
+}
+.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); }
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+}
+.pane-title { font-family: var(--font-mono); color: var(--muted); }
+.problems-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+.problems-count[data-state="error"] { color: var(--danger); font-weight: 600; }
+.problems-count[data-state="warning"] { color: var(--warn); font-weight: 600; }
+.editor { flex: 1; min-height: 0; overflow: hidden; }
+.editor .cm-editor { height: 100%; }
+.problems {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--rule);
+  max-height: 32%;
+  overflow: auto;
+}
+.problem {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 2px 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 5px 12px;
+  font-size: 12.5px;
+}
+.problem:hover { background: var(--active-line); }
+.problem-where { font-family: var(--font-mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+.problem.is-error .problem-where { color: var(--danger); }
+.problem.is-warning .problem-where { color: var(--warn); }
+.problem-hint { grid-column: 2; color: var(--muted); }
+.splitter { background: var(--rule); cursor: col-resize; touch-action: none; }
+.splitter:hover, .splitter:focus-visible { background: var(--accent); outline: none; }
+
+/* diagram */
+.tabs { display: inline-flex; gap: 2px; align-self: stretch; }
+.tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 10px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-size: 13px;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.stats { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.head-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.panel[hidden] { display: none; }
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: grab;
+  touch-action: none;
+}
+.viewport.grid {
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+.viewport.is-panning { cursor: grabbing; }
+.content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.content svg { display: block; }
+.viewport.is-stale .content { opacity: 0.35; }
+.stale, .empty {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 12.5px;
+  border-radius: 999px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.stale { top: 12px; background: var(--panel); border: 1px solid var(--danger); color: var(--danger); }
+.empty { top: 45%; color: var(--muted); }
+.zoom {
+  position: absolute;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.zoom button {
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 7px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.zoom button:hover { background: var(--active-line); color: var(--ink); }
+.zoom button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+
+/* focus: keep what is connected, fade the rest */
+.content svg .rz-t, .content svg .rz-r { transition: opacity 0.12s ease; }
+.content svg.is-focus .rz-t:not(.is-on), .content svg.is-focus .rz-r:not(.is-on) { opacity: 0.14; }
+.content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
+
+/* mermaid tab */
+.code-panel { padding: 0; }
+.code-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  color: var(--muted);
+}
+.code-actions p { margin: 0; }
+.code-actions .btn { margin-left: auto; }
+.code-actions code, .empty code { font-family: var(--font-mono); font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+#mermaid-out {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--canvas);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--panel);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  z-index: 10;
+}
+
+@media (max-width: 900px) {
+  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44vh 1px minmax(320px, 1fr); }
+  .splitter { cursor: default; pointer-events: none; }
+  .bar-actions { margin-left: 0; }
+}
+@media (max-width: 600px) {
+  .stats, #copy-svg { display: none; }
+  .pane-head { gap: 8px; padding: 0 8px; }
+  .tabs button { padding: 0 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .content svg .rz-t, .content svg .rz-r { transition: none; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="./" aria-label="resin playground">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="5" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><rect x="18" y="13" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>
+    <span class="brand-name">resin</span><span class="brand-sub">playground</span>
+  </a>
+  <div class="bar-controls">
+    <label class="field"><span class="label">Example</span>
+      <select id="example">
+        <option value="order">Orders</option>
+        <option value="shop">Shop (13 tables)</option>
+        <option value="blank">Blank</option>
+        <option value="" hidden>Your schema</option>
+      </select>
+    </label>
+    <div class="seg"><span class="label" id="l-columns">Columns</span>
+      <span class="seg-buttons" role="group" aria-labelledby="l-columns">
+        <button type="button" id="c-all" data-key="columns" data-v="all" aria-pressed="true">All</button>
+        <button type="button" id="c-keys" data-key="columns" data-v="keys" aria-pressed="false">Keys</button>
+      </span>
+    </div>
+    <div class="seg"><span class="label" id="l-audit">Audit</span>
+      <span class="seg-buttons" role="group" aria-labelledby="l-audit">
+        <button type="button" id="a-fold" data-key="audit" data-v="collapse" aria-pressed="true">Fold</button>
+        <button type="button" id="a-expand" data-key="audit" data-v="expand" aria-pressed="false">Expand</button>
+      </span>
+    </div>
+  </div>
+  <div class="bar-actions">
+    <button type="button" class="btn" id="share">Copy link</button>
+    <button type="button" class="btn icon" id="theme" aria-label="Theme: auto" title="Theme: auto" data-mode="auto">
+      <svg class="i i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor" stroke="none"/></svg>
+      <svg class="i i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
+      <svg class="i i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+    </button>
+    <a class="btn ghost" href="https://github.com/JHZLO/resin/blob/main/docs/SPEC.md" target="_blank" rel="noopener">Reference</a>
+    <a class="btn ghost" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<main class="work" id="work">
+  <section class="pane" aria-label="Source">
+    <div class="pane-head"><span class="pane-title">schema.erd</span><span class="problems-count" id="problem-count">No problems</span></div>
+    <div class="editor" id="editor"></div>
+    <ul class="problems" id="problems" hidden></ul>
+  </section>
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the panes" tabindex="0"></div>
+  <section class="pane" aria-label="Diagram">
+    <div class="pane-head">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-diagram" aria-selected="true" aria-controls="panel-diagram">Diagram</button>
+        <button type="button" role="tab" id="tab-mermaid" aria-selected="false" aria-controls="panel-mermaid">Mermaid</button>
+      </div>
+      <span class="stats" id="stats"></span>
+      <span class="head-actions">
+        <button type="button" class="btn" id="copy-svg">Copy SVG</button>
+        <button type="button" class="btn" id="download">Download SVG</button>
+      </span>
+    </div>
+    <div class="panel" id="panel-diagram" role="tabpanel" aria-labelledby="tab-diagram">
+      <div class="viewport grid" id="viewport">
+        <div class="content" id="content"></div>
+        <p class="empty" id="empty" hidden>Add a <code>table</code> to see it here.</p>
+        <p class="stale" id="stale" hidden>Showing the last valid diagram. Fix the errors to update it.</p>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
+          <button type="button" id="zoom-level" aria-label="Actual size">100%</button>
+          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" id="zoom-fit">Fit</button>
+          <button type="button" id="grid-toggle" aria-pressed="true">Grid</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel code-panel" id="panel-mermaid" role="tabpanel" aria-labelledby="tab-mermaid" hidden>
+      <div class="code-actions"><p>Paste into any Mermaid renderer, such as a <code>```mermaid</code> block on GitHub.</p><button type="button" class="btn" id="copy-mermaid">Copy</button></div>
+      <pre id="mermaid-out"></pre>
+    </div>
+  </section>
+</main>
+<p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
+<!--APP-->
+</body>
+</html>

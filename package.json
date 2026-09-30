@@ -1,8 +1,28 @@
 {
   "name": "resin",
+  "version": "0.2.0",
+  "description": "A small language for entity-relationship diagrams. Compiles to Mermaid and to its own SVG.",
+  "keywords": [
+    "erd",
+    "er-diagram",
+    "entity-relationship",
+    "dsl",
+    "database",
+    "schema",
+    "mermaid",
+    "svg"
+  ],
+  "homepage": "https://jhzlo.github.io/resin/",
+  "bugs": {
+    "url": "https://github.com/JHZLO/resin/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JHZLO/resin.git"
+  },
+  "license": "MIT",
+  "author": "JHZLO (https://github.com/JHZLO)",
   "private": true,
-  "version": "0.0.0",
-  "description": "A small language for ER diagrams that compiles to Mermaid erDiagram",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -10,12 +30,22 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "check": "tsc --noEmit && vitest run",
-    "resin": "node src/cli.ts"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p playground",
+    "check": "tsc --noEmit && tsc --noEmit -p playground && vitest run",
+    "resin": "node src/cli.ts",
+    "build:playground": "node scripts/build-playground.mjs"
   },
   "engines": {
     "node": ">=22.18"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "peerDependencies": {
+    "elkjs": ">=0.9"
+  },
+  "peerDependenciesMeta": {
+    "elkjs": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -32,12 +62,9 @@
     "typescript": "~5.9.3",
     "vitest": "^5.0.2"
   },
-  "peerDependencies": {
-    "elkjs": ">=0.9"
-  },
-  "peerDependenciesMeta": {
-    "elkjs": {
-      "optional": true
-    }
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
