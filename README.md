@@ -45,8 +45,8 @@ table order_items "Order lines" {
 
 ## Why
 
-Mermaid's `erDiagram` is great for sketches, but it has no place for many facts a schema carries.
-It does not model nullability. It cannot say whether a reference is a real `FOREIGN KEY` or only an
+Mermaid's `erDiagram` has no place for many of the facts a schema carries. It does not model
+nullability. It cannot say whether a reference is a real `FOREIGN KEY` or only an
 application-level one, or which column points where; relationship lines join tables, not columns.
 Indexes, enum values and encrypted columns end up in comment strings, written by convention and
 checked by nobody.
@@ -55,25 +55,28 @@ resin turns those conventions into syntax. Because the facts are structured, the
 (a reference to a missing table is an error, not a typo in a comment), and they can be drawn
 precisely.
 
-## Features
+## What it does
 
-- **Facts as syntax.** `varchar?` is nullable. `->` is a physical foreign key, `~>` a logical one.
-  `uk`, `index`, `enum(...)`, `enc` and composite `unique(...)` are modifiers, not comments.
-- **References are checked.** Missing tables and columns, nullable primary keys, duplicate names
-  and type mismatches are reported with a line, a column and a hint on how to fix them.
-- **Outside tables.** `external table` declares a table owned by another service, so references to
-  it are checked too and the boundary shows up in the diagram.
-- **Audit tables in one line.** `audit envers(...)` generates Hibernate Envers `*_aud` and
-  `revinfo` tables.
-- **Two outputs.** Mermaid, for anywhere Mermaid renders (GitHub, docs sites). SVG, drawn by resin
-  with column-level connectors: plain ink that reads on light and dark pages, or frosted glass in
-  three themes (aurora, silk, caustic), each dark or light. In the playground the glass is live: the
-  background moves and the glass catches the light under your pointer.
-- **A playground to explore.** Click a table name for a side panel with its columns, constraints
-  and relations; click a column for its details. Connectors can be angular or curved.
-- **Deterministic.** The same input gives byte-identical Mermaid and SVG.
-- **No runtime dependencies.** The SVG renderer takes an [ELK](https://github.com/kieler/elkjs)
-  instance that you pass in.
+`varchar?` is nullable. `->` is a physical foreign key and `~>` a logical one. `uk`, `index`,
+`enum(...)`, `enc` and composite `unique(...)` are modifiers, not comments.
+
+References are checked. Missing tables and columns, nullable primary keys, duplicate names and type
+mismatches come back with a line, a column and a hint on how to fix them. `external table` declares
+a table owned by another service, so references to it are checked too, and the diagram shows where
+the boundary is. `audit envers(...)` generates the Hibernate Envers `*_aud` and `revinfo` tables.
+
+There are two outputs. Mermaid works anywhere Mermaid renders, such as GitHub and most docs sites.
+The SVG is drawn by resin, with each connector running from a foreign key row to the primary key row
+it points at. Its default look is plain ink that reads on light and dark pages; the glass looks set
+the tables on frosted glass over a background of their own, in three themes (aurora, silk and
+caustic), each dark or light. The same input always gives byte-identical output, and the renderer
+has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
+pass in.
+
+In the [playground](https://jhzlo.github.io/resin/) the glass is live: the background drifts, the
+stars twinkle and the glass catches the light under your pointer. Click a table name to see its
+columns, constraints and relations, or a column to see its details. Connectors can be angular or
+curved.
 
 ## Getting started
 
