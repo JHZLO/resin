@@ -69,6 +69,8 @@ precisely.
   with column-level connectors: plain ink that reads on light and dark pages, or frosted glass in
   three themes (aurora, silk, caustic), each dark or light. In the playground the glass is live: the
   background moves and the glass catches the light under your pointer.
+- **A playground to explore.** Click a table name for a side panel with its columns, constraints
+  and relations; click a column for its details. Connectors can be angular or curved.
 - **Deterministic.** The same input gives byte-identical Mermaid and SVG.
 - **No runtime dependencies.** The SVG renderer takes an [ELK](https://github.com/kieler/elkjs)
   instance that you pass in.
@@ -90,7 +92,7 @@ Compile a file to Mermaid, or draw it as SVG:
 pnpm resin examples/order.erd
 pnpm resin examples/order.erd --svg > order.svg
 pnpm resin examples/order.erd --svg --look aurora-dark > order.aurora-dark.svg
-pnpm resin examples/shop.erd --svg --keys > shop.svg
+pnpm resin examples/shop.erd --svg --keys --curved > shop.svg
 ```
 
 Errors come out in compiler format:
