@@ -98,7 +98,10 @@ async function copy(text: string, done: string): Promise<void> {
 
 // ---- problems ----
 
+let problems: Diagnostic[] = [];
+
 function showProblems(ds: Diagnostic[]): void {
+  problems = ds;
   const errors = ds.filter((d) => d.severity === "error").length;
   const warnings = ds.length - errors;
   const count = byId("problem-count");
@@ -587,14 +590,63 @@ splitter.addEventListener("keydown", (e) => {
   work.style.setProperty("--split", `${next}%`);
 });
 
+// Folding the source pane away, for a wide diagram. Remembered between visits
+const EDITOR_STORE = "resin.editor";
+const folded = () => work.classList.contains("is-folded");
+function fold(hide: boolean, animate = true): void {
+  if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    work.classList.add("is-moving");
+    window.setTimeout(() => work.classList.remove("is-moving"), 300);
+  }
+  work.classList.toggle("is-folded", hide);
+  byId("source").toggleAttribute("inert", hide);
+  byId("editor-show").hidden = !hide;
+  try {
+    if (hide) localStorage.setItem(EDITOR_STORE, "hidden");
+    else localStorage.removeItem(EDITOR_STORE);
+  } catch {
+    /* the choice lasts for this visit */
+  }
+}
+byId("editor-hide").addEventListener("click", () => fold(true));
+byId("editor-show").addEventListener("click", () => {
+  fold(false);
+  editor.view.focus();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "\\" || !(e.metaKey || e.ctrlKey)) return;
+  e.preventDefault();
+  fold(!folded());
+  if (!folded()) editor.view.focus();
+});
+try {
+  if (localStorage.getItem(EDITOR_STORE) === "hidden") fold(true, false);
+} catch {
+  /* start open */
+}
+
+byId("copy-source").addEventListener("click", () => copy(state.code, "Source copied"));
+// The status names the problems; clicking it goes to the first one
+byId("problem-count").addEventListener("click", () => {
+  if (problems.length) editor.focusAt(problems[0].span.line, problems[0].span.col);
+});
+
 // ---- boot ----
 
-const editor = createEditor(byId("editor"), state.code, (text) => {
-  state.code = text;
-  save();
-  scheduleHash();
-  scheduleRender();
-});
+const cursorPos = byId("cursor-pos");
+const editor = createEditor(
+  byId("editor"),
+  state.code,
+  (text) => {
+    state.code = text;
+    save();
+    scheduleHash();
+    scheduleRender();
+  },
+  (line, col) => {
+    cursorPos.textContent = `Ln ${line}, Col ${col}`;
+  },
+);
 
 async function adopt(shared: Partial<typeof state> | null): Promise<void> {
   if (!shared) return;

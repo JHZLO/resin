@@ -13,6 +13,7 @@ import {
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
+  placeholder,
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import type { Diagnostic } from "../src/index.ts";
@@ -78,12 +79,19 @@ const highlight = HighlightStyle.define([
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "13px", backgroundColor: "var(--panel)", color: "var(--ink)" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.65" },
-  ".cm-content": { caretColor: "var(--accent)", padding: "12px 0" },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
-  ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--faint)", border: "none" },
-  ".cm-activeLine": { backgroundColor: "var(--active-line)" },
-  ".cm-activeLineGutter": { backgroundColor: "var(--active-line)", color: "var(--muted)" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.7" },
+  ".cm-content": { caretColor: "var(--accent)", padding: "12px 0 32px" },
+  ".cm-line": { padding: "0 24px 0 8px" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
+  ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--faint)", border: "none", paddingLeft: "8px" },
+  ".cm-lineNumbers .cm-gutterElement": { minWidth: "26px", padding: "0 4px 0 0", fontSize: "12px" },
+  // The current line shows only while the editor has focus, so an idle editor stays quiet
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent" },
+  "&.cm-focused .cm-activeLine": { backgroundColor: "var(--active-line)" },
+  "&.cm-focused .cm-activeLineGutter": { color: "var(--ink)" },
+  ".cm-placeholder": { color: "var(--faint)", fontStyle: "normal" },
+  ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": { backgroundColor: "var(--accent-soft)", outline: "none", color: "inherit" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--selection) !important" },
   ".cm-tooltip": { backgroundColor: "var(--panel)", color: "var(--ink)", border: "1px solid var(--rule)", borderRadius: "6px" },
   ".cm-diagnostic": { fontFamily: "var(--font-body)", fontSize: "12.5px", whiteSpace: "pre-wrap", padding: "6px 10px" },
@@ -101,7 +109,20 @@ export interface Editor {
   focusAt(line: number, col: number): void;
 }
 
-export function createEditor(parent: HTMLElement, text: string, onChange: (text: string) => void): Editor {
+/** Shown in an empty editor */
+function emptyHint(): HTMLElement {
+  const el = document.createElement("span");
+  el.style.whiteSpace = "pre";
+  el.textContent = 'Start with a table:\n\ntable users "People who sign in" {\n  id     bigint        pk\n  email  varchar(255)  uk\n}';
+  return el;
+}
+
+export function createEditor(
+  parent: HTMLElement,
+  text: string,
+  onChange: (text: string) => void,
+  onCursor: (line: number, col: number) => void = () => {},
+): Editor {
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -121,8 +142,14 @@ export function createEditor(parent: HTMLElement, text: string, onChange: (text:
         EditorState.tabSize.of(2),
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         EditorView.contentAttributes.of({ "aria-label": "resin source" }),
+        placeholder(emptyHint()),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChange(u.state.doc.toString());
+          if (u.docChanged || u.selectionSet) {
+            const head = u.state.selection.main.head;
+            const line = u.state.doc.lineAt(head);
+            onCursor(line.number, head - line.from + 1);
+          }
         }),
       ],
     }),
