@@ -6,10 +6,9 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
 import { type Diagnostic, type Model, type SvgLook, compile, toSvg } from "../src/index.ts";
-import { glassOf, stageOf } from "../src/svg.ts";
+import { GRID_STEP, type Ink, type SvgBox, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { createEditor } from "./editor.ts";
-import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
 import { type Focus, PanZoom, createFocus } from "./view.ts";
 
@@ -20,11 +19,7 @@ const EXAMPLES: Record<string, string> = {
 };
 const STORE = "resin.playground";
 const THEME_STORE = "resin.theme";
-const STAGE_STORE = "resin.stage";
-
-/** The canvas's background themes; each has a dark and a light version that follows the page theme */
-const STAGES = { aurora: "Aurora", silk: "Silk", caustic: "Caustic" } as const;
-type StageName = keyof typeof STAGES;
+const EDITOR_STORE = "resin.editor";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -36,14 +31,7 @@ let focus: Focus | null = null;
 let lastMermaid = "";
 let renderSeq = 0;
 let fitNext = true;
-let lastBoxes: { table: string; x: number; y: number; w: number; h: number }[] = [];
-let stageName: StageName = "aurora";
-try {
-  const saved = localStorage.getItem(STAGE_STORE);
-  if (saved && saved in STAGES) stageName = saved as StageName;
-} catch {
-  /* keep aurora */
-}
+let lastBoxes: SvgBox[] = [];
 
 // ---- persistence ----
 
@@ -92,7 +80,7 @@ async function copy(text: string, done: string): Promise<void> {
     await navigator.clipboard.writeText(text);
     toast(done);
   } catch {
-    toast("Copying is blocked in this browser");
+    toast("This browser blocked the clipboard");
   }
 }
 
@@ -137,22 +125,21 @@ function showProblems(ds: Diagnostic[]): void {
   list.hidden = ds.length === 0;
 }
 
-// ---- rendering ----
+// ---- the canvas ----
 
 const viewport = byId("viewport");
 const content = byId("content");
+const gridLayer = byId("grid-layer");
 const zoomLevel = byId("zoom-level");
 
-// The glass and its moving stage are painted with WebGL under the SVG. Without WebGL2 the SVG paints a
-// still version itself
-let glass: LiveGlass | null = null;
-if (LiveGlass.available()) {
-  try {
-    glass = new LiveGlass(viewport, content);
-  } catch (e) {
-    console.warn("resin: the live canvas is off, showing the still drawing", e);
-    viewport.querySelector(".stage-glass")?.remove();
-  }
+/** The dot grid lies on the drawing's plane: it pans and zooms with the drawing. Zoomed far out, it
+ *  skips every other dot so it never turns into a texture */
+function placeGrid(animate: boolean): void {
+  let step = GRID_STEP * panzoom.scale;
+  while (step < 12) step *= 2;
+  gridLayer.classList.toggle("is-moving", animate);
+  gridLayer.style.backgroundSize = `${step}px ${step}px`;
+  gridLayer.style.backgroundPosition = `${panzoom.x - step / 2}px ${panzoom.y - step / 2}px`;
 }
 
 const panzoom = new PanZoom(
@@ -160,12 +147,12 @@ const panzoom = new PanZoom(
   content,
   (animate) => {
     zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
-    glass?.setView(panzoom.scale, panzoom.x, panzoom.y, animate);
+    placeGrid(animate);
     // The popover rides along with its row; after an animated move, place it again once settled
     placePop();
     if (animate) window.setTimeout(placePop, 220);
   },
-  (target, x, y) => {
+  (target) => {
     const table = target.closest<SVGGElement>(".rz-t")?.dataset.t ?? null;
     const column = target.closest<SVGGElement>(".rz-c")?.dataset.c ?? null;
     if (table && column) pickColumn(table, column);
@@ -175,12 +162,27 @@ const panzoom = new PanZoom(
       focus?.table(table);
     } else {
       closePop();
-      focus?.clear();
+      if (inspected) focus?.table(inspected);
+      else focus?.clear();
     }
-    glass?.refresh();
-    glass?.ripple(x, y);
   },
 );
+
+placeGrid(false);
+
+/** The canvas is painted by the page, from the same stage the files use, so it can reach past the
+ *  drawing. It changes together with the cards, once they are drawn in the new look */
+const rgba = ([color, alpha]: Ink): string => {
+  const n = parseInt(color.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+};
+function paintStage(look: SvgLook): void {
+  const stage = stageOf(look);
+  if (!stage) return;
+  viewport.style.setProperty("--canvas", stage.base);
+  viewport.style.setProperty("--glow", rgba([stage.glow[0], stage.glow[1]]));
+  viewport.style.setProperty("--dot", rgba(stage.grid));
+}
 
 // ---- details: the table panel and the column popover ----
 
@@ -192,6 +194,8 @@ const pop = byId("pop");
 let inspected: string | null = null;
 let popped: { table: string; column: string } | null = null;
 
+const inspectorOpen = (): boolean => inspector.hasAttribute("data-open");
+
 const rowEl = (table: string, column: string): SVGGElement | null =>
   [...content.querySelectorAll<SVGGElement>(".rz-t")]
     .find((t) => t.dataset.t === table)
@@ -201,7 +205,7 @@ const rowEl = (table: string, column: string): SVGGElement | null =>
 function reveal(name: string, onlyIfCovered = false): void {
   const b = lastBoxes.find((x) => x.table === name);
   if (!b) return;
-  const covered = inspector.hidden ? 0 : inspector.offsetWidth;
+  const covered = inspectorOpen() ? inspector.offsetWidth : 0;
   const right = panzoom.x + (b.x + b.w) * panzoom.scale;
   if (onlyIfCovered && right <= viewport.clientWidth - covered - 16) return;
   panzoom.centerOn(b.x + b.w / 2, b.y + b.h / 2, covered);
@@ -212,14 +216,13 @@ function openTable(name: string): void {
   closePop();
   showInspector(name);
   focus?.table(name);
-  glass?.refresh();
   reveal(name);
 }
 
 /** A table name on the diagram: opens its panel, or closes it when it is already open */
 function pickTable(name: string): void {
   closePop();
-  if (inspected === name && !inspector.hidden) {
+  if (inspected === name && inspectorOpen()) {
     closeInspector();
     focus?.clear();
     return;
@@ -234,7 +237,8 @@ function pickTable(name: string): void {
 function pickColumn(table: string, column: string): void {
   if (popped && popped.table === table && popped.column === column && !pop.hidden) {
     closePop();
-    focus?.clear();
+    if (inspected) focus?.table(inspected);
+    else focus?.clear();
     return;
   }
   focus?.row(table, column);
@@ -242,21 +246,20 @@ function pickColumn(table: string, column: string): void {
 }
 
 function showInspector(name: string): void {
-  const view = lastModel ? tableDetails(lastModel, name, openTable, (t, c) => {
-    pickColumn(t, c);
-    glass?.refresh();
-  }) : null;
+  const view = lastModel ? tableDetails(lastModel, name, openTable, pickColumn) : null;
   if (!view) return closeInspector();
   inspected = name;
   inspectorBody.replaceChildren(view);
   byId("inspector-title").textContent = name;
-  inspector.hidden = false;
+  inspector.setAttribute("data-open", "");
+  inspector.inert = false;
   diagramPanel.classList.add("has-inspector");
 }
 
 function closeInspector(): void {
   inspected = null;
-  inspector.hidden = true;
+  inspector.removeAttribute("data-open");
+  inspector.inert = true;
   diagramPanel.classList.remove("has-inspector");
 }
 
@@ -274,36 +277,38 @@ function closePop(): void {
   pop.hidden = true;
 }
 
-/** Under its row, or above it when there is no room below; hidden while the row is out of view */
+/** Under its row, or above it when there is no room below; hidden while the row is out of view.
+ *  It grows from the corner nearest its row */
 function placePop(): void {
   if (!popped || pop.hidden) return;
   const row = rowEl(popped.table, popped.column);
   if (!row) return closePop();
   const area = diagramPanel.getBoundingClientRect();
   const r = row.getBoundingClientRect();
-  const right = area.width - (inspector.hidden ? 0 : inspector.offsetWidth) - 8;
+  const right = area.width - (inspectorOpen() ? inspector.offsetWidth : 0) - 8;
   const w = pop.offsetWidth;
   const h = pop.offsetHeight;
   const left = Math.max(8, Math.min(r.left - area.left + 12, right - w));
   let top = r.bottom - area.top + 6;
-  if (top + h > area.height - 8 && r.top - area.top - h - 6 > 8) top = r.top - area.top - h - 6;
+  const above = top + h > area.height - 8 && r.top - area.top - h - 6 > 8;
+  if (above) top = r.top - area.top - h - 6;
   const seen = r.bottom > area.top && r.top < area.bottom && r.right > area.left && r.left - area.left < right;
   pop.style.visibility = seen ? "" : "hidden";
-  pop.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+  pop.style.transformOrigin = above ? "bottom left" : "top left";
+  pop.style.translate = `${Math.round(left)}px ${Math.round(top)}px`;
 }
 
 byId("inspector-close").addEventListener("click", () => {
   closeInspector();
   focus?.clear();
-  glass?.refresh();
 });
 
 const isDark = (): boolean => {
   const set = document.documentElement.dataset.theme;
   return set ? set === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
 };
-/** The canvas draws the chosen background theme, dark or light with the page */
-const canvasLook = (variant: "dark" | "light" = isDark() ? "dark" : "light"): SvgLook => `${stageName}-${variant}`;
+/** The canvas follows the page: dark or light */
+const canvasLook = (): SvgLook => (isDark() ? "dark" : "light");
 
 function setStale(stale: boolean): void {
   byId("stale").hidden = !stale || !lastModel;
@@ -320,19 +325,17 @@ async function render(): Promise<void> {
     return;
   }
   try {
-    // With the live canvas the SVG carries only what sits on the glass; the canvas paints the rest
     const look = canvasLook();
-    const { svg, width, height, background, boxes } = await toSvg(result.model, elk, {
+    const { svg, width, height, boxes } = await toSvg(result.model, elk, {
       columns: state.columns,
       audit: state.audit,
       look,
-      stage: glass === null,
+      stage: false,
       edges: state.edges,
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
-    viewport.style.backgroundColor = background ?? "";
-    glass?.setLook(stageOf(look), glassOf(look));
+    paintStage(look);
     lastModel = result.model;
     lastMermaid = result.mermaid ?? "";
     byId("mermaid-out").textContent = lastMermaid;
@@ -354,7 +357,6 @@ async function render(): Promise<void> {
     if (popped) showPop(popped.table, popped.column);
     if (popped) focus?.row(popped.table, popped.column);
     else if (inspected) focus?.table(inspected);
-    glass?.setBoxes(lastBoxes, drawn);
     const tables = result.model.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
     const relations = result.model.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
     byId("stats").textContent = empty ? "" : `${tables} ${tables === 1 ? "table" : "tables"}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
@@ -371,39 +373,108 @@ function scheduleRender(): void {
   renderTimer = window.setTimeout(render, 120);
 }
 
-// ---- controls ----
+// ---- menus ----
+
+/** A small menu under its button. A press anywhere else closes it, so does Escape (focus goes back
+ *  to the button) and so does tabbing out of it */
+function menu(button: HTMLElement, panel: HTMLElement, first: () => HTMLElement | null) {
+  const wrap = button.parentElement!;
+  const set = (open: boolean, returnFocus = false) => {
+    panel.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    if (open) first()?.focus();
+    else if (returnFocus) button.focus();
+  };
+  button.addEventListener("click", () => set(panel.hidden));
+  panel.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    set(false, true);
+  });
+  wrap.addEventListener("focusout", (e) => {
+    if (!panel.hidden && !wrap.contains(e.relatedTarget as Node | null) && e.relatedTarget !== null) set(false);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!panel.hidden && !wrap.contains(e.target as Node)) set(false);
+  });
+  return { close: (returnFocus = false) => set(false, returnFocus), isOpen: () => !panel.hidden };
+}
+
+// View: every option that changes the drawing, in one place
+const viewMenu = menu(byId("view"), byId("view-menu"), () => byId("view-menu").querySelector<HTMLElement>('[aria-pressed="true"]'));
+const setters = [...document.querySelectorAll<HTMLButtonElement>("[data-set]")];
 
 function syncControls(): void {
-  byId("toggle-keys").setAttribute("aria-pressed", String(state.columns === "keys"));
-  byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
-  byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
-  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]")) b.setAttribute("aria-pressed", String(b.dataset.edges === state.edges));
+  const current: Record<string, string> = { columns: state.columns, audit: state.audit, edges: state.edges, grid: state.grid ? "on" : "off" };
+  for (const b of setters) {
+    const [key, value] = b.dataset.set!.split(":");
+    b.setAttribute("aria-pressed", String(current[key] === value));
+  }
   viewport.classList.toggle("grid", state.grid);
-  glass?.setGrid(state.grid);
   const select = byId<HTMLSelectElement>("example");
   const match = Object.entries(EXAMPLES).find(([, text]) => text === state.code);
   select.value = match ? match[0] : "";
 }
 
-function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): void {
-  Object.assign(state, change);
-  fitNext = true;
-  syncControls();
-  save();
-  scheduleHash();
-  render();
-}
-byId("toggle-keys").addEventListener("click", () => setView({ columns: state.columns === "keys" ? "all" : "keys" }));
-byId("toggle-audit").addEventListener("click", () => setView({ audit: state.audit === "expand" ? "collapse" : "expand" }));
-for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]"))
+for (const b of setters)
   b.addEventListener("click", () => {
-    // The layout stays the same, so the view does not move
-    state.edges = b.dataset.edges === "curved" ? "curved" : "angular";
+    const [key, value] = b.dataset.set!.split(":");
+    if (key === "grid") state.grid = value === "on";
+    else if (key === "edges") state.edges = value === "curved" ? "curved" : "angular";
+    else if (key === "columns") state.columns = value === "keys" ? "keys" : "all";
+    else if (key === "audit") state.audit = value === "expand" ? "expand" : "collapse";
     syncControls();
     save();
+    if (key === "grid") return;
     scheduleHash();
+    // Fewer or more tables move the layout, so the drawing is fitted again. Lines keep the layout
+    if (key === "columns" || key === "audit") fitNext = true;
     render();
   });
+
+// Download: plain, or on a dark or a light background
+const downloadMenu = menu(byId("download"), byId("download-menu"), () => byId("download-menu").querySelector<HTMLElement>(".menu-item"));
+const menuItems = [...byId("download-menu").querySelectorAll<HTMLButtonElement>("[data-variant]")];
+byId("download-menu").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  e.preventDefault();
+  const i = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+  const next = e.key === "ArrowDown" ? i + 1 : Math.max(i, 0) - 1;
+  menuItems[(next + menuItems.length) % menuItems.length].focus();
+});
+
+/** Files are plain by default: no background, so they sit on any page. Dark and light carry their
+ *  background with them */
+async function exportSvg(look: SvgLook): Promise<string | null> {
+  if (!lastModel) return null;
+  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, edges: state.edges, look, standalone: true });
+  return svg + "\n";
+}
+
+async function download(look: SvgLook): Promise<void> {
+  const svg = await exportSvg(look);
+  if (!svg) return;
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = look === "plain" ? "schema.svg" : `schema.${look}.svg`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+for (const item of menuItems)
+  item.addEventListener("click", () => {
+    downloadMenu.close(true);
+    const variant = item.dataset.variant;
+    download(variant === "dark" || variant === "light" ? variant : "plain");
+  });
+
+byId("copy-svg").addEventListener("click", async () => {
+  const svg = await exportSvg("plain");
+  if (svg) await copy(svg, "SVG copied");
+});
+
+// ---- other controls ----
 
 byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
@@ -412,38 +483,31 @@ byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   editor.setText(EXAMPLES[key]);
 });
 
-byId("grid-toggle").addEventListener("click", () => {
-  state.grid = !state.grid;
-  syncControls();
-  save();
-});
-
-// Background theme
-function syncStage(): void {
-  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-stage]")) b.setAttribute("aria-pressed", String(b.dataset.stage === stageName));
-}
-for (const b of document.querySelectorAll<HTMLButtonElement>("[data-stage]"))
-  b.addEventListener("click", () => {
-    stageName = b.dataset.stage as StageName;
-    try {
-      localStorage.setItem(STAGE_STORE, stageName);
-    } catch {
-      /* the choice lasts for this visit */
-    }
-    syncStage();
-    render();
-  });
-syncStage();
 byId("zoom-in").addEventListener("click", () => panzoom.zoomBy(1.25, undefined, undefined, true));
 byId("zoom-out").addEventListener("click", () => panzoom.zoomBy(0.8, undefined, undefined, true));
 byId("zoom-level").addEventListener("click", () => panzoom.actualSize());
 byId("zoom-fit").addEventListener("click", () => panzoom.fit(true));
+
+/** Keyboard actions never animate: the change lands at once */
+function instantly(change: () => void): void {
+  diagramPanel.classList.add("is-instant");
+  change();
+  void diagramPanel.offsetWidth; // apply the change while transitions are off
+  diagramPanel.classList.remove("is-instant");
+}
+
+// Escape closes the innermost thing that is open: a menu, then the popover, then the panel
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!pop.hidden) closePop();
-  else if (!inspector.hidden) closeInspector();
-  focus?.clear();
-  glass?.refresh();
+  if (viewMenu.isOpen()) return viewMenu.close(true);
+  if (downloadMenu.isOpen()) return downloadMenu.close(true);
+  instantly(() => {
+    if (!pop.hidden) {
+      closePop();
+      if (inspected) return focus?.table(inspected);
+    } else if (inspectorOpen()) closeInspector();
+    focus?.clear();
+  });
 });
 
 byId("share").addEventListener("click", async () => {
@@ -452,72 +516,6 @@ byId("share").addEventListener("click", async () => {
 });
 
 byId("copy-mermaid").addEventListener("click", () => copy(lastMermaid, "Mermaid copied"));
-
-/** Files are plain (graphite) by default: no background, so they sit on any page. A glass look carries
- *  its background with it, as a still picture */
-async function exportSvg(look: SvgLook): Promise<string | null> {
-  if (!lastModel) return null;
-  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, edges: state.edges, look, standalone: true });
-  return svg + "\n";
-}
-
-byId("copy-svg").addEventListener("click", async () => {
-  const svg = await exportSvg("graphite");
-  if (svg) await copy(svg, "SVG copied");
-});
-
-async function download(look: SvgLook): Promise<void> {
-  const svg = await exportSvg(look);
-  if (!svg) return;
-  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = look === "graphite" ? "schema.svg" : `schema.${look}.svg`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-// Download menu: plain, or the current background theme in its dark or light version
-const downloadButton = byId("download");
-const downloadMenu = byId("download-menu");
-const menuItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>("[data-variant]")];
-const lookOf = (variant: string): SvgLook => (variant === "plain" ? "graphite" : canvasLook(variant as "dark" | "light"));
-function labelMenu(): void {
-  for (const item of menuItems) {
-    const variant = item.dataset.variant!;
-    if (variant === "plain") continue;
-    item.querySelector(".menu-title")!.textContent = `${STAGES[stageName]}, ${variant}`;
-    item.querySelector(".swatch")!.className = `swatch sw-${stageName}-${variant}`;
-  }
-}
-function setMenu(open: boolean, returnFocus = false): void {
-  if (open) labelMenu();
-  downloadMenu.hidden = !open;
-  downloadButton.setAttribute("aria-expanded", String(open));
-  if (open) menuItems[0].focus();
-  else if (returnFocus) downloadButton.focus();
-}
-downloadButton.addEventListener("click", () => setMenu(downloadMenu.hidden));
-for (const item of menuItems)
-  item.addEventListener("click", () => {
-    setMenu(false, true);
-    download(lookOf(item.dataset.variant!));
-  });
-downloadMenu.addEventListener("keydown", (e) => {
-  const i = menuItems.indexOf(document.activeElement as HTMLButtonElement);
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    e.preventDefault();
-    const next = e.key === "ArrowDown" ? i + 1 : Math.max(i, 0) - 1;
-    menuItems[(next + menuItems.length) % menuItems.length].focus();
-  } else if (e.key === "Escape") {
-    e.stopPropagation();
-    setMenu(false, true);
-  } else if (e.key === "Tab") setMenu(false);
-});
-// A small menu with nothing to lose: a press anywhere else closes it
-document.addEventListener("pointerdown", (e) => {
-  if (!downloadMenu.hidden && !downloadButton.parentElement!.contains(e.target as Node)) setMenu(false);
-});
 
 // Tabs
 const tabs = [byId("tab-diagram"), byId("tab-mermaid")];
@@ -528,12 +526,9 @@ for (const tab of tabs)
       t.setAttribute("aria-selected", String(on));
       byId(t.getAttribute("aria-controls")!).hidden = !on;
     }
-    // The live canvas rests while the Mermaid tab covers it
-    glass?.pause(tab.id !== "tab-diagram");
-    if (tab.id === "tab-diagram") requestAnimationFrame(() => panzoom.fit());
   });
 
-// Theme: auto → light → dark
+// Theme: auto, light, dark
 const THEMES = ["auto", "light", "dark"] as const;
 function applyTheme(theme: (typeof THEMES)[number]): void {
   if (theme === "auto") delete document.documentElement.dataset.theme;
@@ -560,7 +555,7 @@ byId("theme").addEventListener("click", () => {
   } catch {
     /* the choice lasts for this visit */
   }
-  render(); // the glass follows the theme
+  render(); // the cards follow the theme
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (theme === "auto") render();
@@ -590,17 +585,17 @@ splitter.addEventListener("keydown", (e) => {
   work.style.setProperty("--split", `${next}%`);
 });
 
-// Folding the source pane away, for a wide diagram. Remembered between visits
-const EDITOR_STORE = "resin.editor";
+// Folding the source pane away, for a wide diagram. Instant, and remembered between visits
+const source = byId("source");
+const showEditor = byId("editor-show");
 const folded = () => work.classList.contains("is-folded");
-function fold(hide: boolean, animate = true): void {
-  if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    work.classList.add("is-moving");
-    window.setTimeout(() => work.classList.remove("is-moving"), 300);
-  }
+function fold(hide: boolean): void {
+  const hadFocus = source.contains(document.activeElement);
   work.classList.toggle("is-folded", hide);
-  byId("source").toggleAttribute("inert", hide);
-  byId("editor-show").hidden = !hide;
+  source.inert = hide;
+  showEditor.hidden = !hide;
+  if (hide && hadFocus) showEditor.focus();
+  if (!hide) editor.view.focus();
   try {
     if (hide) localStorage.setItem(EDITOR_STORE, "hidden");
     else localStorage.removeItem(EDITOR_STORE);
@@ -609,21 +604,12 @@ function fold(hide: boolean, animate = true): void {
   }
 }
 byId("editor-hide").addEventListener("click", () => fold(true));
-byId("editor-show").addEventListener("click", () => {
-  fold(false);
-  editor.view.focus();
-});
+showEditor.addEventListener("click", () => fold(false));
 document.addEventListener("keydown", (e) => {
   if (e.key !== "\\" || !(e.metaKey || e.ctrlKey)) return;
   e.preventDefault();
   fold(!folded());
-  if (!folded()) editor.view.focus();
 });
-try {
-  if (localStorage.getItem(EDITOR_STORE) === "hidden") fold(true, false);
-} catch {
-  /* start open */
-}
 
 byId("copy-source").addEventListener("click", () => copy(state.code, "Source copied"));
 // The status names the problems; clicking it goes to the first one
@@ -647,6 +633,16 @@ const editor = createEditor(
     cursorPos.textContent = `Ln ${line}, Col ${col}`;
   },
 );
+
+try {
+  if (localStorage.getItem(EDITOR_STORE) === "hidden") {
+    work.classList.add("is-folded");
+    source.inert = true;
+    showEditor.hidden = false;
+  }
+} catch {
+  /* start open */
+}
 
 async function adopt(shared: Partial<typeof state> | null): Promise<void> {
   if (!shared) return;

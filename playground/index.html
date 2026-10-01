@@ -6,10 +6,7 @@
 <title>resin playground</title>
 <meta name="description" content="Write resin, a small language for entity-relationship diagrams, and watch the ERD as you type.">
 <meta name="color-scheme" content="light dark">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='5' width='12' height='14' rx='2' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3Crect x='18' y='13' width='12' height='14' rx='2' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3Cpath d='M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='5' width='12' height='14' rx='2' fill='none' stroke='%23A15C07' stroke-width='2.4'/%3E%3Crect x='18' y='13' width='12' height='14' rx='2' fill='none' stroke='%23A15C07' stroke-width='2.4'/%3E%3Cpath d='M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18' fill='none' stroke='%23A15C07' stroke-width='2.4'/%3E%3C/svg%3E">
 <script>
   // Apply a saved theme before the first paint
   try {
@@ -18,168 +15,166 @@
   } catch (e) {}
 </script>
 <style>
-/* Layout: a slim top bar over two panes (source | diagram) split by a draggable divider; one column on
-   phones. Controls that only affect the drawing float over the canvas. State is shown with neutral
-   fills; the accent is kept for focus, the active tab and the focused row.
-   The canvas is a WebGL stage (playground/glass.ts) painted under the SVG: the chosen background
-   theme (aurora, silk or caustic), dark or light with the page. --stage matches the aurora base so
-   the first paint does not flash. */
+/* The diagram is the content and everything else steps back. Three grays and one amber accent, the
+   platform's own fonts, edges drawn as semi-transparent rings, and motion only where it explains
+   something: short, strong ease-out curves, nothing on keyboard actions. */
 :root {
-  --bg: #F3F4F6;
-  --panel: #FFFFFF;
-  --canvas: #F7F8FA;
-  --ink: #181C21;
-  --muted: #586271;
-  --faint: #8A929E;
-  --rule: #DDE1E6;
-  --control: #FFFFFF;
-  --control-on: #E6E9ED;
-  --code: #EEF0F3;
-  --accent: #9A5A0C;
-  --accent-soft: rgba(205, 138, 30, 0.14);
-  --active-line: rgba(24, 28, 33, 0.035);
-  --selection: rgba(205, 138, 30, 0.22);
-  --stage: #E9EBF1;
-  --shadow: 0 1px 2px rgba(24, 28, 33, 0.08), 0 4px 12px rgba(24, 28, 33, 0.06);
+  --bg: #F5F5F3;
+  --surface: #FFFFFF;
+  --raised: #FFFFFF;
+  --canvas: #F0F0ED;
+  --ink: #17181B;
+  --muted: #5E626A;
+  --faint: #8C9098;
+  --rule: rgba(23, 24, 27, 0.09);
+  --ring: rgba(23, 24, 27, 0.1);
+  --fill: rgba(23, 24, 27, 0.05);
+  --fill-strong: rgba(23, 24, 27, 0.09);
+  --accent: #A15C07;
+  --accent-soft: rgba(161, 92, 7, 0.14);
+  --selection: rgba(224, 168, 78, 0.28);
+  --danger: #B42318;
+  --warn: #9A6700;
+  --glow: rgba(224, 168, 78, 0.06);
+  --dot: rgba(23, 24, 27, 0.1);
+  --scroll: rgba(23, 24, 27, 0.16);
+  --scroll-hover: rgba(23, 24, 27, 0.3);
+  --shadow-1: 0 0 0 1px var(--ring), 0 1px 2px rgba(23, 24, 27, 0.05);
+  --shadow-2: 0 0 0 1px var(--ring), 0 2px 6px rgba(23, 24, 27, 0.05), 0 12px 32px rgba(23, 24, 27, 0.1);
   --syn-kw: #1D57A3;
   --syn-type: #0F6F74;
   --syn-str: #2C7437;
   --syn-num: #8A3FA0;
-  --danger: #B42318;
-  --warn: #9A6700;
-  --k-pk: #B26A00;
-  --k-uk: #6D4FD8;
-  --k-fk: #0B7A90;
-  --ok: #1A7F37;
-  --scroll: rgba(24, 28, 33, 0.16);
-  --scroll-hover: rgba(24, 28, 33, 0.3);
-  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, "SF Pro Text", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --inspector: 360px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0E1013;
-    --panel: #15181C;
-    --canvas: #101215;
-    --ink: #E3E6EA;
-    --muted: #97A1AD;
-    --faint: #69727E;
-    --rule: #272C33;
-    --control: #1A1E23;
-    --control-on: #2C323A;
-    --code: #1B1F24;
-    --accent: #E2A64D;
-    --accent-soft: rgba(226, 166, 77, 0.14);
-    --active-line: rgba(236, 237, 239, 0.035);
-    --selection: rgba(226, 166, 77, 0.24);
-    --stage: #05060C;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+    --bg: #0E0F11;
+    --surface: #17181B;
+    --raised: #2A2C31;
+    --canvas: #0B0C0E;
+    --ink: #EDEDEB;
+    --muted: #A2A6AE;
+    --faint: #6E737B;
+    --rule: rgba(237, 237, 235, 0.09);
+    --ring: rgba(255, 255, 255, 0.09);
+    --fill: rgba(255, 255, 255, 0.06);
+    --fill-strong: rgba(255, 255, 255, 0.1);
+    --accent: #E0A84E;
+    --accent-soft: rgba(224, 168, 78, 0.16);
+    --selection: rgba(224, 168, 78, 0.26);
+    --danger: #F97066;
+    --warn: #E3B341;
+    --glow: rgba(224, 168, 78, 0.05);
+    --dot: rgba(255, 255, 255, 0.07);
+    --scroll: rgba(237, 237, 235, 0.16);
+    --scroll-hover: rgba(237, 237, 235, 0.3);
+    --shadow-1: 0 0 0 1px var(--ring), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 0 0 1px var(--ring), 0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
     --syn-kw: #86B4F2;
     --syn-type: #6FD0C9;
     --syn-str: #93CC92;
     --syn-num: #D6A2E8;
-    --danger: #F97066;
-    --warn: #E3B341;
-    --k-pk: #F6C76B;
-    --k-uk: #C8BBFF;
-    --k-fk: #86E1EC;
-    --ok: #3FB950;
-    --scroll: rgba(236, 237, 239, 0.16);
-    --scroll-hover: rgba(236, 237, 239, 0.3);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0E1013;
-  --panel: #15181C;
-  --canvas: #101215;
-  --ink: #E3E6EA;
-  --muted: #97A1AD;
-  --faint: #69727E;
-  --rule: #272C33;
-  --control: #1A1E23;
-  --control-on: #2C323A;
-  --code: #1B1F24;
-  --accent: #E2A64D;
-  --accent-soft: rgba(226, 166, 77, 0.14);
-  --active-line: rgba(236, 237, 239, 0.035);
-  --selection: rgba(226, 166, 77, 0.24);
-  --stage: #05060C;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --bg: #0E0F11;
+  --surface: #17181B;
+  --raised: #2A2C31;
+  --canvas: #0B0C0E;
+  --ink: #EDEDEB;
+  --muted: #A2A6AE;
+  --faint: #6E737B;
+  --rule: rgba(237, 237, 235, 0.09);
+  --ring: rgba(255, 255, 255, 0.09);
+  --fill: rgba(255, 255, 255, 0.06);
+  --fill-strong: rgba(255, 255, 255, 0.1);
+  --accent: #E0A84E;
+  --accent-soft: rgba(224, 168, 78, 0.16);
+  --selection: rgba(224, 168, 78, 0.26);
+  --danger: #F97066;
+  --warn: #E3B341;
+  --glow: rgba(224, 168, 78, 0.05);
+  --dot: rgba(255, 255, 255, 0.07);
+  --scroll: rgba(237, 237, 235, 0.16);
+  --scroll-hover: rgba(237, 237, 235, 0.3);
+  --shadow-1: 0 0 0 1px var(--ring), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 0 0 1px var(--ring), 0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
   --syn-kw: #86B4F2;
   --syn-type: #6FD0C9;
   --syn-str: #93CC92;
   --syn-num: #D6A2E8;
-  --danger: #F97066;
-  --warn: #E3B341;
-  --k-pk: #F6C76B;
-  --k-uk: #C8BBFF;
-  --k-fk: #86E1EC;
-  --ok: #3FB950;
-  --scroll: rgba(236, 237, 239, 0.16);
-  --scroll-hover: rgba(236, 237, 239, 0.3);
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-/* `hidden` always wins over a component's own display */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.5;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.5 var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 button, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--selection); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+code { font-family: var(--font-mono); font-size: 12px; }
 
-/* top bar */
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: env(safe-area-inset-top, 0px) 12px 0 16px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--panel);
-}
-.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
-.brand svg { width: 20px; height: 20px; color: var(--accent); }
-.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
-.brand-sub { color: var(--muted); font-size: 13px; }
-.bar-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-
-/* buttons */
+/* buttons: quiet by default, a ring when they need to stand out, and a small press on every one */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--rule);
+  border: 0;
   border-radius: 6px;
-  background: var(--control);
-  color: var(--ink);
+  background: transparent;
+  color: var(--muted);
   font-size: 13px;
   text-decoration: none;
   white-space: nowrap;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
 }
-.btn:hover { background: var(--control-on); }
-.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
-.btn.ghost:hover { color: var(--ink); background: var(--control-on); }
-.btn.icon { width: 30px; justify-content: center; padding: 0; }
+.btn:active { transform: scale(0.97); }
+.btn.secondary { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+.btn.icon { width: 30px; padding: 0; justify-content: center; }
 .btn svg { width: 16px; height: 16px; flex: none; }
+.btn .chev { width: 12px; height: 12px; margin-right: -2px; color: var(--faint); }
+.btn[aria-expanded="true"] { background: var(--fill-strong); color: var(--ink); }
 #theme .i { display: none; }
 #theme[data-mode="auto"] .i-auto, #theme[data-mode="light"] .i-light, #theme[data-mode="dark"] .i-dark { display: block; }
+
+/* top bar */
+.bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: calc(48px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--rule);
+}
+.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
+.brand svg { width: 18px; height: 18px; color: var(--accent); }
+.brand-name { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.brand-sub { font-size: 13px; color: var(--faint); }
+.bar-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
 /* panes */
 .work {
@@ -188,190 +183,182 @@ button { cursor: pointer; }
   grid-template-columns: minmax(0, var(--split)) 1px minmax(0, 1fr);
   min-height: 0;
 }
-.work.is-moving { transition: grid-template-columns 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), grid-template-rows 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* Folding is instant: it is often done from the keyboard, and keyboard actions never animate */
 .work.is-folded { grid-template-columns: minmax(0, 0%) 0px minmax(0, 1fr); }
-.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--panel); }
-/* hidden once the fold has played, so nothing inside can take focus */
-.pane-source { transition: visibility 0s linear 0s; }
-.work.is-folded > .pane-source { visibility: hidden; transition-delay: 0.24s; }
-.work.is-folded > .splitter { visibility: hidden; }
+.work.is-folded > .pane-source, .work.is-folded > .splitter { visibility: hidden; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
 .pane-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   height: 40px;
   padding: 0 8px 0 12px;
-  border-bottom: 1px solid var(--rule);
-  font-size: 13px;
+  box-shadow: inset 0 -1px 0 var(--rule);
   flex: none;
 }
+.head-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.splitter { position: relative; z-index: 3; background: var(--rule); cursor: col-resize; touch-action: none; transition: background-color 120ms ease; }
+.splitter::after { content: ""; position: absolute; inset: 0 -4px; }
+.splitter:focus-visible { background: var(--accent); outline: none; }
 
-/* example picker: the file name in the editor header */
-.picker { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; margin-left: -8px; border-radius: 6px; color: var(--ink); }
-.picker:hover { background: var(--control-on); }
-.picker svg { width: 14px; height: 14px; color: var(--muted); flex: none; }
-.picker select {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  padding: 0 14px 0 0;
-  cursor: pointer;
-}
+/* the file name in the editor header doubles as the example picker */
+.picker { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 22px 0 8px; margin-left: -6px; border-radius: 6px; color: var(--ink); transition: background-color 120ms ease; }
+.picker .file { width: 14px; height: 14px; color: var(--faint); flex: none; }
+.picker select { appearance: none; -webkit-appearance: none; padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 500; cursor: pointer; }
 .picker select:focus-visible { outline: none; }
 .picker:focus-within { outline: 2px solid var(--accent); outline-offset: 0; }
-.picker .chev { position: absolute; right: 6px; width: 12px; height: 12px; pointer-events: none; }
-.pane-head .head-actions .btn.icon { width: 28px; height: 28px; }
+.picker .chev { position: absolute; right: 6px; width: 12px; height: 12px; color: var(--faint); pointer-events: none; }
+
 .editor { flex: 1; min-height: 0; overflow: hidden; }
 .editor .cm-editor { height: 100%; }
-.problems { list-style: none; margin: 0; padding: 4px 0; border-top: 1px solid var(--rule); background: var(--bg); max-height: 32%; overflow: auto; flex: none; }
-
-/* status bar: whether the source compiles, and where the cursor is */
-.status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 30px;
-  padding: 0 12px 0 10px;
-  border-top: 1px solid var(--rule);
-  font-size: 12px;
-  color: var(--muted);
-  flex: none;
-}
-.status-problems {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 22px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 5px;
-  background: none;
-  font-size: 12px;
-  color: var(--muted);
-  cursor: default;
-}
-.status-problems::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
-.status-problems[data-state="error"] { color: var(--danger); font-weight: 600; cursor: pointer; }
-.status-problems[data-state="error"]::before { background: var(--danger); }
-.status-problems[data-state="warning"] { color: var(--warn); font-weight: 600; cursor: pointer; }
-.status-problems[data-state="warning"]::before { background: var(--warn); }
-.status-problems:not([data-state="ok"]):hover { background: var(--control-on); }
-.status-pos { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-
-/* scrollbars: thin and quiet, darker on hover */
-.editor .cm-scroller, .problems, #mermaid-out, .ins-body { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar { width: 10px; height: 10px; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-thumb { background: var(--scroll); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-track,
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-corner { background: transparent; }
-.problem {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 2px 10px;
-  width: 100%;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  padding: 5px 12px;
-  font-size: 12.5px;
-}
-.problem:hover { background: var(--active-line); }
-.problem-where { font-family: var(--font-mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+.problems { flex: none; max-height: 32%; margin: 0; padding: 4px 0; overflow: auto; list-style: none; background: var(--bg); box-shadow: inset 0 1px 0 var(--rule); }
+.problem { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 2px 10px; width: 100%; padding: 6px 12px; border: 0; background: transparent; text-align: left; font-size: 12.5px; transition: background-color 120ms ease; }
+.problem-where { font-family: var(--font-mono); font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .problem.is-error .problem-where { color: var(--danger); }
 .problem.is-warning .problem-where { color: var(--warn); }
 .problem-hint { grid-column: 2; color: var(--muted); }
-.splitter { background: var(--rule); cursor: col-resize; touch-action: none; position: relative; z-index: 6; transition: background-color 0.15s ease; }
-.splitter::after { content: ""; position: absolute; inset: 0 -4px; }
-.splitter:hover, .splitter:focus-visible { background: var(--accent); outline: none; }
 
-/* diagram pane */
-.tabs { display: inline-flex; gap: 4px; align-self: stretch; margin-left: -4px; }
-.tabs button {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 0 8px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  font-size: 13px;
-}
-.tabs button:hover { color: var(--ink); }
-.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+/* status bar: whether the source compiles, and where the cursor is */
+.status { display: flex; flex: none; align-items: center; gap: 12px; height: 28px; padding: 0 12px 0 6px; box-shadow: inset 0 1px 0 var(--rule); font-size: 12px; color: var(--muted); }
+.status-problems { height: 22px; padding: 0 6px; border: 0; border-radius: 5px; background: none; font-size: 12px; color: var(--muted); cursor: default; transition: background-color 120ms ease; }
+.status-problems[data-state="error"] { color: var(--danger); font-weight: 600; cursor: pointer; }
+.status-problems[data-state="warning"] { color: var(--warn); font-weight: 600; cursor: pointer; }
+.status-pos { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* diagram header */
+.tabs { display: inline-flex; align-self: stretch; gap: 2px; }
+.tabs button { position: relative; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font-size: 13px; transition: color 120ms ease; }
+.tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.tabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
 .stats { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.head-actions { margin-left: auto; display: inline-flex; gap: 4px; }
-.btn .chev { width: 12px; height: 12px; margin: 0 -2px 0 -1px; color: var(--muted); }
 
-/* download menu: plain (any page) or one of the glass looks with its backdrop */
+/* menus grow out of their button: a short, strong ease-out from just below full size. They leave at once */
 .menu-wrap { position: relative; display: inline-flex; }
 .menu {
   position: absolute;
-  right: 0;
   top: calc(100% + 6px);
-  z-index: 5;
-  display: grid;
-  gap: 2px;
-  width: 252px;
-  padding: 4px;
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-.menu[hidden] { display: none; }
-
-/* the side panel: everything about one table, opened from its name on the diagram. It stays until
-   it is closed (the button or Esc); clicking elsewhere on the canvas does not close it */
-.inspector {
-  position: absolute;
-  top: 0;
   right: 0;
-  bottom: 0;
-  z-index: 4;
-  width: min(360px, 100%);
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border-left: 1px solid var(--rule);
-  box-shadow: -16px 0 32px rgba(0, 0, 0, 0.14);
-  animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 10;
+  min-width: 232px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  transform-origin: top right;
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
-.inspector[hidden] { display: none; }
-@keyframes slide-in { from { transform: translateX(28px); opacity: 0; } }
-.ins-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 14px; border-bottom: 1px solid var(--rule); flex: none; }
-.ins-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
-.ins-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
-.ins-bar .btn { margin-left: auto; flex: none; }
-.ins-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 16px 28px; user-select: text; }
-.panel.has-inspector .float.zoom { right: calc(min(360px, 100%) + 12px); }
-.d-head { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
-.d-name { margin: 0; font-family: var(--font-mono); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.d-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.d-desc { margin: 0; font-size: 13px; color: var(--muted); }
-.d-meta { margin: 0; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.d-section { padding-top: 16px; }
-.d-section h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
-.d-section ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
-.d-col { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; padding: 5px 6px; border-radius: 6px; }
-.d-col:hover { background: var(--active-line); }
-.d-key { font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
-.k-pk { color: var(--k-pk); }
-.k-uk { color: var(--k-uk); }
-.k-fk { color: var(--k-fk); }
-.d-col-name { justify-self: start; padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
-.d-col-name:hover { text-decoration: underline; text-underline-offset: 3px; }
-.d-type { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-.d-col-desc, .d-col-facts { grid-column: 2 / -1; font-size: 12px; color: var(--muted); }
-.d-col-facts { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; }
-.d-chip { display: inline-block; padding: 0 6px; border: 1px solid var(--rule); border-radius: 4px; background: var(--code); font-family: var(--font-mono); font-size: 10.5px; line-height: 18px; color: var(--muted); }
-.d-rel, .d-con, .d-note { padding: 4px 6px; font-size: 12.5px; line-height: 1.6; }
-.d-table code, .d-pop code { font-family: var(--font-mono); font-size: 12px; }
-.d-rel-meta { display: block; font-size: 11.5px; color: var(--faint); }
-.d-link { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12px; color: var(--accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; }
-.d-link:hover { text-decoration-color: currentColor; }
+@starting-style {
+  .menu { opacity: 0; transform: scale(0.97) translateY(-4px); }
+}
+.menu-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+.menu-item:focus-visible { outline: none; background: var(--fill); }
+.menu-title { font-size: 13px; color: var(--ink); }
+.menu-sub { grid-column: 2; font-size: 12px; color: var(--muted); }
+.swatch { position: relative; grid-row: span 2; width: 28px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--ring); }
+.swatch::after { content: ""; position: absolute; left: 6px; top: 5px; width: 16px; height: 10px; border-radius: 2px; }
+.swatch.plain::after { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.swatch.dark { background: #0B0C0E; }
+.swatch.dark::after { background: #17181B; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.swatch.light { background: #F0F0ED; }
+.swatch.light::after { background: #FFFFFF; box-shadow: 0 1px 2px rgba(23, 24, 27, 0.16); }
+
+/* view options: one row per choice, each a segmented pair; the chosen side is raised out of the track */
+.view-menu { display: grid; gap: 8px; min-width: 268px; padding: 10px 10px 10px 14px; }
+.view-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.view-row > span:first-child { font-size: 13px; color: var(--muted); }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--fill); }
+.seg button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
+}
+.seg button:active { transform: scale(0.97); }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 0 0 1px var(--ring), 0 1px 2px rgba(0, 0, 0, 0.08); }
+
+/* canvas: a quiet stage that never moves on its own */
+.panel { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.panel[hidden] { display: none; }
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--canvas);
+  color: var(--ink);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.viewport::before { content: ""; position: absolute; inset: 0; background: radial-gradient(70% 60% at 15% 0%, var(--glow), transparent 70%); pointer-events: none; }
+.grid-layer { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--dot) 0.75px, transparent 1.25px); pointer-events: none; }
+.grid-layer.is-moving { transition: background-position 200ms var(--ease-out), background-size 200ms var(--ease-out); }
+.viewport:not(.grid) .grid-layer { display: none; }
+.viewport.is-panning { cursor: grabbing; }
+.content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.content svg { display: block; }
+.content svg :is(.rz-c, .rz-head) { cursor: pointer; }
+.viewport.is-panning .content svg :is(.rz-c, .rz-head) { cursor: grabbing; }
+.viewport.is-stale .content { opacity: 0.4; }
+/* focus keeps what is connected and fades the rest */
+.content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 150ms ease; }
+.content svg.is-focus :is(.rz-t, .rz-r, .rz-s):not(.is-on) { opacity: 0.15; }
+
+.zoom {
+  position: absolute;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  transition: transform 200ms var(--ease-drawer);
+}
+.zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
+}
+.zoom button:active { transform: scale(0.97); }
+.zoom button svg { width: 15px; height: 15px; }
+.zoom .sep { width: 1px; height: 16px; margin: 0 2px; background: var(--rule); }
+#zoom-level { min-width: 48px; }
+.panel.has-inspector .zoom { transform: translateX(calc(-1 * var(--inspector))); transition-duration: 260ms; }
+
+.notice { position: absolute; left: 50%; margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 12.5px; white-space: nowrap; transform: translateX(-50%); }
+.stale { top: 12px; background: var(--surface); color: var(--danger); box-shadow: var(--shadow-2); }
+.empty { top: 45%; color: var(--muted); }
+.empty code { padding: 1px 5px; border-radius: 4px; background: var(--fill); }
 
 /* the column popover: a small card under its row, with text that can be selected and copied */
 .pop {
@@ -382,197 +369,119 @@ button { cursor: pointer; }
   width: max-content;
   max-width: min(320px, calc(100% - 16px));
   padding: 10px 12px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--panel);
+  border-radius: 10px;
+  background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-2);
   font-size: 12.5px;
   line-height: 1.45;
   user-select: text;
+  transform-origin: top left;
+  transition: opacity 150ms var(--ease-out), scale 150ms var(--ease-out);
 }
+@starting-style {
+  .pop { opacity: 0; scale: 0.97; }
+}
+
+/* the side panel: everything about one table. It slides in from the right edge and leaves the same way */
+.inspector {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--inspector), 100%);
+  background: var(--surface);
+  box-shadow: -1px 0 0 var(--rule), -16px 0 40px rgba(0, 0, 0, 0.12);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 200ms var(--ease-drawer), visibility 0s linear 200ms;
+}
+.inspector[data-open] { transform: none; visibility: visible; transition: transform 260ms var(--ease-drawer), visibility 0s; }
+.ins-head { display: flex; align-items: flex-start; gap: 8px; padding: 14px 8px 12px 16px; flex: none; box-shadow: inset 0 -1px 0 var(--rule); }
+.ins-title { min-width: 0; margin: 2px 0 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.ins-head .btn { margin-left: auto; flex: none; }
+.ins-body { flex: 1; min-height: 0; padding: 12px 16px 28px; overflow: auto; user-select: text; }
+.d-desc { margin: 0 0 2px; font-size: 13px; color: var(--muted); }
+.d-meta { margin: 0; font-size: 12px; color: var(--faint); }
+.d-section { padding-top: 18px; }
+.d-section h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.d-section ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.d-col { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; margin: 0 -8px; padding: 6px 8px; border-radius: 6px; transition: background-color 120ms ease; }
+.d-key { font-size: 10px; font-weight: 600; letter-spacing: 0.02em; color: var(--faint); }
+.d-key.k-pk { color: var(--ink); }
+.d-col-name { justify-self: start; padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; text-align: left; overflow-wrap: anywhere; cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: text-decoration-color 120ms ease; }
+.d-type { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.d-col-desc { grid-column: 2 / -1; font-size: 12px; color: var(--muted); }
+.d-col-more { grid-column: 2 / -1; font-size: 12px; color: var(--faint); }
+.d-rel, .d-con, .d-note { padding: 4px 0; font-size: 12.5px; }
+.d-rel-meta { display: block; font-size: 12px; color: var(--faint); }
+.d-link { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12px; color: var(--accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; transition: text-decoration-color 120ms ease; }
 .d-pop-head { display: flex; align-items: baseline; gap: 8px; }
 .d-pop-name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-.d-pop .d-desc { margin: 4px 0 0; }
+.d-pop .d-desc { margin: 4px 0 0; font-size: 12.5px; }
 .d-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 8px 0 0; }
-.d-facts dt { font-size: 11.5px; color: var(--faint); }
+.d-facts dt { font-size: 12px; color: var(--faint); }
 .d-facts dd { margin: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
-.menu button {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  text-align: left;
-}
-.menu button:hover, .menu button:focus-visible { background: var(--control-on); outline: none; }
-.menu-title { font-size: 13px; line-height: 1.35; }
-.menu-sub { grid-column: 2; font-size: 12px; line-height: 1.35; color: var(--muted); }
-.swatch { position: relative; grid-row: span 2; width: 30px; height: 22px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--rule); }
-.swatch::after { content: ""; position: absolute; left: 7px; top: 6px; width: 16px; height: 10px; border-radius: 3px; }
-.swatch.graphite { background: repeating-conic-gradient(var(--control-on) 0 25%, var(--panel) 0 50%) 0 0 / 8px 8px; }
-.swatch.graphite::after { border: 1.5px solid var(--ink); opacity: 0.7; }
-/* theme swatches: what each background looks like, the same in either page theme */
-.sw-aurora, .sw-aurora-dark { background: linear-gradient(180deg, #05060C 0%, #5A5FF0 45%, #22C7A9 75%, #05060C 100%); }
-.sw-aurora-light { background: linear-gradient(180deg, #E9EBF1 0%, #A9B1F7 45%, #8FD8CC 75%, #E9EBF1 100%); }
-.sw-silk, .sw-silk-dark { background: linear-gradient(135deg, #0A0708 0%, #5B2C7A 40%, #D9893A 75%, #F1B6C4 100%); }
-.sw-silk-light { background: linear-gradient(135deg, #F2ECE6 0%, #C9B8EE 45%, #F2C28E 100%); }
-.sw-caustic, .sw-caustic-dark { background: radial-gradient(circle at 35% 30%, #9FE7F2 0, transparent 35%), linear-gradient(160deg, #0E5E70, #031018); }
-.sw-caustic-light { background: radial-gradient(circle at 35% 30%, #FFFFFF 0, transparent 40%), linear-gradient(160deg, #E4F1F4, #9FD6E0); }
-.swatch[class*="-dark"]::after { background: rgba(15, 18, 28, 0.78); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
-.swatch[class*="-light"]::after { background: rgba(250, 251, 253, 0.86); box-shadow: inset 0 0 0 1px #FFFFFF, 0 1px 2px rgba(15, 23, 42, 0.14); }
-.sw { width: 14px; height: 10px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.4); }
-.panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
-.panel[hidden] { display: none; }
-.viewport {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  background-color: var(--stage);
-  color: var(--ink);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-/* the still drawing's dot grid (without WebGL); the live canvas hides its own */
-.viewport:not(.grid) .rz-grid { display: none; }
-.viewport.is-stale .stage-glass { opacity: 0.35; }
-.viewport.is-panning { cursor: grabbing; }
-.content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.content svg { display: block; }
-.content svg .rz-t { cursor: pointer; }
-.viewport.is-panning .content svg .rz-t { cursor: grabbing; }
-/* rows and table names answer the pointer faintly, so they read as clickable; clicking does the rest */
-.content svg .rz-hit { transition: fill-opacity 0.12s ease; }
-.content svg :is(.rz-c, .rz-head):hover > .rz-hit { fill-opacity: 0.07; }
-.viewport.is-panning .content svg .rz-hit { fill-opacity: 0; }
-.viewport.is-stale .content { opacity: 0.35; }
-
-/* floating controls over the canvas */
-.float {
-  position: absolute;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 78%, transparent);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  backdrop-filter: blur(14px) saturate(1.4);
-  box-shadow: var(--shadow);
-}
-.float.view { left: 12px; top: 12px; }
-.float.stages { left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
-.float.zoom { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
-.float button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 28px;
-  min-width: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-.float button:hover { background: var(--control-on); color: var(--ink); }
-.float button svg { width: 15px; height: 15px; }
-.float .sep { width: 1px; height: 18px; background: var(--rule); margin: 0 3px; }
-.float button[aria-pressed="true"] { background: var(--control-on); color: var(--ink); }
-.float .seg { display: inline-flex; gap: 2px; }
-.float .seg button[aria-pressed="true"], .float .seg button[aria-pressed="true"]:hover { background: var(--ink); color: var(--panel); }
-#zoom-level { min-width: 48px; }
-
-/* switch inside a toggle button: neutral track, filled when on */
-.switch {
-  position: relative;
-  width: 22px;
-  height: 12px;
-  border-radius: 999px;
-  border: 1px solid var(--faint);
-  flex: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-.switch::after {
-  content: "";
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--faint);
-  transition: transform 0.15s ease, background-color 0.15s ease;
-}
-.float button[aria-pressed="true"] .switch { background: var(--ink); border-color: var(--ink); }
-.float button[aria-pressed="true"] .switch::after { transform: translateX(10px); background: var(--panel); }
-
-/* focus: keep what is connected, fade the rest. The live canvas fades the glass under a faded table;
-   the still drawing fades its shadow (rz-s) with the card */
-.content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 0.15s ease; }
-.content svg.is-focus :is(.rz-t, .rz-r, .rz-s):not(.is-on) { opacity: 0.14; }
-.content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
-
-.notice {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
-  font-size: 12.5px;
-  border-radius: 999px;
-  padding: 5px 12px;
-  white-space: nowrap;
-}
-.stale { top: 56px; background: var(--panel); border: 1px solid var(--danger); color: var(--danger); box-shadow: var(--shadow); }
-.empty { top: 45%; color: var(--muted); }
-.empty code, .code-actions code { font-family: var(--font-mono); font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
 
 /* mermaid tab */
-.code-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 8px 8px 14px;
-  border-bottom: 1px solid var(--rule);
-  font-size: 13px;
-  color: var(--muted);
-}
+.code-actions { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; box-shadow: inset 0 -1px 0 var(--rule); font-size: 13px; color: var(--muted); }
 .code-actions p { margin: 0; }
 .code-actions .btn { margin-left: auto; }
-#mermaid-out {
-  flex: 1;
-  margin: 0;
-  overflow: auto;
-  padding: 14px 16px;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-  background: var(--canvas);
-}
+#mermaid-out { flex: 1; margin: 0; padding: 14px 16px; overflow: auto; background: var(--bg); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
 
 .toast {
   position: fixed;
   left: 50%;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
+  z-index: 20;
   margin: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
   background: var(--ink);
-  color: var(--panel);
-  padding: 7px 14px;
-  border-radius: 999px;
+  color: var(--surface);
+  box-shadow: var(--shadow-2);
   font-size: 13px;
-  z-index: 10;
+  translate: -50% 0;
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
 }
+@starting-style {
+  .toast { opacity: 0; transform: translateY(6px); }
+}
+
+/* scrollbars: thin and quiet */
+.editor .cm-scroller, .problems, #mermaid-out, .ins-body { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar { width: 10px; height: 10px; }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 10px; background: var(--scroll); background-clip: padding-box; }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-track,
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-corner { background: transparent; }
+
+/* hover answers only a real pointer; a tap on a touch screen would leave it stuck */
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { background: var(--fill); color: var(--ink); }
+  .btn.secondary:hover { background: var(--surface); box-shadow: var(--shadow-1), inset 0 0 0 999px var(--fill); }
+  .picker:hover { background: var(--fill); }
+  .splitter:hover { background: var(--accent); }
+  .problem:hover { background: var(--fill); }
+  .status-problems:not([data-state="ok"]):hover { background: var(--fill); }
+  .tabs button:hover { color: var(--ink); }
+  .menu-item:hover { background: var(--fill); }
+  .seg button:not([aria-pressed="true"]):hover { color: var(--ink); }
+  .zoom button:hover { background: var(--fill); color: var(--ink); }
+  .d-col:hover { background: var(--fill); }
+  .d-col-name:hover { text-decoration-color: var(--faint); }
+  .d-link:hover { text-decoration-color: currentColor; }
+  .content svg .rz-hit { transition: fill-opacity 120ms ease; }
+  .content svg :is(.rz-c, .rz-head):hover > .rz-hit { fill-opacity: 0.06; }
+  .viewport.is-panning .content svg .rz-hit { fill-opacity: 0; }
+}
+/* a keyboard action lands at once */
+.panel.is-instant, .panel.is-instant * { transition: none !important; }
+/* after hover, so a focused column keeps its accent under the pointer */
+.content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.14; }
 
 @media (max-width: 900px) {
   .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44vh 1px minmax(340px, 1fr); }
@@ -580,12 +489,24 @@ button { cursor: pointer; }
   .splitter { cursor: default; pointer-events: none; }
 }
 @media (max-width: 600px) {
-  .brand-sub, .stats, #copy-svg, .bar-actions .link-docs, .link-source .link-label { display: none; }
-  .link-source { width: 30px; justify-content: center; padding: 0; }
-  .float.view button .label-long, .float.stages .label-long, .float.zoom .label-long { display: none; }
+  .brand-sub, .stats, #copy-svg, .link-docs, .label { display: none; }
+  .link-source { width: 30px; padding: 0; justify-content: center; }
+  /* the panel covers the whole canvas here, zoom included */
+  .panel.has-inspector .zoom { transform: none; }
 }
+/* reduced motion: fewer and gentler, not none. Opacity stays; movement goes */
 @media (prefers-reduced-motion: reduce) {
-  .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after { transition: none; }
+  .btn:active, .seg button:active, .zoom button:active { transform: none; }
+  .menu, .toast { transition: opacity 150ms ease; }
+  .pop { transition: opacity 150ms ease; }
+  @starting-style {
+    .menu, .toast { transform: none; }
+    .pop { scale: none; }
+  }
+  .inspector { transform: none; opacity: 0; transition: opacity 150ms ease, visibility 0s linear 150ms; }
+  .inspector[data-open] { opacity: 1; transition: opacity 150ms ease, visibility 0s; }
+  .zoom, .grid-layer.is-moving { transition: none; }
+  .content svg :is(.rz-t, .rz-r, .rz-s) { transition: none; }
 }
 </style>
 </head>
@@ -596,19 +517,19 @@ button { cursor: pointer; }
     <span class="brand-name">resin</span><span class="brand-sub">playground</span>
   </a>
   <div class="bar-actions">
-    <button type="button" class="btn" id="share">
+    <button type="button" class="btn secondary" id="share">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
       Copy link
     </button>
-    <button type="button" class="btn ghost icon" id="theme" aria-label="Theme: auto" title="Theme: auto" data-mode="auto">
+    <button type="button" class="btn icon" id="theme" aria-label="Theme: auto" title="Theme: auto" data-mode="auto">
       <svg class="i i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor" stroke="none"/></svg>
       <svg class="i i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
       <svg class="i i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
     </button>
-    <a class="btn ghost link-docs" href="https://github.com/JHZLO/resin/blob/main/docs/SPEC.md" target="_blank" rel="noopener">Docs</a>
+    <a class="btn link-docs" href="https://github.com/JHZLO/resin/blob/main/docs/SPEC.md" target="_blank" rel="noopener">Docs</a>
     <a class="btn link-source" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener" title="Source code on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
-      <span class="link-label">GitHub</span>
+      <span class="label">GitHub</span>
     </a>
   </div>
 </header>
@@ -616,9 +537,9 @@ button { cursor: pointer; }
 <main class="work" id="work">
   <section class="pane pane-source" id="source" aria-label="Source">
     <div class="pane-head">
-      <label class="picker" title="Load an example">
+      <label class="picker" title="Open an example">
         <span class="sr-only">Example</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></svg>
+        <svg class="file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></svg>
         <select id="example">
           <option value="order">orders.erd</option>
           <option value="shop">shop.erd</option>
@@ -628,8 +549,8 @@ button { cursor: pointer; }
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </label>
       <span class="head-actions">
-        <button type="button" class="btn ghost icon" id="copy-source" aria-label="Copy the source" title="Copy the source"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
-        <button type="button" class="btn ghost icon" id="editor-hide" aria-label="Hide the editor" title="Hide the editor (Ctrl or Cmd + \)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15.5 10 13.5 12l2 2"/></svg></button>
+        <button type="button" class="btn icon" id="copy-source" aria-label="Copy the source" title="Copy the source"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+        <button type="button" class="btn icon" id="editor-hide" aria-label="Hide the editor" title="Hide the editor (Ctrl or Cmd + \)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15.5 10 13.5 12l2 2"/></svg></button>
       </span>
     </div>
     <div class="editor" id="editor"></div>
@@ -642,68 +563,66 @@ button { cursor: pointer; }
   <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the panes" tabindex="0"></div>
   <section class="pane" aria-label="Diagram">
     <div class="pane-head">
-      <button type="button" class="btn ghost icon" id="editor-show" aria-label="Show the editor" title="Show the editor (Ctrl or Cmd + \)" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13.5 10l2 2-2 2"/></svg></button>
+      <button type="button" class="btn icon" id="editor-show" aria-label="Show the editor" title="Show the editor (Ctrl or Cmd + \)" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13.5 10l2 2-2 2"/></svg></button>
       <div class="tabs" role="tablist">
         <button type="button" role="tab" id="tab-diagram" aria-selected="true" aria-controls="panel-diagram">Diagram</button>
         <button type="button" role="tab" id="tab-mermaid" aria-selected="false" aria-controls="panel-mermaid">Mermaid</button>
       </div>
       <span class="stats" id="stats"></span>
       <span class="head-actions">
-        <button type="button" class="btn ghost" id="copy-svg">Copy SVG</button>
         <span class="menu-wrap">
-          <button type="button" class="btn" id="download" aria-haspopup="menu" aria-expanded="false" aria-controls="download-menu" title="Download SVG">
+          <button type="button" class="btn" id="view" aria-haspopup="dialog" aria-expanded="false" aria-controls="view-menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+            <span class="label">View</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="menu view-menu" id="view-menu" role="dialog" aria-label="View options" hidden>
+            <div class="view-row"><span id="vr-columns">Columns</span><span class="seg" role="group" aria-labelledby="vr-columns"><button type="button" data-set="columns:all">All</button><button type="button" data-set="columns:keys">Keys</button></span></div>
+            <div class="view-row"><span id="vr-audit">Audit tables</span><span class="seg" role="group" aria-labelledby="vr-audit"><button type="button" data-set="audit:collapse">Folded</button><button type="button" data-set="audit:expand">Shown</button></span></div>
+            <div class="view-row"><span id="vr-lines">Lines</span><span class="seg" role="group" aria-labelledby="vr-lines"><button type="button" data-set="edges:angular">Angular</button><button type="button" data-set="edges:curved">Curved</button></span></div>
+            <div class="view-row"><span id="vr-grid">Grid</span><span class="seg" role="group" aria-labelledby="vr-grid"><button type="button" data-set="grid:on">On</button><button type="button" data-set="grid:off">Off</button></span></div>
+          </div>
+        </span>
+        <button type="button" class="btn" id="copy-svg">Copy SVG</button>
+        <span class="menu-wrap">
+          <button type="button" class="btn secondary" id="download" aria-haspopup="menu" aria-expanded="false" aria-controls="download-menu" title="Download SVG">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
             SVG
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div class="menu" id="download-menu" role="menu" aria-label="Download SVG" hidden>
-            <button type="button" role="menuitem" data-variant="plain"><span class="swatch graphite" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background, fits any page</span></button>
-            <button type="button" role="menuitem" data-variant="dark"><span class="swatch sw-aurora-dark" aria-hidden="true"></span><span class="menu-title">Aurora, dark</span><span class="menu-sub">Glass on its background, as a still</span></button>
-            <button type="button" role="menuitem" data-variant="light"><span class="swatch sw-aurora-light" aria-hidden="true"></span><span class="menu-title">Aurora, light</span><span class="menu-sub">Glass on its background, as a still</span></button>
+            <button type="button" class="menu-item" role="menuitem" data-variant="plain"><span class="swatch plain" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background</span></button>
+            <button type="button" class="menu-item" role="menuitem" data-variant="dark"><span class="swatch dark" aria-hidden="true"></span><span class="menu-title">Dark</span><span class="menu-sub">On a dark background</span></button>
+            <button type="button" class="menu-item" role="menuitem" data-variant="light"><span class="swatch light" aria-hidden="true"></span><span class="menu-title">Light</span><span class="menu-sub">On a light background</span></button>
           </div>
         </span>
       </span>
     </div>
     <div class="panel" id="panel-diagram" role="tabpanel" aria-labelledby="tab-diagram">
       <div class="viewport grid" id="viewport">
+        <div class="grid-layer" id="grid-layer" aria-hidden="true"></div>
         <div class="content" id="content"></div>
         <p class="notice empty" id="empty" hidden>Add a <code>table</code> to see it here.</p>
         <p class="notice stale" id="stale" hidden>Showing the last valid diagram. Fix the errors to update it.</p>
-        <div class="float view" role="group" aria-label="View">
-          <button type="button" id="toggle-keys" aria-pressed="false" title="Show only key and reference columns"><span class="switch" aria-hidden="true"></span><span>Keys<span class="label-long"> only</span></span></button>
-          <button type="button" id="toggle-audit" aria-pressed="false" title="Draw audit tables instead of folding them"><span class="switch" aria-hidden="true"></span><span>Audit<span class="label-long"> tables</span></span></button>
-          <span class="sep" aria-hidden="true"></span>
-          <span class="seg" role="group" aria-label="Lines">
-            <button type="button" data-edges="angular" aria-pressed="true" title="Right-angled lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h9v10h9"/></svg><span class="label-long">Angular</span></button>
-            <button type="button" data-edges="curved" aria-pressed="false" title="Curved lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7c9 0 9 10 18 10"/></svg><span class="label-long">Curved</span></button>
-          </span>
-        </div>
-        <div class="float stages" role="group" aria-label="Background">
-          <button type="button" data-stage="aurora" aria-pressed="false" title="Aurora: ribbons of light under stars"><span class="sw sw-aurora" aria-hidden="true"></span><span class="label-long">Aurora</span></button>
-          <button type="button" data-stage="silk" aria-pressed="false" title="Silk: folds of color that flow"><span class="sw sw-silk" aria-hidden="true"></span><span class="label-long">Silk</span></button>
-          <button type="button" data-stage="caustic" aria-pressed="false" title="Caustic: light through water"><span class="sw sw-caustic" aria-hidden="true"></span><span class="label-long">Caustic</span></button>
-        </div>
-        <div class="float zoom" role="group" aria-label="Zoom">
+        <div class="zoom" role="group" aria-label="Zoom">
           <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
           <button type="button" id="zoom-level" title="Actual size">100%</button>
           <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12M12 6v12"/></svg></button>
           <span class="sep" aria-hidden="true"></span>
-          <button type="button" id="zoom-fit" title="Fit to screen (double-click the canvas)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg><span class="label-long">Fit</span></button>
-          <button type="button" id="grid-toggle" aria-pressed="true" title="Show grid"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg><span class="label-long">Grid</span></button>
+          <button type="button" id="zoom-fit" title="Fit to screen (double-click the canvas)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg><span class="label">Fit</span></button>
         </div>
       </div>
       <div class="pop" id="pop" role="dialog" aria-label="Column details" hidden></div>
-      <aside class="inspector" id="inspector" aria-label="Table details" hidden>
-        <div class="ins-bar">
-          <span class="ins-label">Table</span>
-          <span class="ins-title" id="inspector-title"></span>
-          <button type="button" class="btn ghost icon" id="inspector-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <aside class="inspector" id="inspector" aria-labelledby="inspector-title" inert>
+        <div class="ins-head">
+          <h2 class="ins-title" id="inspector-title"></h2>
+          <button type="button" class="btn icon" id="inspector-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
         <div class="ins-body" id="inspector-body"></div>
       </aside>
     </div>
     <div class="panel" id="panel-mermaid" role="tabpanel" aria-labelledby="tab-mermaid" hidden>
-      <div class="code-actions"><p>Paste into any Mermaid renderer, such as a <code>```mermaid</code> block on GitHub.</p><button type="button" class="btn" id="copy-mermaid">Copy</button></div>
+      <div class="code-actions"><p>Paste into any Mermaid renderer, such as a <code>```mermaid</code> block on GitHub.</p><button type="button" class="btn secondary" id="copy-mermaid">Copy</button></div>
       <pre id="mermaid-out"></pre>
     </div>
   </section>

@@ -20,12 +20,12 @@ The first public version of the language, grammar v0.2.
 - A resolved model shared by every output.
 - Mermaid `erDiagram` output, tested against Mermaid 11.16.
 - SVG output laid out with ELK, with connectors from each foreign key row to its primary key row.
-- SVG looks: `graphite`, plain ink with no background (the default), and frosted glass in three
-  themes, each dark or light: `aurora` (ribbons of light under stars), `silk` and `caustic`.
-- A command-line entry (`pnpm resin <file.erd> [--svg [--look <look>]]`) and a web playground with a
-  live glass canvas (WebGL): the background moves with the pointer's light, and a tap sends a ripple.
+- SVG looks: `plain`, ink with no background (the default), and `dark` and `light`, which put solid
+  cards on a quiet background of their own.
+- A command-line entry (`pnpm resin <file.erd> [--svg [--look <look>]]`) and a web playground.
   Clicking a table name opens a side panel with its columns, constraints and relations; clicking a
-  column opens a popover with its details. The editor shows problems and the cursor position in a
-  status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
-  default, or a still of the glass theme.
+  column opens a popover with its details. View options (columns, audit tables, connectors, grid)
+  live in one menu. The editor shows problems and the cursor position in a status bar, and folds
+  away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by default, or dark or
+  light.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
