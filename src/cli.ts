@@ -1,24 +1,34 @@
-// Command-line entry: `pnpm resin <file.erd> [--ast | --model | --svg [--keys] [--expand-audit]]`
+// Command-line entry: `pnpm resin <file.erd> [--ast | --model | --svg [--look <look>] [--keys] [--expand-audit]]`
 // Diagnostics go to stderr in compiler format; the result (Mermaid, syntax tree JSON, model JSON
 // or SVG) goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync } from "node:fs";
-import { compile, formatDiagnostic, toSvg } from "./index.ts";
+import { type SvgLook, compile, formatDiagnostic, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
 
   (no option)      print Mermaid erDiagram
   --svg            print SVG (needs elkjs)
+    --look <look>  graphite (default, no background), aurora (dark glass)
+                   or clear (light glass)
     --keys         show key and reference columns only
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON`;
 
+const LOOKS: readonly SvgLook[] = ["graphite", "aurora", "clear"];
+
 const args = process.argv.slice(2);
-const file = args.find((a) => !a.startsWith("--"));
+const lookAt = args.indexOf("--look");
+const look = lookAt >= 0 ? args[lookAt + 1] : "graphite";
+const file = args.find((a, i) => !a.startsWith("--") && (lookAt < 0 || i !== lookAt + 1));
 if (!file || args.includes("--help")) {
   console.error(USAGE);
   process.exit(file ? 0 : 2);
+}
+if (!LOOKS.includes(look as SvgLook)) {
+  console.error(`resin: --look takes ${LOOKS.join(", ")}\n\n${USAGE}`);
+  process.exit(2);
 }
 
 const source = readFileSync(file, "utf8");
@@ -32,6 +42,7 @@ else if (args.includes("--svg")) {
     // Layout needs elkjs. The core does not depend on it; only this entry point loads it.
     const { default: ELK } = await import("elkjs");
     const { svg } = await toSvg(result.model, new ELK(), {
+      look: look as SvgLook,
       standalone: true,
       columns: args.includes("--keys") ? "keys" : "all",
       audit: args.includes("--expand-audit") ? "expand" : "collapse",

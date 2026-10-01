@@ -45,7 +45,7 @@ describe("toSvg", () => {
   it("dashes logical references and labels one-to-one 1 and one-to-many N", async () => {
     const { svg } = await toSvg(modelOf("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n a_id bigint uk ~> a\n c_id bigint -> a\n}"), elk);
     const rels = svg.split('<g class="rz-r"').slice(1);
-    expect(rels.map((r) => [r.includes('stroke-dasharray="4 4"'), />(1|N)<\/text>/.exec(r)?.[1]])).toEqual([
+    expect(rels.map((r) => [r.includes("stroke-dasharray"), />(1|N)<\/text>/.exec(r)?.[1]])).toEqual([
       [true, "1"],
       [false, "N"],
     ]);
@@ -57,6 +57,31 @@ describe("toSvg", () => {
     expect(inline.svg).not.toMatch(/fill="#/);
     const file = await toSvg(modelOf(ORDER), elk, { standalone: true });
     expect(file.svg).toContain("prefers-color-scheme:dark");
+  });
+
+  it("draws aurora and clear over their own backdrop, frosted inside the cards", async () => {
+    for (const look of ["aurora", "clear"] as const) {
+      const r = await toSvg(modelOf(ORDER), elk, { look });
+      expect(r.background).toMatch(/^#/);
+      expect(r.svg).toContain('id="rz-backdrop"');
+      expect(r.svg).toContain('filter="url(#rz-frost)"');
+      expect(r.svg).toContain('mask="url(#rz-cards)"');
+    }
+    expect((await toSvg(modelOf(ORDER), elk)).background).toBeNull();
+  });
+
+  it("prefixes every id so several drawings can share a page", async () => {
+    const { svg } = await toSvg(modelOf(ORDER), elk, { look: "aurora", idPrefix: "a1-" });
+    const ids = [...svg.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
+    const refs = [...svg.matchAll(/url\(#([^)]+)\)|href="#([^"]+)"/g)].map((m) => m[1] ?? m[2]);
+    expect(ids.every((i) => i.startsWith("a1-"))).toBe(true);
+    expect(refs.every((r) => ids.includes(r))).toBe(true);
+  });
+
+  it("bleeds the backdrop beyond the drawing for canvases that pan", async () => {
+    const { svg } = await toSvg(modelOf(ORDER), elk, { look: "clear", bleed: 2000 });
+    expect(svg).toContain('style="overflow:visible"');
+    expect(svg).toContain('x="-2000" y="-2000"');
   });
 
   it("measures Hangul as double width", async () => {
@@ -77,13 +102,20 @@ describe("toSvg", () => {
   });
 });
 
-// Golden files: examples/<name>.erd → examples/<name>.svg (standalone). Changing the drawing breaks
-// these; open the SVG, check it by eye and update with `pnpm test -u` only when the change is intended.
+// Golden files: examples/<name>.erd → examples/<name>.svg (graphite, standalone), plus the glass looks
+// of the order example, which the README shows. Changing the drawing breaks these; open the SVG, check
+// it by eye and update with `pnpm test -u` only when the change is intended.
 describe("golden svg", () => {
   for (const file of readdirSync(EXAMPLES).filter((f) => f.endsWith(".erd")).sort()) {
     it(file, async () => {
       const { svg } = await toSvg(modelOf(readFileSync(join(EXAMPLES, file), "utf8")), elk, { standalone: true });
       await expect(svg + "\n").toMatchFileSnapshot(join(EXAMPLES, file.replace(/\.erd$/, ".svg")));
+    });
+  }
+  for (const look of ["aurora", "clear"] as const) {
+    it(`order.erd (${look})`, async () => {
+      const { svg } = await toSvg(modelOf(ORDER), elk, { look });
+      await expect(svg + "\n").toMatchFileSnapshot(join(EXAMPLES, `order.${look}.svg`));
     });
   }
 });
