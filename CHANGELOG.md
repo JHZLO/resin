@@ -20,11 +20,13 @@ The first public version of the language, grammar v0.2.
 - A resolved model shared by every output.
 - Mermaid `erDiagram` output, tested against Mermaid 11.16.
 - SVG output laid out with ELK, with connectors from each foreign key row to its primary key row.
+  A nullable column is marked `NULL` after its type, as in DDL.
 - SVG looks: `graphite`, plain ink with no background (the default), and frosted glass in three
   themes, each dark or light: `aurora` (ribbons of light under stars), `silk` and `caustic`.
 - A command-line entry (`pnpm resin <file.erd> [--svg [--look <look>]]`) and a web playground with a
   live glass canvas (WebGL): the background moves with the pointer's light, and a tap sends a ripple.
-  Clicking a table name opens a side panel with its columns, constraints and relations; clicking a
+  Clicking a table name opens a side panel that lists its columns (key, type, NULL or NOT NULL,
+  description, enum values), indexes and relations as tables; its left edge resizes it. Clicking a
   column opens a popover with its details. The editor shows problems and the cursor position in a
   status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
   default, or a still of the glass theme.

@@ -272,12 +272,12 @@ button { cursor: pointer; }
 .status-pos { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 
 /* scrollbars: thin and quiet, darker on hover */
-.editor .cm-scroller, .problems, #mermaid-out, .ins-body { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar { width: 10px; height: 10px; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-thumb { background: var(--scroll); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-track,
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body)::-webkit-scrollbar-corner { background: transparent; }
+.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar { width: 10px; height: 10px; }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-thumb { background: var(--scroll); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-track,
+:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-corner { background: transparent; }
 .problem {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
@@ -348,7 +348,9 @@ button { cursor: pointer; }
   right: 0;
   bottom: 0;
   z-index: 4;
-  width: min(360px, 100%);
+  /* wide enough for its tables; the edge on the left resizes it (main.ts sets --ins-w). It always
+     leaves 120px of canvas beside it, except on a phone, where it takes the whole width */
+  width: min(var(--ins-w, 560px), max(calc(100% - 120px), 360px), 100%);
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -361,12 +363,18 @@ button { cursor: pointer; }
   .inspector { opacity: 0; transform: translateX(28px); }
 }
 .inspector[hidden] { display: none; }
+.ins-resize { position: absolute; top: 0; bottom: 0; left: -5px; z-index: 1; width: 10px; cursor: col-resize; touch-action: none; }
+.ins-resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background-color 120ms ease; }
+.ins-resize:focus-visible { outline: none; }
+.ins-resize:focus-visible::after, .ins-resize.is-dragging::after { background: var(--accent); }
+@media (hover: hover) and (pointer: fine) { .ins-resize:hover::after { background: var(--accent); } }
+body.is-resizing { cursor: col-resize; user-select: none; }
 .ins-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 14px; border-bottom: 1px solid var(--rule); flex: none; }
 .ins-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .ins-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
 .ins-bar .btn { margin-left: auto; flex: none; }
 .ins-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 16px 28px; user-select: text; }
-.panel.has-inspector .float.zoom { right: calc(min(360px, 100%) + 12px); }
+.panel.has-inspector .float.zoom { right: calc(min(var(--ins-w, 560px), max(calc(100% - 120px), 360px), 100%) + 12px); }
 .d-head { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
 .d-name { margin: 0; font-family: var(--font-mono); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .d-tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -375,21 +383,44 @@ button { cursor: pointer; }
 .d-section { padding-top: 16px; }
 .d-section h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .d-section ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
-.d-col { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; padding: 5px 6px; border-radius: 6px; }
-@media (hover: hover) and (pointer: fine) { .d-col:hover { background: var(--active-line); } }
 .d-key { font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
+.k-ix { color: var(--muted); }
 .k-pk { color: var(--k-pk); }
 .k-uk { color: var(--k-uk); }
 .k-fk { color: var(--k-fk); }
-.d-col-name { justify-self: start; padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.d-col-name { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; text-align: left; cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .d-col-name:hover { text-decoration: underline; text-underline-offset: 3px; } }
 .d-type { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-.d-col-desc, .d-col-facts { grid-column: 2 / -1; font-size: 12px; color: var(--muted); }
-.d-col-facts { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; }
 .d-chip { display: inline-block; padding: 0 6px; border: 1px solid var(--rule); border-radius: 4px; background: var(--code); font-family: var(--font-mono); font-size: 10.5px; line-height: 18px; color: var(--muted); }
-.d-rel, .d-con, .d-note { padding: 4px 6px; font-size: 12.5px; line-height: 1.6; }
+.d-note { padding: 4px 6px; font-size: 12.5px; line-height: 1.6; }
 .d-table code, .d-pop code { font-family: var(--font-mono); font-size: 12px; }
-.d-rel-meta { display: block; font-size: 11.5px; color: var(--faint); }
+/* the panel's tables, one style for columns, indexes and references: a quiet header row, rules
+   between rows, every cell reading from its top line. A narrow panel scrolls them sideways */
+.t-wrap { overflow-x: auto; margin: 0 -6px; padding: 0 6px; }
+.t-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.t-cols { min-width: 470px; }
+.t-table th { padding: 0 8px 6px; border-bottom: 1px solid var(--rule); text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--faint); white-space: nowrap; }
+.t-table td { padding: 7px 8px; border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); vertical-align: top; }
+.t-table tr:last-child td { border-bottom: 0; }
+.t-table :is(th, td):first-child { padding-left: 6px; }
+.t-table :is(th, td):last-child { padding-right: 6px; }
+.t-key { width: 26px; }
+.t-key .d-key { line-height: 18px; }
+.t-name { font-family: var(--font-mono); white-space: nowrap; }
+.t-none { font-family: var(--font-body); font-size: 12px; color: var(--faint); }
+.t-type { font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
+.t-null { font-family: var(--font-mono); font-size: 11px; line-height: 18px; color: var(--faint); white-space: nowrap; }
+.t-null.is-null { color: var(--k-pk); font-weight: 600; }
+.t-desc { min-width: 120px; color: var(--muted); }
+.t-desc-text { display: block; }
+.t-note { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.t-note i { padding: 0 4px; font-style: normal; color: var(--faint); }
+.t-lab { font-family: var(--font-body); color: var(--faint); }
+.t-rel { font-size: 12px; color: var(--faint); }
+.t-cols tbody tr { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .t-cols tbody tr:hover td { background: var(--active-line); } }
+/* the column picked on the diagram, in the table */
+.t-cols tbody tr.is-on td { background: var(--accent-soft); }
 .d-link { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12px; color: var(--accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .d-link:hover { text-decoration-color: currentColor; } }
 
@@ -455,7 +486,7 @@ button { cursor: pointer; }
 .swatch[class*="-dark"]::after { background: rgba(15, 18, 28, 0.78); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
 .swatch[class*="-light"]::after { background: rgba(250, 251, 253, 0.86); box-shadow: inset 0 0 0 1px #FFFFFF, 0 1px 2px rgba(15, 23, 42, 0.14); }
 .sw { width: 14px; height: 10px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.4); }
-.panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; container-type: inline-size; }
+.panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .panel[hidden] { display: none; }
 .viewport {
   position: relative;
@@ -620,12 +651,13 @@ button { cursor: pointer; }
   .brand-sub, .stats, #copy-svg, .bar-actions .link-docs, .link-source .link-label { display: none; }
   .link-source { width: 30px; justify-content: center; padding: 0; }
   .float.view button .label-long, .float.stages .label-long, .float.zoom .label-long { display: none; }
+  .ins-resize { display: none; }
+  .inspector { width: 100%; }
 }
-/* with the side panel open on a narrow canvas, the floating controls drop their labels so the zoom
-   group, which moves aside for the panel, does not land on the background picker */
-@container (max-width: 860px) {
-  .panel.has-inspector .float .label-long { display: none; }
-}
+/* when the side panel leaves little canvas (main.ts measures it), the floating controls drop their
+   labels; with very little, the background picker steps aside so the zoom group does not land on it */
+.panel:is([data-room="snug"], [data-room="tight"]) .float .label-long { display: none; }
+.panel[data-room="tight"] .float.stages { display: none; }
 /* reduced motion: fewer and gentler, not none. Things still fade; nothing slides, grows or presses */
 @media (prefers-reduced-motion: reduce) {
   .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after, .work.is-moving { transition: none; }
@@ -744,6 +776,7 @@ button { cursor: pointer; }
       </div>
       <div class="pop" id="pop" role="dialog" aria-label="Column details" hidden></div>
       <aside class="inspector" id="inspector" aria-label="Table details" hidden>
+        <div class="ins-resize" id="inspector-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" title="Drag to resize" tabindex="0"></div>
         <div class="ins-bar">
           <span class="ins-label">Table</span>
           <span class="ins-title" id="inspector-title"></span>

@@ -75,8 +75,8 @@ pass in.
 
 In the [playground](https://jhzlo.github.io/resin/) the glass is live: the background drifts, the
 stars twinkle and the glass catches the light under your pointer. Click a table name to see its
-columns, constraints and relations, or a column to see its details. Connectors can be angular or
-curved.
+columns, indexes and relations as tables, or a column to see its details. Connectors can be angular
+or curved.
 
 ## Getting started
 

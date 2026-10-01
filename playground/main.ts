@@ -21,6 +21,7 @@ const EXAMPLES: Record<string, string> = {
 const STORE = "resin.playground";
 const THEME_STORE = "resin.theme";
 const STAGE_STORE = "resin.stage";
+const PANEL_STORE = "resin.panel";
 
 /** The canvas's background themes; each has a dark and a light version that follows the page theme */
 const STAGES = { aurora: "Aurora", silk: "Silk", caustic: "Caustic" } as const;
@@ -250,6 +251,8 @@ function pickColumn(table: string, column: string): void {
 function showInspector(name: string): void {
   const view = lastModel ? tableDetails(lastModel, name, openTable, (t, c) => {
     pickColumn(t, c);
+    // A row picked in the panel may sit under the panel or off the canvas: bring it out
+    if (!pop.hidden) revealRow(t, c);
     glass?.refresh();
   }) : null;
   if (!view) return closeInspector();
@@ -258,12 +261,15 @@ function showInspector(name: string): void {
   byId("inspector-title").textContent = name;
   inspector.hidden = false;
   diagramPanel.classList.add("has-inspector");
+  markPicked();
+  fitFloats();
 }
 
 function closeInspector(): void {
   inspected = null;
   inspector.hidden = true;
   diagramPanel.classList.remove("has-inspector");
+  fitFloats();
 }
 
 function showPop(table: string, column: string): void {
@@ -273,12 +279,115 @@ function showPop(table: string, column: string): void {
   pop.replaceChildren(view);
   pop.hidden = false;
   placePop();
+  markPicked();
 }
 
 function closePop(): void {
   popped = null;
   pop.hidden = true;
+  markPicked();
 }
+
+/** The column in the popover, marked in the panel's table too */
+function markPicked(): void {
+  for (const row of inspectorBody.querySelectorAll("tr.is-on")) row.classList.remove("is-on");
+  if (popped && popped.table === inspected) inspectorBody.querySelector(`tr[data-c="${CSS.escape(popped.column)}"]`)?.classList.add("is-on");
+}
+
+/** Center a row in what the side panel leaves visible, unless it is already in plain view */
+function revealRow(table: string, column: string): void {
+  const row = rowEl(table, column);
+  if (!row) return;
+  const area = viewport.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  const covered = inspector.hidden ? 0 : inspector.offsetWidth;
+  if (r.left >= area.left + 8 && r.right <= area.right - covered - 8 && r.top >= area.top + 8 && r.bottom <= area.bottom - 8) return;
+  const cx = (r.left + r.width / 2 - area.left - panzoom.x) / panzoom.scale;
+  const cy = (r.top + r.height / 2 - area.top - panzoom.y) / panzoom.scale;
+  panzoom.centerOn(cx, cy, covered);
+}
+
+// ---- the side panel's width, and the canvas it leaves ----
+
+const zoomFloat = viewport.querySelector<HTMLElement>(".float.zoom")!;
+const resizer = byId("inspector-resize");
+const PANEL_MIN = 360;
+let panelWidth = 560;
+try {
+  const saved = Number(localStorage.getItem(PANEL_STORE));
+  if (saved >= PANEL_MIN) panelWidth = saved;
+} catch {
+  /* keep the default */
+}
+
+const panelMax = (): number => Math.max(PANEL_MIN, diagramPanel.clientWidth - 120);
+
+/** The width goes on the two elements that use it, not on the panel: a variable on the panel would
+ *  restyle the whole drawing on every move of a drag. CSS caps it at the canvas's own width */
+function applyPanelWidth(): void {
+  for (const el of [inspector, zoomFloat]) el.style.setProperty("--ins-w", `${panelWidth}px`);
+  resizer.setAttribute("aria-valuenow", String(panelWidth));
+  resizer.setAttribute("aria-valuemin", String(PANEL_MIN));
+  resizer.setAttribute("aria-valuemax", String(Math.round(panelMax())));
+  fitFloats();
+  placePop();
+}
+
+/** Wide enough for its tables by default; at most what leaves a little canvas beside it */
+function setPanelWidth(width: number, keep = false): void {
+  panelWidth = Math.round(Math.min(panelMax(), Math.max(PANEL_MIN, width)));
+  applyPanelWidth();
+  if (!keep) return;
+  try {
+    localStorage.setItem(PANEL_STORE, String(panelWidth));
+  } catch {
+    /* the width lasts for this visit */
+  }
+}
+
+/** With little canvas left beside the panel, the floating controls drop their labels; with very
+ *  little, the background picker steps aside so the zoom group does not land on it */
+function fitFloats(): void {
+  const free = viewport.clientWidth - (inspector.hidden ? 0 : inspector.offsetWidth);
+  const room = free < 350 ? "tight" : free < 520 ? "snug" : "";
+  if ((diagramPanel.dataset.room ?? "") !== room) diagramPanel.dataset.room = room;
+}
+
+// The panel's left edge: drag it, or use the arrow keys when it has focus
+resizer.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  resizer.setPointerCapture(e.pointerId);
+  resizer.classList.add("is-dragging");
+  document.body.classList.add("is-resizing");
+  const startX = e.clientX;
+  const startWidth = inspector.offsetWidth;
+  const move = (m: PointerEvent) => setPanelWidth(startWidth + (startX - m.clientX));
+  const up = () => {
+    resizer.removeEventListener("pointermove", move);
+    resizer.removeEventListener("pointerup", up);
+    resizer.removeEventListener("pointercancel", up);
+    resizer.classList.remove("is-dragging");
+    document.body.classList.remove("is-resizing");
+    setPanelWidth(panelWidth, true);
+  };
+  resizer.addEventListener("pointermove", move);
+  resizer.addEventListener("pointerup", up);
+  resizer.addEventListener("pointercancel", up);
+});
+resizer.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  e.preventDefault();
+  setPanelWidth(panelWidth + (e.key === "ArrowLeft" ? 24 : -24), true);
+});
+// A double-click on the edge goes back to the default width
+resizer.addEventListener("dblclick", () => setPanelWidth(560, true));
+// A resized canvas changes what the panel covers: re-check the floating controls and the popover
+new ResizeObserver(() => {
+  fitFloats();
+  placePop();
+}).observe(viewport);
+applyPanelWidth();
 
 /** Under its row, or above it when there is no room below; hidden while the row is out of view.
  *  It is placed with `translate`, so its entrance can grow it from the corner nearest the row */

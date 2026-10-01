@@ -1,6 +1,10 @@
 // What the playground says about a table (the side panel) and about a column (the small popover).
 // Both are built from the model, so they state exactly what the diagram means, and both are plain
 // HTML, so their text can be selected and copied.
+//
+// The panel is a set of tables in one style: columns, indexes, references. Every column has the same
+// cells (key, name, type, NULL or NOT NULL, description), so the eye runs straight down them; facts
+// that belong to one column only (its enum values, that it is encrypted) sit under its description.
 
 import type { Model, ModelColumn, ModelTable, Relation } from "../src/index.ts";
 
@@ -18,9 +22,10 @@ export type OpenTable = (name: string) => void;
 /** Picking a column from the panel */
 export type PickColumn = (table: string, column: string) => void;
 
-const keyOf = (c: ModelColumn, refs: Relation[]): "PK" | "UK" | "FK" | null => (c.pk ? "PK" : c.uk ? "UK" : refs.length ? "FK" : null);
-const typeOf = (c: ModelColumn, t: ModelTable): string => c.type + (c.nullable && t.origin !== "audit" ? "?" : "");
-const kindOf = (r: Relation): string => (r.kind === "physical" ? "foreign key" : "logical reference");
+type Key = "PK" | "UK" | "FK" | "IX";
+/** A column's strongest role: primary key, unique, reference, or just indexed */
+const keyOf = (c: ModelColumn, refs: Relation[]): Key | null => (c.pk ? "PK" : c.uk ? "UK" : refs.length ? "FK" : c.index ? "IX" : null);
+const kindOf = (r: Relation): string => (r.kind === "physical" ? "foreign key" : "logical");
 
 function link(name: string, open: OpenTable): HTMLButtonElement {
   const b = h("button", "d-link", name);
@@ -30,12 +35,37 @@ function link(name: string, open: OpenTable): HTMLButtonElement {
   return b;
 }
 
-const key = (k: string | null): Child => (k ? h("span", `d-key k-${k.toLowerCase()}`, k) : h("span", "d-key", ""));
-const chip = (text: string): HTMLElement => h("span", "d-chip", text);
+const key = (k: Key | null): Child => h("span", k ? `d-key k-${k.toLowerCase()}` : "d-key", k ?? "");
 const code = (text: string): HTMLElement => h("code", null, text);
+/** NULL stands out (in the same amber the diagram uses); NOT NULL, the usual case, stays quiet */
+const nullity = (c: ModelColumn): HTMLElement => h("span", c.nullable ? "t-null is-null" : "t-null", c.nullable ? "NULL" : "NOT NULL");
+const slashed = (values: string[]): Child[] => values.flatMap((v, i) => (i ? [h("i", null, "/"), v] : [v]));
 
-function section(title: string, ...items: Child[]): HTMLElement {
+function list(title: string, ...items: Child[]): HTMLElement {
   return h("section", "d-section", h("h3", null, title), h("ul", null, ...items));
+}
+
+/** One of the panel's tables. Narrow panels scroll it sideways rather than squeeze it */
+function table(title: string, cls: string, heads: [string, string | null][], rows: HTMLTableRowElement[]): HTMLElement {
+  const head = h("tr", null, ...heads.map(([label, c]) => h("th", c, label)));
+  return h(
+    "section",
+    "d-section",
+    h("h3", null, title),
+    h("div", "t-wrap", h("table", `t-table ${cls}`, h("thead", null, head), h("tbody", null, ...rows))),
+  );
+}
+
+/** Every index of a table: its primary key, then unique keys, then indexes, single or composite */
+function indexesOf(t: ModelTable): { kind: Key; name: string | null; columns: string[] }[] {
+  const out: { kind: Key; name: string | null; columns: string[] }[] = [];
+  const pk = t.columns.filter((c) => c.pk).map((c) => c.name);
+  if (pk.length) out.push({ kind: "PK", name: null, columns: pk });
+  for (const c of t.columns) if (c.uk) out.push({ kind: "UK", name: c.ukName, columns: [c.name] });
+  for (const k of t.constraints) if (k.kind === "unique") out.push({ kind: "UK", name: k.name, columns: k.columns });
+  for (const c of t.columns) if (c.index) out.push({ kind: "IX", name: c.index.name, columns: [c.name] });
+  for (const k of t.constraints) if (k.kind === "index") out.push({ kind: "IX", name: k.name, columns: k.columns });
+  return out;
 }
 
 /** The side panel: everything about one table */
@@ -50,27 +80,58 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
   const columns = t.columns.map((c) => {
-    const refs = outgoing.filter((r) => r.childColumn === c.name);
-    const facts: string[] = [];
-    if (c.enumValues) facts.push(`enum ${c.enumValues.join(", ")}`);
-    if (c.enc) facts.push("encrypted");
-    if (c.index) facts.push(c.index.name ? `index ${c.index.name}` : "index");
-    if (c.uk && c.ukName) facts.push(`unique ${c.ukName}`);
-    for (const r of refs) facts.push(`${r.kind === "physical" ? "->" : "~>"} ${r.parent}.${r.parentColumn}`);
     const nameButton = h("button", "d-col-name", c.name);
     nameButton.type = "button";
     nameButton.title = "Show this column on the diagram";
-    nameButton.addEventListener("click", () => pick(t.name, c.name));
-    return h(
-      "li",
-      "d-col",
-      key(keyOf(c, refs)),
-      nameButton,
-      h("span", "d-type", typeOf(c, t)),
-      c.description ? h("span", "d-col-desc", c.description) : null,
-      facts.length ? h("span", "d-col-facts", ...facts.map(chip)) : null,
+    const notes: Child[] = [];
+    if (c.enumValues) notes.push(h("span", "t-note", h("span", "t-lab", "values"), " ", ...slashed(c.enumValues)));
+    if (c.enc) notes.push(h("span", "t-note", h("span", "t-lab", "stored"), " encrypted"));
+    const row = h(
+      "tr",
+      null,
+      h("td", "t-key", key(keyOf(c, outgoing.filter((r) => r.childColumn === c.name)))),
+      h("td", "t-name", nameButton),
+      h("td", "t-type", c.type),
+      h("td", null, nullity(c)),
+      h("td", "t-desc", c.description ? h("span", "t-desc-text", c.description) : null, ...notes),
     );
+    row.dataset.c = c.name;
+    // The whole row picks the column (the name is its button, for the keyboard). Selecting text in it does not
+    row.addEventListener("click", () => {
+      if (String(getSelection() ?? "").length) return;
+      pick(t.name, c.name);
+    });
+    return row;
   });
+
+  const indexes = indexesOf(t).map((ix) =>
+    h(
+      "tr",
+      null,
+      h("td", "t-key", key(ix.kind)),
+      h("td", ix.name ? "t-name" : "t-name t-none", ix.name ?? (ix.kind === "PK" ? "primary key" : "unnamed")),
+      h("td", "t-type", ix.columns.join(", ")),
+    ),
+  );
+
+  const references = outgoing.map((r) =>
+    h(
+      "tr",
+      null,
+      h("td", "t-name", r.childColumn),
+      h("td", "t-name", link(r.parent, open), `.${r.parentColumn}`),
+      h("td", "t-rel", `${kindOf(r)}, ${r.one ? "one-to-one" : "many-to-one"}${r.optional ? ", optional" : ""}`),
+    ),
+  );
+  const referencedBy = incoming.map((r) =>
+    h(
+      "tr",
+      null,
+      h("td", "t-name", link(r.child, open), `.${r.childColumn}`),
+      h("td", "t-name", r.parentColumn),
+      h("td", "t-rel", `${kindOf(r)}, ${r.one ? "one-to-one" : "one-to-many"}`),
+    ),
+  );
 
   const audit: Child[] = [];
   if (t.audit) {
@@ -94,50 +155,59 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
       "header",
       "d-head",
       h("h2", "d-name", t.name),
-      tags.length ? h("span", "d-tags", ...tags.map(chip)) : null,
+      tags.length ? h("span", "d-tags", ...tags.map((x) => h("span", "d-chip", x))) : null,
       t.description ? h("p", "d-desc", t.description) : null,
       h("p", "d-meta", `${plural(t.columns.length, "column")}, ${plural(outgoing.length, "reference")}, referenced by ${incoming.length}`),
     ),
-    section("Columns", ...columns),
-    t.constraints.length
-      ? section(
-          "Constraints",
-          ...t.constraints.map((k) => h("li", "d-con", chip(k.kind === "unique" ? "UNIQUE" : "INDEX"), code(k.name ?? "unnamed"), ` (${k.columns.join(", ")})`)),
+    table(
+      "Columns",
+      "t-cols",
+      [
+        ["Key", "t-key"],
+        ["Column", null],
+        ["Type", null],
+        ["Null", null],
+        ["Description", null],
+      ],
+      columns,
+    ),
+    indexes.length
+      ? table(
+          "Indexes",
+          "t-ix",
+          [
+            ["Key", "t-key"],
+            ["Name", null],
+            ["Columns", null],
+          ],
+          indexes,
         )
       : null,
-    outgoing.length
-      ? section(
+    references.length
+      ? table(
           "References",
-          ...outgoing.map((r) =>
-            h(
-              "li",
-              "d-rel",
-              code(r.childColumn),
-              " → ",
-              link(r.parent, open),
-              code(`.${r.parentColumn}`),
-              h("span", "d-rel-meta", `${kindOf(r)}, ${r.one ? "one-to-one" : "many-to-one"}${r.optional ? ", optional" : ""}`),
-            ),
-          ),
+          "t-refs",
+          [
+            ["Column", null],
+            ["References", null],
+            ["Relation", null],
+          ],
+          references,
         )
       : null,
-    incoming.length
-      ? section(
+    referencedBy.length
+      ? table(
           "Referenced by",
-          ...incoming.map((r) =>
-            h(
-              "li",
-              "d-rel",
-              link(r.child, open),
-              code(`.${r.childColumn}`),
-              " → ",
-              code(r.parentColumn),
-              h("span", "d-rel-meta", `${kindOf(r)}, ${r.one ? "one-to-one" : "one-to-many"}`),
-            ),
-          ),
+          "t-refs",
+          [
+            ["From", null],
+            ["Column", null],
+            ["Relation", null],
+          ],
+          referencedBy,
         )
       : null,
-    audit.length ? section("Audit", ...audit) : null,
+    audit.length ? list("Audit", ...audit) : null,
   );
 }
 
@@ -148,18 +218,18 @@ export function columnDetails(model: Model, table: string, column: string, open:
   if (!t || !c) return null;
   const outgoing = model.relations.filter((r) => r.child === table && r.childColumn === column);
   const incoming = model.relations.filter((r) => r.parent === table && r.parentColumn === column);
-  const facts: [string, Child[]][] = [["Table", [link(t.name, open)]], ["Null", [c.nullable ? "allowed" : "not null"]]];
+  const facts: [string, Child[]][] = [["Table", [link(t.name, open)]], ["Null", [nullity(c)]]];
   if (c.enumValues) facts.push(["Values", [c.enumValues.join(", ")]]);
   if (c.enc) facts.push(["Stored", ["encrypted"]]);
-  if (c.index) facts.push(["Index", [c.index.name ?? "yes"]]);
-  if (c.uk) facts.push(["Unique", [c.ukName ?? "yes"]]);
+  if (c.index) facts.push(["Index", [c.index.name ?? "unnamed"]]);
+  if (c.uk) facts.push(["Unique", [c.ukName ?? "unnamed"]]);
   for (const r of outgoing) facts.push(["References", [link(r.parent, open), `.${r.parentColumn}, ${kindOf(r)}`]]);
   if (incoming.length)
     facts.push(["Referenced by", incoming.flatMap((r, i) => [i ? ", " : "", link(r.child, open), `.${r.childColumn}`])]);
   return h(
     "div",
     "d-pop",
-    h("div", "d-pop-head", key(keyOf(c, outgoing)), h("span", "d-pop-name", c.name), h("span", "d-type", typeOf(c, t))),
+    h("div", "d-pop-head", key(keyOf(c, outgoing)), h("span", "d-pop-name", c.name), h("span", "d-type", c.type)),
     c.description ? h("p", "d-desc", c.description) : null,
     h("dl", "d-facts", ...facts.flatMap(([k, v]) => [h("dt", null, k), h("dd", null, ...v)])),
   );
