@@ -17,7 +17,7 @@ export class PanZoom {
   private readonly viewport: HTMLElement;
   private readonly content: HTMLElement;
   private readonly onChange: (animate: boolean) => void;
-  private readonly onTap: (target: Element) => void;
+  private readonly onTap: (target: Element, x: number, y: number) => void;
   private width = 0;
   private height = 0;
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -30,7 +30,7 @@ export class PanZoom {
     viewport: HTMLElement,
     content: HTMLElement,
     onChange: (animate: boolean) => void,
-    onTap: (target: Element) => void,
+    onTap: (target: Element, x: number, y: number) => void,
   ) {
     this.viewport = viewport;
     this.content = content;
@@ -58,13 +58,12 @@ export class PanZoom {
   fit(animate = false): void {
     const vw = this.viewport.clientWidth;
     const vh = this.viewport.clientHeight;
-    // Hidden or empty: fit as soon as there is room (the resize observer calls back)
-    this.auto = true;
     if (!this.width || !this.height || !vw || !vh) return;
     this.scale = clamp(Math.min((vw - 48) / this.width, (vh - 48) / this.height, 1.25));
     this.x = (vw - this.width * this.scale) / 2;
     this.y = (vh - this.height * this.scale) / 2;
     this.apply(animate);
+    this.auto = true;
   }
 
   /** Zoom by a factor around a point in viewport coordinates (the center by default) */
@@ -92,8 +91,7 @@ export class PanZoom {
 
   private apply(animate = false): void {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // The page's --ease-out: starts fast, settles gently
-    this.content.style.transition = animate && !reduce ? "transform 200ms cubic-bezier(0.23, 1, 0.32, 1)" : "none";
+    this.content.style.transition = animate && !reduce ? "transform 0.2s cubic-bezier(0.2, 0, 0, 1)" : "none";
     this.content.style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.scale})`;
     this.onChange(animate && !reduce);
   }
@@ -158,7 +156,7 @@ export class PanZoom {
       this.viewport.classList.remove("is-panning");
       const press = this.press;
       this.press = null;
-      if (press && !press.dragged && !cancelled) this.onTap(press.target);
+      if (press && !press.dragged && !cancelled) this.onTap(press.target, press.x, press.y);
     }
   }
 }
@@ -180,7 +178,7 @@ export interface Focus {
 export function createFocus(svg: SVGSVGElement): Focus {
   const rels = [...svg.querySelectorAll<SVGGElement>(".rz-r")];
   const tables = [...svg.querySelectorAll<SVGGElement>(".rz-t")];
-  // A table is its card plus its shadow
+  // A table is its card plus, in a still glass drawing, its shadow
   const parts = [...svg.querySelectorAll<SVGElement>("[data-t]")];
 
   const clear = () => {

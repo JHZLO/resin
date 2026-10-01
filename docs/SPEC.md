@@ -202,36 +202,36 @@ the primary key row it points at.
 
 - **Cards**: the table name and description in the header, then one row per column: a key label
   (`PK`, `UK` or `FK`) in a gutter, the column name, its description, and the type at the right edge
-  (with `?` for nullable columns, the drawing's one accent color). Notes in plain faint words (`fk`
-  on a primary key that is also a reference, `enum`, `enc`, `index`) sit before the type. Composite
-  constraints are listed under the rows. Corners are small (8 units) and the edge is one even line.
-  Keys are told apart by weight: `PK` reads strongest, `UK` and `FK` step back.
+  (with `?` for nullable columns). Tags `ENUM`, `ENC`, `IX` and `FK` sit before the type. Composite
+  constraints are listed under the rows. Corners are small (8 units), tags are rectangles and the
+  edge is one even line.
 - **Connectors**: orthogonal with tight bends. Solid for physical FKs, dashed for logical
   references. A chevron at the primary key end, as in `->`; a square port and `N` (one-to-many) or
   `1` (one-to-one) at the foreign key end. Nullability is shown by the `?` on the foreign key row
   rather than at the chevron, because many relations can share one primary key. `edges: "curved"`
   draws S-bends with level ends instead, and keeps the routed path, with wide bends, wherever an
   S-bend would cross another card.
-- **External tables** have a dashed border and the note `external` in the header. **Audit tables**
-  are folded into the note `audited, envers` by default; `audit: "expand"` draws `revinfo` and
-  `*_aud` as tables.
+- **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
+  an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
-- **Looks** (`look`), one layout and one card anatomy:
-  - `plain` (the default) paints no background. Ink is `currentColor` with a fixed ramp of
+- **Looks** (`look`), one layout and one card anatomy in different finishes:
+  - `graphite` (the default) paints no background. Ink is `currentColor` with a fixed ramp of
     opacities, so the drawing reads on any page. `standalone: true` adds a `<style>` that picks the
     ink color from `prefers-color-scheme`, for SVG files embedded with `<img>`.
-  - `dark` and `light` draw solid cards with a soft shadow on a quiet stage: a base color, one faint
-    glow and a dot grid. Nothing in it is decoration and nothing moves. `toSvg` returns the stage's
-    base color as `background` (`null` for plain).
-- **Live canvases**: `stage: false` leaves the stage out and keeps the cards, so a page can paint
-  the stage itself and let it reach past the drawing, as the playground does. `toSvg` returns every
-  card's position as `boxes`. `idPrefix` (default `rz-`) prefixes every id, so several drawings can
-  share a page.
-- **Hooks for viewers**: a table is `g.rz-t[data-t]`, its header `g.rz-head`, a column row
-  `g.rz-c[data-c]`, a connector `g.rz-r` with `data-a`/`data-ac` (primary key side) and
-  `data-b`/`data-bc` (foreign key side). A table's shadow (`.rz-s`) carries the same `data-t`, the
-  header and every row have a transparent hit area (`.rz-hit`) to tint on hover, and the stage's dot
-  grid is `.rz-grid`, so a viewer can fade a table or hide the grid with CSS alone.
+  - Glass, in three themes with a dark and a light version each: `aurora-dark`, `aurora-light`
+    (ribbons of light under a sky of stars), `silk-dark`, `silk-light` (folds of color) and
+    `caustic-dark`, `caustic-light` (light through water). Cards are frosted liquid glass: the stage
+    behind them is blurred and mostly veiled, with an even edge and a soft shadow. The SVG draws the
+    stage itself (base color, light, dot grid, grain and vignette) as a still picture. `toSvg`
+    returns the stage's base color as `background` (`null` for graphite).
+- **Live canvases**: `stage: false` leaves the stage and the glass panels out, so a page can paint
+  them itself (the playground does, with WebGL, so the stage moves and the glass follows the
+  pointer); the SVG then holds only what sits on the glass. `toSvg` returns every card's position
+  as `boxes`. `idPrefix` (default `rz-`) prefixes every id, so several drawings can share a page.
+- **Hooks for viewers**: a table is `g.rz-t[data-t]`, its header `g.rz-head`, a column row `g.rz-c[data-c]`, a connector
+  `g.rz-r` with `data-a`/`data-ac` (primary key side) and `data-b`/`data-bc` (foreign key side). In a
+  still glass drawing a table's shadow (`.rz-s`) carries the same `data-t`, and the dot grid is
+  `.rz-grid`, so a viewer can fade a table or hide the grid with CSS alone.
 - **Deterministic**: text is never measured. Widths follow fixed rules (monospace: 0.6em per
   cell; proportional: 0.57em per Latin letter, 1em per CJK character), so the same input yields the
   same SVG in a browser and on the command line.

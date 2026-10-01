@@ -14,8 +14,8 @@ primary key it points at.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="examples/order.dark.svg">
-    <img src="examples/order.light.svg" alt="An ERD drawn by resin: orders, order items and payments, with an external users table" width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="examples/order.aurora-dark.svg">
+    <img src="examples/order.aurora-light.svg" alt="An ERD drawn by resin as frosted glass cards over an aurora: orders, order items and payments, with an external users table" width="820">
   </picture>
 </p>
 
@@ -45,8 +45,8 @@ table order_items "Order lines" {
 
 ## Why
 
-Mermaid's `erDiagram` has no place for many of the facts a schema carries. It does not model
-nullability. It cannot say whether a reference is a real `FOREIGN KEY` or only an
+Mermaid's `erDiagram` is great for sketches, but it has no place for many facts a schema carries.
+It does not model nullability. It cannot say whether a reference is a real `FOREIGN KEY` or only an
 application-level one, or which column points where; relationship lines join tables, not columns.
 Indexes, enum values and encrypted columns end up in comment strings, written by convention and
 checked by nobody.
@@ -55,25 +55,25 @@ resin turns those conventions into syntax. Because the facts are structured, the
 (a reference to a missing table is an error, not a typo in a comment), and they can be drawn
 precisely.
 
-## What it does
+## Features
 
-`varchar?` is nullable. `->` is a physical foreign key and `~>` a logical one. `uk`, `index`,
-`enum(...)`, `enc` and composite `unique(...)` are modifiers, not comments.
-
-References are checked. Missing tables and columns, nullable primary keys, duplicate names and type
-mismatches come back with a line, a column and a hint on how to fix them. `external table` declares
-a table owned by another service, so references to it are checked too, and the diagram shows where
-the boundary is. `audit envers(...)` generates the Hibernate Envers `*_aud` and `revinfo` tables.
-
-There are two outputs. Mermaid works anywhere Mermaid renders, such as GitHub and most docs sites.
-The SVG is drawn by resin, with each connector running from a foreign key row to the primary key row
-it points at. By default it has no background and its ink reads on light and dark pages; `dark` and
-`light` put it on a background of its own. The same input always gives byte-identical output, and
-the renderer has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs)
-instance that you pass in.
-
-In the [playground](https://jhzlo.github.io/resin/), click a table name to see its columns,
-constraints and relations, or click a column to see its details.
+- **Facts as syntax.** `varchar?` is nullable. `->` is a physical foreign key, `~>` a logical one.
+  `uk`, `index`, `enum(...)`, `enc` and composite `unique(...)` are modifiers, not comments.
+- **References are checked.** Missing tables and columns, nullable primary keys, duplicate names
+  and type mismatches are reported with a line, a column and a hint on how to fix them.
+- **Outside tables.** `external table` declares a table owned by another service, so references to
+  it are checked too and the boundary shows up in the diagram.
+- **Audit tables in one line.** `audit envers(...)` generates Hibernate Envers `*_aud` and
+  `revinfo` tables.
+- **Two outputs.** Mermaid, for anywhere Mermaid renders (GitHub, docs sites). SVG, drawn by resin
+  with column-level connectors: plain ink that reads on light and dark pages, or frosted glass in
+  three themes (aurora, silk, caustic), each dark or light. In the playground the glass is live: the
+  background moves and the glass catches the light under your pointer.
+- **A playground to explore.** Click a table name for a side panel with its columns, constraints
+  and relations; click a column for its details. Connectors can be angular or curved.
+- **Deterministic.** The same input gives byte-identical Mermaid and SVG.
+- **No runtime dependencies.** The SVG renderer takes an [ELK](https://github.com/kieler/elkjs)
+  instance that you pass in.
 
 ## Getting started
 
@@ -91,7 +91,7 @@ Compile a file to Mermaid, or draw it as SVG:
 ```bash
 pnpm resin examples/order.erd
 pnpm resin examples/order.erd --svg > order.svg
-pnpm resin examples/order.erd --svg --look dark > order.dark.svg
+pnpm resin examples/order.erd --svg --look aurora-dark > order.aurora-dark.svg
 pnpm resin examples/shop.erd --svg --keys --curved > shop.svg
 ```
 
@@ -121,9 +121,9 @@ if (result.model) {
 ```
 
 `compile` returns the syntax tree, the diagnostics, and, when there are no errors, the resolved
-model and its Mermaid source. `toSvg` draws a model; options choose the look (`plain`, the
-default, `dark` or `light`), all columns or key columns only, folded or expanded audit tables, and
-angular or curved connectors.
+model and its Mermaid source. `toSvg` draws a model; options choose the look (`graphite`, the
+default, or a glass theme such as `aurora-dark`), all columns or key columns only, and folded or
+expanded audit tables.
 
 ## The language at a glance
 

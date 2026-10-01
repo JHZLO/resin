@@ -23,8 +23,8 @@ describe("toSvg", () => {
     const { svg, width, height } = await toSvg(modelOf(ORDER), elk);
     expect(count(svg, 'class="rz-t"')).toBe(4);
     expect(count(svg, 'class="rz-r"')).toBe(4);
-    expect(count(svg, ">audited, envers</text>")).toBe(2);
-    expect(count(svg, ">external</text>")).toBe(1);
+    expect(count(svg, ">ENVERS</text>")).toBe(2);
+    expect(count(svg, ">EXTERNAL</text>")).toBe(1);
     expect(width).toBeGreaterThan(0);
     expect(height).toBeGreaterThan(0);
   });
@@ -59,37 +59,39 @@ describe("toSvg", () => {
     expect(file.svg).toContain("prefers-color-scheme:dark");
   });
 
-  it("draws dark and light on a quiet stage of their own, and plain on nothing", async () => {
-    for (const look of ["dark", "light"] as const) {
+  const GLASS = ["aurora-dark", "aurora-light", "silk-dark", "silk-light", "caustic-dark", "caustic-light"] as const;
+
+  it("draws every glass theme over its own stage, frosted under the cards", async () => {
+    for (const look of GLASS) {
       const r = await toSvg(modelOf(ORDER), elk, { look });
       expect(r.background).toMatch(/^#/);
-      expect(r.svg).toContain('class="rz-stage"');
-      expect(r.svg).toContain('class="rz-grid"');
+      expect(r.svg).toContain('id="rz-backdrop"');
+      expect(r.svg).toContain('filter="url(#rz-frost)"');
+      expect(r.svg).toContain('mask="url(#rz-cards)"');
     }
     expect((await toSvg(modelOf(ORDER), elk)).background).toBeNull();
   });
 
-  it("tells keys apart by weight, with one accent for nullable columns and no colored labels", async () => {
-    const { svg } = await toSvg(modelOf(ORDER), elk, { look: "dark" });
-    const fills = new Set([...svg.matchAll(/fill="(#[0-9A-F]{6})"/g)].map((m) => m[1]));
-    // ink, panel, stage base, white for the wash and edges, and the accent
-    expect([...fills].sort()).toEqual(["#0B0C0E", "#17181B", "#E0A84E", "#EDEDEB", "#FFFFFF"]);
+  it("puts stars only in the aurora sky", async () => {
+    expect((await toSvg(modelOf(ORDER), elk, { look: "aurora-dark" })).svg).toContain("<circle");
+    expect((await toSvg(modelOf(ORDER), elk, { look: "silk-dark" })).svg).not.toContain("<circle");
   });
 
   it("prefixes every id so several drawings can share a page", async () => {
-    const { svg } = await toSvg(modelOf(ORDER), elk, { look: "dark", idPrefix: "a1-" });
+    const { svg } = await toSvg(modelOf(ORDER), elk, { look: "aurora-dark", idPrefix: "a1-" });
     const ids = [...svg.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
     const refs = [...svg.matchAll(/url\(#([^)]+)\)|href="#([^"]+)"/g)].map((m) => m[1] ?? m[2]);
     expect(ids.every((i) => i.startsWith("a1-"))).toBe(true);
     expect(refs.every((r) => ids.includes(r))).toBe(true);
   });
 
-  it("leaves the stage to a live canvas, and says where every card is", async () => {
-    const { svg, boxes, background } = await toSvg(modelOf(ORDER), elk, { look: "dark", stage: false });
+  it("leaves the stage and the panels to a live canvas, and says where every card is", async () => {
+    const { svg, boxes, background } = await toSvg(modelOf(ORDER), elk, { look: "aurora-dark", stage: false });
     expect(svg).not.toContain("rz-stage");
-    expect(count(svg, 'class="rz-s"')).toBe(4);
+    expect(svg).not.toContain("frost");
+    expect(svg).not.toContain('class="rz-s"');
     expect(count(svg, 'class="rz-t"')).toBe(4);
-    expect(background).toBe("#0B0C0E");
+    expect(background).toBe("#05060C");
     expect(boxes.map((b) => b.table)).toEqual(["users", "orders", "order_items", "payments"]);
     expect(boxes.every((b) => b.w >= 200 && b.h > 0)).toBe(true);
   });
@@ -120,8 +122,8 @@ describe("toSvg", () => {
     expect(count(svg, 'class="rz-r"')).toBe(1);
   });
 
-  it("is deterministic", async () => {
-    for (const look of ["plain", "dark"] as const) {
+  it("is deterministic, stars included", async () => {
+    for (const look of ["graphite", "aurora-dark"] as const) {
       const a = await toSvg(modelOf(ORDER), elk, { look });
       const b = await toSvg(modelOf(ORDER), new ELK(), { look });
       expect(a.svg).toBe(b.svg);
@@ -129,8 +131,8 @@ describe("toSvg", () => {
   });
 });
 
-// Golden files: examples/<name>.erd → examples/<name>.svg (plain, standalone), plus the order example in
-// dark and light, which the README shows. Changing the drawing breaks these; open the SVG, check
+// Golden files: examples/<name>.erd → examples/<name>.svg (graphite, standalone), plus the order example
+// in aurora, dark and light, which the README shows. Changing the drawing breaks these; open the SVG, check
 // it by eye and update with `pnpm test -u` only when the change is intended.
 describe("golden svg", () => {
   for (const file of readdirSync(EXAMPLES).filter((f) => f.endsWith(".erd")).sort()) {
@@ -139,7 +141,7 @@ describe("golden svg", () => {
       await expect(svg + "\n").toMatchFileSnapshot(join(EXAMPLES, file.replace(/\.erd$/, ".svg")));
     });
   }
-  for (const look of ["dark", "light"] as const) {
+  for (const look of ["aurora-dark", "aurora-light"] as const) {
     it(`order.erd (${look})`, async () => {
       const { svg } = await toSvg(modelOf(ORDER), elk, { look });
       await expect(svg + "\n").toMatchFileSnapshot(join(EXAMPLES, `order.${look}.svg`));

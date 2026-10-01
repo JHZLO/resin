@@ -19,7 +19,7 @@ export { check } from "./checker.ts";
 export { lower } from "./model.ts";
 export { toMermaid } from "./mermaid.ts";
 export { toSvg } from "./svg.ts";
-export type { ElkLike, SvgBox, SvgLook, SvgOptions, SvgResult } from "./svg.ts";
+export type { ElkLike, SvgLook, SvgOptions, SvgResult } from "./svg.ts";
 
 export interface CompileResult {
   doc: Document;
