@@ -25,6 +25,7 @@ The first public version of the language, grammar v0.2.
 - A command-line entry (`pnpm resin <file.erd> [--svg [--look <look>]]`) and a web playground with a
   live glass canvas (WebGL): the background moves with the pointer's light, and a tap sends a ripple.
   Clicking a table name opens a side panel with its columns, constraints and relations; clicking a
-  column opens a popover with its details. Downloads are plain SVG by default, or a still of the
-  glass theme.
+  column opens a popover with its details. The editor shows problems and the cursor position in a
+  status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
+  default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
