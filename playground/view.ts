@@ -81,6 +81,14 @@ export class PanZoom {
     this.zoomBy(1 / this.scale, undefined, undefined, true);
   }
 
+  /** Bring a point of the drawing to the middle of what is visible, leaving `right` pixels covered */
+  centerOn(cx: number, cy: number, right = 0): void {
+    this.auto = false;
+    this.x = (this.viewport.clientWidth - right) / 2 - cx * this.scale;
+    this.y = this.viewport.clientHeight / 2 - cy * this.scale;
+    this.apply(true);
+  }
+
   private apply(animate = false): void {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.content.style.transition = animate && !reduce ? "transform 0.2s cubic-bezier(0.2, 0, 0, 1)" : "none";
@@ -158,9 +166,10 @@ const clamp = (s: number): number => Math.min(MAX, Math.max(MIN, s));
 const isControl = (target: EventTarget | null): boolean => target instanceof Element && target.closest("button, a, input, select, label") !== null;
 
 export interface Focus {
-  /** Focus whatever was tapped: a foreign key row focuses its relation, a table its neighbours,
-   *  the same thing again or empty canvas clears */
-  tap(target: Element): void;
+  /** Focus a table and the tables it is related to */
+  table(name: string): void;
+  /** Focus a column: its relations when it has any, otherwise its table. The row itself is marked */
+  row(table: string, column: string): void;
   clear(): void;
 }
 
@@ -169,12 +178,10 @@ export interface Focus {
 export function createFocus(svg: SVGSVGElement): Focus {
   const rels = [...svg.querySelectorAll<SVGGElement>(".rz-r")];
   const tables = [...svg.querySelectorAll<SVGGElement>(".rz-t")];
-  // A table is its card plus, in the glass looks, its shadow and its frost cut-out
+  // A table is its card plus, in a still glass drawing, its shadow
   const parts = [...svg.querySelectorAll<SVGElement>("[data-t]")];
-  let current: string | null = null;
 
   const clear = () => {
-    current = null;
     svg.classList.remove("is-focus");
     svg.querySelectorAll(".is-on").forEach((el) => el.classList.remove("is-on"));
   };
@@ -213,15 +220,14 @@ export function createFocus(svg: SVGSVGElement): Focus {
 
   return {
     clear,
-    tap(target) {
-      const table = target.closest<SVGGElement>(".rz-t");
-      if (!table) return clear();
-      const row = target.closest<SVGGElement>(".rz-c");
-      const key = row ? `${table.dataset.t}.${row.dataset.c}` : table.dataset.t!;
-      if (key === current) return clear();
+    table(name) {
       clear();
-      if (!(row && focusRow(table.dataset.t!, row.dataset.c!))) focusTable(table.dataset.t!);
-      current = key;
+      focusTable(name);
+    },
+    row(table, column) {
+      clear();
+      if (!focusRow(table, column)) focusTable(table);
+      markRow(table, column);
     },
   };
 }

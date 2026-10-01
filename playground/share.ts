@@ -7,6 +7,7 @@ export interface SharedState {
   code: string;
   columns: "all" | "keys";
   audit: "collapse" | "expand";
+  edges: "angular" | "curved";
 }
 
 export async function encode(state: SharedState): Promise<string> {
@@ -31,6 +32,7 @@ export async function decode(hash: string): Promise<SharedState | null> {
       code: value.code,
       columns: value.columns === "keys" ? "keys" : "all",
       audit: value.audit === "expand" ? "expand" : "collapse",
+      edges: value.edges === "curved" ? "curved" : "angular",
     };
   } catch {
     return null;

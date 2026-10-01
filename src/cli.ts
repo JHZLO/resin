@@ -1,4 +1,4 @@
-// Command-line entry: `pnpm resin <file.erd> [--ast | --model | --svg [--look <look>] [--keys] [--expand-audit]]`
+// Command-line entry: `pnpm resin <file.erd> [--ast | --model | --svg [--look <look>] [--curved] [--keys] [--expand-audit]]`
 // Diagnostics go to stderr in compiler format; the result (Mermaid, syntax tree JSON, model JSON
 // or SVG) goes to stdout. Exits with 1 when there are errors.
 
@@ -12,6 +12,7 @@ const USAGE = `usage: resin <file.erd> [options]
     --look <look>  graphite (default, no background), or a glass theme:
                    aurora-dark, aurora-light, silk-dark, silk-light,
                    caustic-dark, caustic-light
+    --curved       curved connectors instead of right-angled ones
     --keys         show key and reference columns only
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
@@ -44,6 +45,7 @@ else if (args.includes("--svg")) {
     const { default: ELK } = await import("elkjs");
     const { svg } = await toSvg(result.model, new ELK(), {
       look: look as SvgLook,
+      edges: args.includes("--curved") ? "curved" : "angular",
       standalone: true,
       columns: args.includes("--keys") ? "keys" : "all",
       audit: args.includes("--expand-audit") ? "expand" : "collapse",

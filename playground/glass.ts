@@ -7,8 +7,7 @@
 //   2. that texture on screen, with twinkling stars (aurora), a dot grid that pans and zooms with the
 //      tables, grain and a vignette
 //   3. a frosted glass panel under every table: the stage blurred (read from the mipmaps) and mostly
-//      veiled, a rim band that bends what is behind it, a rim that flares on the side facing the
-//      light, an inner bevel, and a soft shadow
+//      veiled, a rim band that bends what is behind it, an even edge line and a soft shadow
 // The SVG never repaints while the pointer moves; only this canvas does.
 
 import { CARD_RADIUS, GRID_STEP, type Glass, type Ink, type Stage, type SvgBox } from "../src/svg.ts";
@@ -220,11 +219,9 @@ uniform sampler2D uStage;
 uniform vec2 uSize;
 uniform float uRadius;
 uniform float uScale;
-uniform vec4 uLight;
 uniform vec4 uVeil;
 uniform vec4 uTint;
 uniform vec4 uRim;
-uniform float uSpec;
 uniform float uLens;
 uniform float uLod;
 uniform vec4 uShadow;
@@ -289,20 +286,9 @@ void main() {
     col = mix(col, uVeil.rgb, uVeil.a * (1.0 - 0.22 * clear));
     float ty = clamp((vPx.y - vRect.y) / max(vRect.w, 1.0), 0.0, 1.0);
     col = mix(col, uTint.rgb, uTint.a * (1.0 - ty) * (1.0 - ty));
-    vec2 L = uLight.xy - vPx; float ll = length(L);
-    L = ll > 1e-3 ? L / ll : vec2(0.0, -1.0);
-    float near = exp(-ll * ll / (uLight.w * uLight.w * 2.0));
-    float facing = max(dot(n, L), 0.0);
-    float away = max(dot(n, -L), 0.0);
-    float edge = 1.0 - smoothstep(0.0, 1.4, -d);
-    float fixedLight = 0.32 + 0.4 * pow(max(dot(n, vec2(-0.6, -0.8)), 0.0), 1.5);
-    float flare = uSpec * uLight.z * (pow(facing, 2.5) * (0.6 + 0.6 * near) + 0.35 * pow(away, 4.0));
-    col = mix(col, uRim.rgb, clamp(edge * uRim.a * (fixedLight + flare), 0.0, 1.0));
-    // Thickness: light comes in along the top inside edge and the bottom inside edge sits in shade
-    float inner = exp(d / 5.0);
-    col = mix(col, uRim.rgb, inner * max(-n.y, 0.0) * 0.16 * uRim.a);
-    col *= 1.0 - inner * max(n.y, 0.0) * 0.14;
-    col += uRim.rgb * exp(d / 10.0) * pow(facing, 2.0) * 0.14 * uLight.z * near;
+    // The edge: one even line, no highlights
+    float edge = 1.0 - smoothstep(0.0, 1.2, -d);
+    col = mix(col, uRim.rgb, edge * uRim.a);
     glass = vec4(col * cover, cover);
   }
   vec4 sh = vec4(uShadow.rgb * shadow, shadow);
@@ -482,7 +468,7 @@ export class LiveGlass {
       "uStage", "uSize", "uView", "uGrid", "uLight", "uGrain", "uVignette", "uDpr", "uTime", "uStars", "uStarPan", "uDark",
     ]);
     this.glassPass = uniforms(compile(gl, VS_GLASS, FS_GLASS), [
-      "uStage", "uSize", "uView", "uMargin", "uRadius", "uScale", "uLight", "uVeil", "uTint", "uRim", "uSpec", "uLens",
+      "uStage", "uSize", "uView", "uMargin", "uRadius", "uScale", "uVeil", "uTint", "uRim", "uLens",
       "uLod", "uShadow", "uOutline", "uDark", "uGrid",
     ]);
 
@@ -681,16 +667,14 @@ export class LiveGlass {
     gl.uniform1f(p.u.uMargin, 30 * scale + 26);
     gl.uniform1f(p.u.uRadius, CARD_RADIUS * scale);
     gl.uniform1f(p.u.uScale, scale);
-    gl.uniform4fv(p.u.uLight, light);
     gl.uniform4fv(p.u.uVeil, rgba(G.veil));
     gl.uniform4fv(p.u.uTint, rgba(G.tint));
     gl.uniform4fv(p.u.uRim, rgba(G.rim));
-    gl.uniform1f(p.u.uSpec, G.specular);
     gl.uniform1f(p.u.uLens, G.lens * Math.sqrt(scale));
     // Blur radius in stage texels (half size) → mip level
     gl.uniform1f(p.u.uLod, Math.log2(Math.max(1, (G.frost * Math.sqrt(scale)) / 2)));
     gl.uniform4fv(p.u.uShadow, rgba(G.shadow));
-    gl.uniform1f(p.u.uOutline, S.dark ? 0.28 : 0.1);
+    gl.uniform1f(p.u.uOutline, S.dark ? 0.2 : 0);
     gl.uniform1f(p.u.uDark, S.dark ? 1 : 0);
     gl.uniform4fv(p.u.uGrid, this.gridOn ? rgba(S.grid) : [0, 0, 0, 0]);
     gl.bindVertexArray(this.glassVao);

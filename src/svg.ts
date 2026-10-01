@@ -34,6 +34,8 @@ export interface SvgOptions {
   /** Glass looks: paint the stage and the glass into the SVG. Default true. A live canvas passes
    *  false, paints both itself from `stageOf(look)` and `glassOf(look)`, and lays the SVG on top */
   stage?: boolean;
+  /** Connectors: angular (right-angled, the default) or curved */
+  edges?: "angular" | "curved";
   /** Prefix for every id in the SVG, so several drawings can share a page. Default "rz-" */
   idPrefix?: string;
 }
@@ -155,10 +157,8 @@ export interface Glass {
   veil: Ink;
   /** A brighter wash that fades down the panel */
   tint: Ink;
-  /** The lit edge */
+  /** The edge: one even line, no highlights */
   rim: Ink;
-  /** Live canvas: how strongly the edge flares where it faces the light */
-  specular: number;
   /** Live canvas: how far the edge bends what is behind it, in pixels */
   lens: number;
   shadow: Ink;
@@ -250,8 +250,7 @@ const DARK_GLASS: Glass = {
   frost: 22,
   veil: ["#0F121C", 0.74],
   tint: [WHITE, 0.07],
-  rim: [WHITE, 0.9],
-  specular: 1,
+  rim: [WHITE, 0.16],
   lens: 7,
   shadow: ["#000000", 0.55],
 };
@@ -259,8 +258,7 @@ const LIGHT_GLASS: Glass = {
   frost: 22,
   veil: ["#FAFBFD", 0.8],
   tint: [WHITE, 0.4],
-  rim: [WHITE, 1],
-  specular: 0.8,
+  rim: ["#0F172A", 0.12],
   lens: 7,
   shadow: ["#1B2140", 0.18],
 };
@@ -502,7 +500,7 @@ function keyLabel(c: ModelColumn, v: View, I: Inks): [string, Ink] | null {
   return null;
 }
 
-/** The panel itself. Glass in a file: veil, wash, lit rim and highlight over the frost. Graphite: ink only.
+/** The panel itself. Glass in a file: veil, wash and an even edge over the frost. Graphite: ink only.
  *  On a live canvas the page paints the panel, so nothing is drawn here */
 function panel(v: View, L: Look, id: (name: string) => string, painted: boolean): string {
   const { w, h } = v;
@@ -516,8 +514,7 @@ function panel(v: View, L: Look, id: (name: string) => string, painted: boolean)
     s.push(`<rect width="${w}" height="${h}" rx="${RX}" fill="url(#${id("wash")})"/>`);
   }
   s.push(`<path d="${capPath(w)}" ${fill(L.ink.head)}/>`);
-  s.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" stroke="url(#${id("rim")})"${dash}/>`);
-  if (L.glass) s.push(`<rect x="${RX}" y="0.6" width="${w - RX * 2}" height="1" fill="url(#${id("spec")})"/>`);
+  s.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${stroke(L.glass ? L.glass.rim : [C, 0.25])}${dash}/>`);
   return s.join("");
 }
 
@@ -527,13 +524,15 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   const { w } = v;
   const s: string[] = [panel(v, L, id, painted)];
 
-  // header
+  // header: one group with its own hit area, so a click anywhere on it (name, description, tag) reaches it
+  s.push(`<g class="rz-head"><path class="rz-hit" d="${capPath(w)}" fill="currentColor" fill-opacity="0"/>`);
   s.push(
     `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${fill(I.text)}>${esc(t.name)}` +
       (t.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(I.muted)}>${esc(t.description)}</tspan>` : "") +
       "</text>",
   );
   if (v.tag) s.push(chip(v.tag, w - PAD - chipW(v.tag), 15, I));
+  s.push("</g>");
   s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
   // rows
@@ -591,6 +590,31 @@ function pathD(pts: Point[], r: number): string {
   return `${d} L${f(last.x)},${f(last.y)}`;
 }
 
+/** A curved connector: an S-bend with level ends when no other card is in the way, otherwise ELK's
+ *  route (which goes around the cards) with wide, smooth bends */
+function curved(route: Point[], others: SvgBox[]): string {
+  const s = route[0];
+  const e = route[route.length - 1];
+  const dx = e.x - s.x;
+  if (dx > 24) {
+    const k = Math.max(32, Math.min(180, dx * 0.5));
+    const c1 = { x: s.x + k, y: s.y };
+    const c2 = { x: e.x - k, y: e.y };
+    const blocked = others.some((b) => {
+      for (let i = 1; i < 24; i++) {
+        const t = i / 24;
+        const u = 1 - t;
+        const x = u * u * u * s.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * e.x;
+        const y = u * u * u * s.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * e.y;
+        if (x > b.x - 6 && x < b.x + b.w + 6 && y > b.y - 6 && y < b.y + b.h + 6) return true;
+      }
+      return false;
+    });
+    if (!blocked) return `M${f(s.x)},${f(s.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(e.x)},${f(e.y)}`;
+  }
+  return pathD(route, 40);
+}
+
 /** Drop repeated points and points in the middle of a straight run, so no corner is rounded mid-line */
 function clean(pts: Point[]): Point[] {
   const same = (a: number, b: number) => Math.abs(a - b) < 0.01;
@@ -643,15 +667,8 @@ function cardDefs(L: Look, id: (name: string) => string): string {
   const g = L.glass;
   if (g) {
     s.push(`<linearGradient id="${id("wash")}" x1="0" y1="0" x2="0" y2="1">${stop(0, g.tint)}${stop(1, [g.tint[0], 0])}</linearGradient>`);
-    // Lit from the top left: a bright edge there, faint along the middle, a softer catch at the bottom right
-    s.push(
-      `<linearGradient id="${id("rim")}" x1="0" y1="0" x2="1" y2="1">${stop(0, g.rim)}${stop(0.35, [g.rim[0], g.rim[1] * 0.18])}` +
-        `${stop(0.7, [g.rim[0], g.rim[1] * 0.12])}${stop(1, [g.rim[0], g.rim[1] * 0.45])}</linearGradient>`,
-    );
-    s.push(`<linearGradient id="${id("spec")}" x1="0" y1="0" x2="1" y2="0">${stop(0, [WHITE, 0])}${stop(0.5, [WHITE, g.rim[1] * 0.8])}${stop(1, [WHITE, 0])}</linearGradient>`);
   } else {
     s.push(`<linearGradient id="${id("wash")}" x1="0" y1="0" x2="0" y2="1">${stop(0, [C, 0.07])}${stop(1, [C, 0.025])}</linearGradient>`);
-    s.push(`<linearGradient id="${id("rim")}" x1="0" y1="0" x2="0" y2="1">${stop(0, [C, 0.3])}${stop(1, [C, 0.2])}</linearGradient>`);
   }
   // Two shadows, a wide ambient one and a tight contact one, then the card's own shape is cut out so
   // translucent glass never shows its shadow through itself
@@ -779,6 +796,7 @@ function stageSvg(S: Stage, G: Glass, id: (name: string) => string, W: number, H
 export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}): Promise<SvgResult> {
   const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse" } as const;
   const look = options.look ?? "graphite";
+  const edges = options.edges ?? "angular";
   const L = LOOKS[look];
   const prefix = options.idPrefix ?? "rz-";
   const id = (name: string) => prefix + name;
@@ -876,7 +894,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor
     const start = { x: pp.x + pv.w, y: pp.y + rowY(pv.shown.findIndex((c) => c.name === r.parentColumn)) };
     const end = { x: cp.x, y: cp.y + rowY(cv.shown.findIndex((c) => c.name === r.childColumn)) };
-    const d = pathD(clean([start, ...(sec?.bendPoints ?? []), end]), 3);
+    const route = clean([start, ...(sec?.bendPoints ?? []), end]);
+    const d = edges === "curved" ? curved(route, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(route, 3);
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
     const ink = L.ink.line;
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}">`);

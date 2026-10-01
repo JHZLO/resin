@@ -96,6 +96,21 @@ describe("toSvg", () => {
     expect(boxes.every((b) => b.w >= 200 && b.h > 0)).toBe(true);
   });
 
+  it("makes every table header one clickable group", async () => {
+    const { svg } = await toSvg(modelOf(ORDER), elk);
+    expect(count(svg, 'class="rz-head"')).toBe(4);
+  });
+
+  it("curves connectors into S-bends, and follows the route around a card that would be in the way", async () => {
+    const angular = await toSvg(modelOf(ORDER), elk);
+    const curved = await toSvg(modelOf(ORDER), elk, { edges: "curved" });
+    const lines = (svg: string) => svg.split('<g class="rz-r"').slice(1).map((r) => /<path d="([^"]+)"/.exec(r)![1]);
+    expect(lines(angular.svg).some((d) => d.includes(" C"))).toBe(false);
+    // users.id → payments.payer_user_id would cut through orders, so it keeps the route with wide bends
+    expect(lines(curved.svg).map((d) => (d.includes(" C") ? "bend" : "route"))).toEqual(["bend", "bend", "bend", "route"]);
+    expect(curved.width).toBe(angular.width);
+  });
+
   it("measures Hangul as double width", async () => {
     const latin = await toSvg(modelOf('table t "abcdefghijklmnopqrstuvwxyz abcdefghij" {\n id bigint pk\n}'), elk);
     const hangul = await toSvg(modelOf('table t "주문 주문 주문 주문 주문 주문 주문 주문 주문 주문" {\n id bigint pk\n}'), elk);

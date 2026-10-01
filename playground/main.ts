@@ -7,6 +7,7 @@ import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
 import { type Diagnostic, type Model, type SvgLook, compile, toSvg } from "../src/index.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
+import { columnDetails, tableDetails } from "./details.ts";
 import { createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
@@ -27,7 +28,7 @@ type StageName = keyof typeof STAGES;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", grid: true };
+const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", grid: true };
 const elk = new ELK();
 
 let lastModel: Model | null = null;
@@ -69,7 +70,7 @@ function scheduleHash(): void {
   hashTimer = window.setTimeout(writeHash, 400);
 }
 async function writeHash(): Promise<void> {
-  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit });
+  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges });
   if (location.hash !== hash) history.replaceState(null, "", hash);
 }
 
@@ -157,13 +158,142 @@ const panzoom = new PanZoom(
   (animate) => {
     zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
     glass?.setView(panzoom.scale, panzoom.x, panzoom.y, animate);
+    // The popover rides along with its row; after an animated move, place it again once settled
+    placePop();
+    if (animate) window.setTimeout(placePop, 220);
   },
   (target, x, y) => {
-    focus?.tap(target);
+    const table = target.closest<SVGGElement>(".rz-t")?.dataset.t ?? null;
+    const column = target.closest<SVGGElement>(".rz-c")?.dataset.c ?? null;
+    if (table && column) pickColumn(table, column);
+    else if (table && target.closest(".rz-head")) pickTable(table);
+    else if (table) {
+      closePop();
+      focus?.table(table);
+    } else {
+      closePop();
+      focus?.clear();
+    }
     glass?.refresh();
     glass?.ripple(x, y);
   },
 );
+
+// ---- details: the table panel and the column popover ----
+
+const diagramPanel = byId("panel-diagram");
+const inspector = byId("inspector");
+const inspectorBody = byId("inspector-body");
+const pop = byId("pop");
+/** The table in the side panel, and the column in the popover */
+let inspected: string | null = null;
+let popped: { table: string; column: string } | null = null;
+
+const rowEl = (table: string, column: string): SVGGElement | null =>
+  [...content.querySelectorAll<SVGGElement>(".rz-t")]
+    .find((t) => t.dataset.t === table)
+    ?.querySelector<SVGGElement>(`.rz-c[data-c="${CSS.escape(column)}"]`) ?? null;
+
+/** Bring a table to the middle of what the side panel leaves visible */
+function reveal(name: string, onlyIfCovered = false): void {
+  const b = lastBoxes.find((x) => x.table === name);
+  if (!b) return;
+  const covered = inspector.hidden ? 0 : inspector.offsetWidth;
+  const right = panzoom.x + (b.x + b.w) * panzoom.scale;
+  if (onlyIfCovered && right <= viewport.clientWidth - covered - 16) return;
+  panzoom.centerOn(b.x + b.w / 2, b.y + b.h / 2, covered);
+}
+
+/** Open a table in the side panel, focus it, and bring it into view */
+function openTable(name: string): void {
+  closePop();
+  showInspector(name);
+  focus?.table(name);
+  glass?.refresh();
+  reveal(name);
+}
+
+/** A table name on the diagram: opens its panel, or closes it when it is already open */
+function pickTable(name: string): void {
+  closePop();
+  if (inspected === name && !inspector.hidden) {
+    closeInspector();
+    focus?.clear();
+    return;
+  }
+  showInspector(name);
+  focus?.table(name);
+  // The panel opens over the canvas: keep the table that was clicked in view
+  reveal(name, true);
+}
+
+/** A column on the diagram (or in the panel): shows its popover, or closes it when it is already open */
+function pickColumn(table: string, column: string): void {
+  if (popped && popped.table === table && popped.column === column && !pop.hidden) {
+    closePop();
+    focus?.clear();
+    return;
+  }
+  focus?.row(table, column);
+  showPop(table, column);
+}
+
+function showInspector(name: string): void {
+  const view = lastModel ? tableDetails(lastModel, name, openTable, (t, c) => {
+    pickColumn(t, c);
+    glass?.refresh();
+  }) : null;
+  if (!view) return closeInspector();
+  inspected = name;
+  inspectorBody.replaceChildren(view);
+  byId("inspector-title").textContent = name;
+  inspector.hidden = false;
+  diagramPanel.classList.add("has-inspector");
+}
+
+function closeInspector(): void {
+  inspected = null;
+  inspector.hidden = true;
+  diagramPanel.classList.remove("has-inspector");
+}
+
+function showPop(table: string, column: string): void {
+  const view = lastModel ? columnDetails(lastModel, table, column, openTable) : null;
+  if (!view || !rowEl(table, column)) return closePop();
+  popped = { table, column };
+  pop.replaceChildren(view);
+  pop.hidden = false;
+  placePop();
+}
+
+function closePop(): void {
+  popped = null;
+  pop.hidden = true;
+}
+
+/** Under its row, or above it when there is no room below; hidden while the row is out of view */
+function placePop(): void {
+  if (!popped || pop.hidden) return;
+  const row = rowEl(popped.table, popped.column);
+  if (!row) return closePop();
+  const area = diagramPanel.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  const right = area.width - (inspector.hidden ? 0 : inspector.offsetWidth) - 8;
+  const w = pop.offsetWidth;
+  const h = pop.offsetHeight;
+  const left = Math.max(8, Math.min(r.left - area.left + 12, right - w));
+  let top = r.bottom - area.top + 6;
+  if (top + h > area.height - 8 && r.top - area.top - h - 6 > 8) top = r.top - area.top - h - 6;
+  const seen = r.bottom > area.top && r.top < area.bottom && r.right > area.left && r.left - area.left < right;
+  pop.style.visibility = seen ? "" : "hidden";
+  pop.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+}
+
+byId("inspector-close").addEventListener("click", () => {
+  closeInspector();
+  focus?.clear();
+  glass?.refresh();
+});
 
 const isDark = (): boolean => {
   const set = document.documentElement.dataset.theme;
@@ -194,6 +324,7 @@ async function render(): Promise<void> {
       audit: state.audit,
       look,
       stage: glass === null,
+      edges: state.edges,
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
@@ -211,8 +342,15 @@ async function render(): Promise<void> {
       fitNext = false;
     }
     const drawn = content.querySelector("svg");
+    // Rows open a popover on click; their native tooltips would only get in its way
+    for (const title of content.querySelectorAll(".rz-c > title")) title.remove();
     focus = drawn ? createFocus(drawn) : null;
     lastBoxes = empty ? [] : boxes;
+    // Keep what was open, as long as it still exists
+    if (inspected) showInspector(inspected);
+    if (popped) showPop(popped.table, popped.column);
+    if (popped) focus?.row(popped.table, popped.column);
+    else if (inspected) focus?.table(inspected);
     glass?.setBoxes(lastBoxes, drawn);
     const tables = result.model.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
     const relations = result.model.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
@@ -236,6 +374,7 @@ function syncControls(): void {
   byId("toggle-keys").setAttribute("aria-pressed", String(state.columns === "keys"));
   byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]")) b.setAttribute("aria-pressed", String(b.dataset.edges === state.edges));
   viewport.classList.toggle("grid", state.grid);
   glass?.setGrid(state.grid);
   const select = byId<HTMLSelectElement>("example");
@@ -253,6 +392,15 @@ function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): void
 }
 byId("toggle-keys").addEventListener("click", () => setView({ columns: state.columns === "keys" ? "all" : "keys" }));
 byId("toggle-audit").addEventListener("click", () => setView({ audit: state.audit === "expand" ? "collapse" : "expand" }));
+for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]"))
+  b.addEventListener("click", () => {
+    // The layout stays the same, so the view does not move
+    state.edges = b.dataset.edges === "curved" ? "curved" : "angular";
+    syncControls();
+    save();
+    scheduleHash();
+    render();
+  });
 
 byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
@@ -289,6 +437,8 @@ byId("zoom-level").addEventListener("click", () => panzoom.actualSize());
 byId("zoom-fit").addEventListener("click", () => panzoom.fit(true));
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if (!pop.hidden) closePop();
+  else if (!inspector.hidden) closeInspector();
   focus?.clear();
   glass?.refresh();
 });
@@ -304,7 +454,7 @@ byId("copy-mermaid").addEventListener("click", () => copy(lastMermaid, "Mermaid 
  *  its background with it, as a still picture */
 async function exportSvg(look: SvgLook): Promise<string | null> {
   if (!lastModel) return null;
-  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, look, standalone: true });
+  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, edges: state.edges, look, standalone: true });
   return svg + "\n";
 }
 
