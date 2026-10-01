@@ -16,8 +16,8 @@ export class PanZoom {
   y = 0;
   private readonly viewport: HTMLElement;
   private readonly content: HTMLElement;
-  private readonly onChange: () => void;
-  private readonly onTap: (target: Element) => void;
+  private readonly onChange: (animate: boolean) => void;
+  private readonly onTap: (target: Element, x: number, y: number) => void;
   private width = 0;
   private height = 0;
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -26,7 +26,12 @@ export class PanZoom {
   /** Still fitted: keep fitting when the viewport resizes, until the user pans or zooms */
   private auto = true;
 
-  constructor(viewport: HTMLElement, content: HTMLElement, onChange: () => void, onTap: (target: Element) => void) {
+  constructor(
+    viewport: HTMLElement,
+    content: HTMLElement,
+    onChange: (animate: boolean) => void,
+    onTap: (target: Element, x: number, y: number) => void,
+  ) {
     this.viewport = viewport;
     this.content = content;
     this.onChange = onChange;
@@ -80,7 +85,7 @@ export class PanZoom {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.content.style.transition = animate && !reduce ? "transform 0.2s cubic-bezier(0.2, 0, 0, 1)" : "none";
     this.content.style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.scale})`;
-    this.onChange();
+    this.onChange(animate && !reduce);
   }
 
   private local(e: { clientX: number; clientY: number }): { x: number; y: number } {
@@ -143,7 +148,7 @@ export class PanZoom {
       this.viewport.classList.remove("is-panning");
       const press = this.press;
       this.press = null;
-      if (press && !press.dragged && !cancelled) this.onTap(press.target);
+      if (press && !press.dragged && !cancelled) this.onTap(press.target, press.x, press.y);
     }
   }
 }

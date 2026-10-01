@@ -6,7 +6,9 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
 import { type Diagnostic, type Model, type SvgLook, compile, toSvg } from "../src/index.ts";
+import { glassOf, stageOf } from "../src/svg.ts";
 import { createEditor } from "./editor.ts";
+import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
 import { type Focus, PanZoom, createFocus } from "./view.ts";
 
@@ -17,6 +19,11 @@ const EXAMPLES: Record<string, string> = {
 };
 const STORE = "resin.playground";
 const THEME_STORE = "resin.theme";
+const STAGE_STORE = "resin.stage";
+
+/** The canvas's background themes; each has a dark and a light version that follows the page theme */
+const STAGES = { aurora: "Aurora", silk: "Silk", caustic: "Caustic" } as const;
+type StageName = keyof typeof STAGES;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -28,6 +35,14 @@ let focus: Focus | null = null;
 let lastMermaid = "";
 let renderSeq = 0;
 let fitNext = true;
+let lastBoxes: { table: string; x: number; y: number; w: number; h: number }[] = [];
+let stageName: StageName = "aurora";
+try {
+  const saved = localStorage.getItem(STAGE_STORE);
+  if (saved && saved in STAGES) stageName = saved as StageName;
+} catch {
+  /* keep aurora */
+}
 
 // ---- persistence ----
 
@@ -123,21 +138,39 @@ function showProblems(ds: Diagnostic[]): void {
 const viewport = byId("viewport");
 const content = byId("content");
 const zoomLevel = byId("zoom-level");
+
+// The glass and its moving stage are painted with WebGL under the SVG. Without WebGL2 the SVG paints a
+// still version itself
+let glass: LiveGlass | null = null;
+if (LiveGlass.available()) {
+  try {
+    glass = new LiveGlass(viewport, content);
+  } catch (e) {
+    console.warn("resin: the live canvas is off, showing the still drawing", e);
+    viewport.querySelector(".stage-glass")?.remove();
+  }
+}
+
 const panzoom = new PanZoom(
   viewport,
   content,
-  () => {
+  (animate) => {
     zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
+    glass?.setView(panzoom.scale, panzoom.x, panzoom.y, animate);
   },
-  (target) => focus?.tap(target),
+  (target, x, y) => {
+    focus?.tap(target);
+    glass?.refresh();
+    glass?.ripple(x, y);
+  },
 );
 
-/** The canvas draws glass: aurora on a dark theme, clear on a light one */
-function canvasLook(): SvgLook {
+const isDark = (): boolean => {
   const set = document.documentElement.dataset.theme;
-  const dark = set ? set === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  return dark ? "aurora" : "clear";
-}
+  return set ? set === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+};
+/** The canvas draws the chosen background theme, dark or light with the page */
+const canvasLook = (variant: "dark" | "light" = isDark() ? "dark" : "light"): SvgLook => `${stageName}-${variant}`;
 
 function setStale(stale: boolean): void {
   byId("stale").hidden = !stale || !lastModel;
@@ -154,16 +187,18 @@ async function render(): Promise<void> {
     return;
   }
   try {
-    // The backdrop bleeds far past the drawing so panning never reaches its edge
-    const { svg, width, height, background } = await toSvg(result.model, elk, {
+    // With the live canvas the SVG carries only what sits on the glass; the canvas paints the rest
+    const look = canvasLook();
+    const { svg, width, height, background, boxes } = await toSvg(result.model, elk, {
       columns: state.columns,
       audit: state.audit,
-      look: canvasLook(),
-      bleed: 6000,
+      look,
+      stage: glass === null,
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
     viewport.style.backgroundColor = background ?? "";
+    glass?.setLook(stageOf(look), glassOf(look));
     lastModel = result.model;
     lastMermaid = result.mermaid ?? "";
     byId("mermaid-out").textContent = lastMermaid;
@@ -177,6 +212,8 @@ async function render(): Promise<void> {
     }
     const drawn = content.querySelector("svg");
     focus = drawn ? createFocus(drawn) : null;
+    lastBoxes = empty ? [] : boxes;
+    glass?.setBoxes(lastBoxes, drawn);
     const tables = result.model.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
     const relations = result.model.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
     byId("stats").textContent = empty ? "" : `${tables} ${tables === 1 ? "table" : "tables"}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
@@ -200,6 +237,7 @@ function syncControls(): void {
   byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
   viewport.classList.toggle("grid", state.grid);
+  glass?.setGrid(state.grid);
   const select = byId<HTMLSelectElement>("example");
   const match = Object.entries(EXAMPLES).find(([, text]) => text === state.code);
   select.value = match ? match[0] : "";
@@ -228,12 +266,31 @@ byId("grid-toggle").addEventListener("click", () => {
   syncControls();
   save();
 });
+
+// Background theme
+function syncStage(): void {
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-stage]")) b.setAttribute("aria-pressed", String(b.dataset.stage === stageName));
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>("[data-stage]"))
+  b.addEventListener("click", () => {
+    stageName = b.dataset.stage as StageName;
+    try {
+      localStorage.setItem(STAGE_STORE, stageName);
+    } catch {
+      /* the choice lasts for this visit */
+    }
+    syncStage();
+    render();
+  });
+syncStage();
 byId("zoom-in").addEventListener("click", () => panzoom.zoomBy(1.25, undefined, undefined, true));
 byId("zoom-out").addEventListener("click", () => panzoom.zoomBy(0.8, undefined, undefined, true));
 byId("zoom-level").addEventListener("click", () => panzoom.actualSize());
 byId("zoom-fit").addEventListener("click", () => panzoom.fit(true));
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") focus?.clear();
+  if (e.key !== "Escape") return;
+  focus?.clear();
+  glass?.refresh();
 });
 
 byId("share").addEventListener("click", async () => {
@@ -243,8 +300,8 @@ byId("share").addEventListener("click", async () => {
 
 byId("copy-mermaid").addEventListener("click", () => copy(lastMermaid, "Mermaid copied"));
 
-/** Files are plain (graphite) by default: no background, so they sit on any page. The glass looks
- *  carry their backdrop with them */
+/** Files are plain (graphite) by default: no background, so they sit on any page. A glass look carries
+ *  its background with it, as a still picture */
 async function exportSvg(look: SvgLook): Promise<string | null> {
   if (!lastModel) return null;
   const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, look, standalone: true });
@@ -267,11 +324,21 @@ async function download(look: SvgLook): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Download menu
+// Download menu: plain, or the current background theme in its dark or light version
 const downloadButton = byId("download");
 const downloadMenu = byId("download-menu");
-const menuItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>("[data-look]")];
+const menuItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>("[data-variant]")];
+const lookOf = (variant: string): SvgLook => (variant === "plain" ? "graphite" : canvasLook(variant as "dark" | "light"));
+function labelMenu(): void {
+  for (const item of menuItems) {
+    const variant = item.dataset.variant!;
+    if (variant === "plain") continue;
+    item.querySelector(".menu-title")!.textContent = `${STAGES[stageName]}, ${variant}`;
+    item.querySelector(".swatch")!.className = `swatch sw-${stageName}-${variant}`;
+  }
+}
 function setMenu(open: boolean, returnFocus = false): void {
+  if (open) labelMenu();
   downloadMenu.hidden = !open;
   downloadButton.setAttribute("aria-expanded", String(open));
   if (open) menuItems[0].focus();
@@ -281,7 +348,7 @@ downloadButton.addEventListener("click", () => setMenu(downloadMenu.hidden));
 for (const item of menuItems)
   item.addEventListener("click", () => {
     setMenu(false, true);
-    download(item.dataset.look as SvgLook);
+    download(lookOf(item.dataset.variant!));
   });
 downloadMenu.addEventListener("keydown", (e) => {
   const i = menuItems.indexOf(document.activeElement as HTMLButtonElement);
@@ -308,6 +375,8 @@ for (const tab of tabs)
       t.setAttribute("aria-selected", String(on));
       byId(t.getAttribute("aria-controls")!).hidden = !on;
     }
+    // The live canvas rests while the Mermaid tab covers it
+    glass?.pause(tab.id !== "tab-diagram");
     if (tab.id === "tab-diagram") requestAnimationFrame(() => panzoom.fit());
   });
 

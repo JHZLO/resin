@@ -9,14 +9,15 @@ const USAGE = `usage: resin <file.erd> [options]
 
   (no option)      print Mermaid erDiagram
   --svg            print SVG (needs elkjs)
-    --look <look>  graphite (default, no background), aurora (dark glass)
-                   or clear (light glass)
+    --look <look>  graphite (default, no background), or a glass theme:
+                   aurora-dark, aurora-light, silk-dark, silk-light,
+                   caustic-dark, caustic-light
     --keys         show key and reference columns only
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON`;
 
-const LOOKS: readonly SvgLook[] = ["graphite", "aurora", "clear"];
+const LOOKS: readonly SvgLook[] = ["graphite", "aurora-dark", "aurora-light", "silk-dark", "silk-light", "caustic-dark", "caustic-light"];
 
 const args = process.argv.slice(2);
 const lookAt = args.indexOf("--look");

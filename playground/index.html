@@ -21,8 +21,9 @@
 /* Layout: a slim top bar over two panes (source | diagram) split by a draggable divider; one column on
    phones. Controls that only affect the drawing float over the canvas. State is shown with neutral
    fills; the accent is kept for focus, the active tab and the focused row.
-   The canvas draws resin's glass looks, which paint their own backdrop: aurora on a dark theme, clear
-   on a light one. --stage matches each backdrop's base color so the first paint does not flash. */
+   The canvas is a WebGL stage (playground/glass.ts) painted under the SVG: the chosen background
+   theme (aurora, silk or caustic), dark or light with the page. --stage matches the aurora base so
+   the first paint does not flash. */
 :root {
   --bg: #F3F4F6;
   --panel: #FFFFFF;
@@ -38,7 +39,7 @@
   --accent-soft: rgba(205, 138, 30, 0.14);
   --active-line: rgba(24, 28, 33, 0.035);
   --selection: rgba(205, 138, 30, 0.22);
-  --stage: #EDF0F7;
+  --stage: #E9EBF1;
   --shadow: 0 1px 2px rgba(24, 28, 33, 0.08), 0 4px 12px rgba(24, 28, 33, 0.06);
   --syn-kw: #1D57A3;
   --syn-type: #0F6F74;
@@ -66,7 +67,7 @@
     --accent-soft: rgba(226, 166, 77, 0.14);
     --active-line: rgba(236, 237, 239, 0.035);
     --selection: rgba(226, 166, 77, 0.24);
-    --stage: #080C18;
+    --stage: #05060C;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
     --syn-kw: #86B4F2;
     --syn-type: #6FD0C9;
@@ -92,7 +93,7 @@
   --accent-soft: rgba(226, 166, 77, 0.14);
   --active-line: rgba(236, 237, 239, 0.035);
   --selection: rgba(226, 166, 77, 0.24);
-  --stage: #080C18;
+  --stage: #05060C;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
   --syn-kw: #86B4F2;
   --syn-type: #6FD0C9;
@@ -275,10 +276,16 @@ button { cursor: pointer; }
 .swatch::after { content: ""; position: absolute; left: 7px; top: 6px; width: 16px; height: 10px; border-radius: 3px; }
 .swatch.graphite { background: repeating-conic-gradient(var(--control-on) 0 25%, var(--panel) 0 50%) 0 0 / 8px 8px; }
 .swatch.graphite::after { border: 1.5px solid var(--ink); opacity: 0.7; }
-.swatch.aurora { background: radial-gradient(circle at 15% 15%, #6D5BFF 0, transparent 65%), radial-gradient(circle at 95% 25%, #22D3EE 0, transparent 60%), radial-gradient(circle at 60% 110%, #F472B6 0, transparent 60%), #080C18; }
-.swatch.aurora::after { background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
-.swatch.clear { background: radial-gradient(circle at 10% 10%, #A5B4FC 0, transparent 65%), radial-gradient(circle at 95% 20%, #F9A8D4 0, transparent 60%), radial-gradient(circle at 70% 110%, #5EEAD4 0, transparent 60%), #EDF0F7; }
-.swatch.clear::after { background: rgba(255, 255, 255, 0.7); box-shadow: inset 0 0 0 1px #FFFFFF, 0 1px 2px rgba(15, 23, 42, 0.12); }
+/* theme swatches: what each background looks like, the same in either page theme */
+.sw-aurora, .sw-aurora-dark { background: linear-gradient(180deg, #05060C 0%, #5A5FF0 45%, #22C7A9 75%, #05060C 100%); }
+.sw-aurora-light { background: linear-gradient(180deg, #E9EBF1 0%, #A9B1F7 45%, #8FD8CC 75%, #E9EBF1 100%); }
+.sw-silk, .sw-silk-dark { background: linear-gradient(135deg, #0A0708 0%, #5B2C7A 40%, #D9893A 75%, #F1B6C4 100%); }
+.sw-silk-light { background: linear-gradient(135deg, #F2ECE6 0%, #C9B8EE 45%, #F2C28E 100%); }
+.sw-caustic, .sw-caustic-dark { background: radial-gradient(circle at 35% 30%, #9FE7F2 0, transparent 35%), linear-gradient(160deg, #0E5E70, #031018); }
+.sw-caustic-light { background: radial-gradient(circle at 35% 30%, #FFFFFF 0, transparent 40%), linear-gradient(160deg, #E4F1F4, #9FD6E0); }
+.swatch[class*="-dark"]::after { background: rgba(15, 18, 28, 0.78); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
+.swatch[class*="-light"]::after { background: rgba(250, 251, 253, 0.86); box-shadow: inset 0 0 0 1px #FFFFFF, 0 1px 2px rgba(15, 23, 42, 0.14); }
+.sw { width: 14px; height: 10px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.4); }
 .panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .panel[hidden] { display: none; }
 .viewport {
@@ -292,8 +299,9 @@ button { cursor: pointer; }
   touch-action: none;
   user-select: none;
 }
-/* the dot grid is part of the drawing's backdrop, so it pans and zooms with the tables */
-.viewport:not(.grid) .rz-dots { display: none; }
+/* the still drawing's dot grid (without WebGL); the live canvas hides its own */
+.viewport:not(.grid) .rz-grid { display: none; }
+.viewport.is-stale .stage-glass { opacity: 0.35; }
 .viewport.is-panning { cursor: grabbing; }
 .content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .content svg { display: block; }
@@ -316,6 +324,7 @@ button { cursor: pointer; }
   box-shadow: var(--shadow);
 }
 .float.view { left: 12px; top: 12px; }
+.float.stages { right: 12px; top: 12px; }
 .float.zoom { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 .float button {
   display: inline-flex;
@@ -362,10 +371,10 @@ button { cursor: pointer; }
 .float button[aria-pressed="true"] .switch { background: var(--ink); border-color: var(--ink); }
 .float button[aria-pressed="true"] .switch::after { transform: translateX(10px); background: var(--panel); }
 
-/* focus: keep what is connected, fade the rest. A table's shadow (rz-s) and frost cut-out (rz-m) fade
-   with its card, so a faded table sinks into the backdrop instead of leaving an empty pane of glass */
-.content svg :is(.rz-t, .rz-r, .rz-s, .rz-m) { transition: opacity 0.15s ease; }
-.content svg.is-focus :is(.rz-t, .rz-r, .rz-s, .rz-m):not(.is-on) { opacity: 0.14; }
+/* focus: keep what is connected, fade the rest. The live canvas fades the glass under a faded table;
+   the still drawing fades its shadow (rz-s) with the card */
+.content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 0.15s ease; }
+.content svg.is-focus :is(.rz-t, .rz-r, .rz-s):not(.is-on) { opacity: 0.14; }
 .content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
 
 .notice {
@@ -425,10 +434,10 @@ button { cursor: pointer; }
 }
 @media (max-width: 600px) {
   .brand-sub, .stats, #copy-svg, .bar-actions .link-docs { display: none; }
-  .float.view button .label-long { display: none; }
+  .float.view button .label-long, .float.stages .label-long { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .content svg :is(.rz-t, .rz-r, .rz-s, .rz-m), .switch, .switch::after { transition: none; }
+  .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after { transition: none; }
 }
 </style>
 </head>
@@ -491,9 +500,9 @@ button { cursor: pointer; }
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div class="menu" id="download-menu" role="menu" aria-label="Download SVG" hidden>
-            <button type="button" role="menuitem" data-look="graphite"><span class="swatch graphite" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background, fits any page</span></button>
-            <button type="button" role="menuitem" data-look="aurora"><span class="swatch aurora" aria-hidden="true"></span><span class="menu-title">Aurora glass</span><span class="menu-sub">Dark, with its backdrop</span></button>
-            <button type="button" role="menuitem" data-look="clear"><span class="swatch clear" aria-hidden="true"></span><span class="menu-title">Clear glass</span><span class="menu-sub">Light, with its backdrop</span></button>
+            <button type="button" role="menuitem" data-variant="plain"><span class="swatch graphite" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background, fits any page</span></button>
+            <button type="button" role="menuitem" data-variant="dark"><span class="swatch sw-aurora-dark" aria-hidden="true"></span><span class="menu-title">Aurora, dark</span><span class="menu-sub">Glass on its background, as a still</span></button>
+            <button type="button" role="menuitem" data-variant="light"><span class="swatch sw-aurora-light" aria-hidden="true"></span><span class="menu-title">Aurora, light</span><span class="menu-sub">Glass on its background, as a still</span></button>
           </div>
         </span>
       </span>
@@ -506,6 +515,11 @@ button { cursor: pointer; }
         <div class="float view" role="group" aria-label="View">
           <button type="button" id="toggle-keys" aria-pressed="false" title="Show only key and reference columns"><span class="switch" aria-hidden="true"></span><span>Keys<span class="label-long"> only</span></span></button>
           <button type="button" id="toggle-audit" aria-pressed="false" title="Draw audit tables instead of folding them"><span class="switch" aria-hidden="true"></span><span>Audit<span class="label-long"> tables</span></span></button>
+        </div>
+        <div class="float stages" role="group" aria-label="Background">
+          <button type="button" data-stage="aurora" aria-pressed="false" title="Aurora: ribbons of light under stars"><span class="sw sw-aurora" aria-hidden="true"></span><span class="label-long">Aurora</span></button>
+          <button type="button" data-stage="silk" aria-pressed="false" title="Silk: folds of color that flow"><span class="sw sw-silk" aria-hidden="true"></span><span class="label-long">Silk</span></button>
+          <button type="button" data-stage="caustic" aria-pressed="false" title="Caustic: light through water"><span class="sw sw-caustic" aria-hidden="true"></span><span class="label-long">Caustic</span></button>
         </div>
         <div class="float zoom" role="group" aria-label="Zoom">
           <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>

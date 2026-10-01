@@ -1,14 +1,16 @@
-// Model → SVG: the ERD resin draws itself, in a "glass" design.
+// Model → SVG: the ERD resin draws itself.
 //
 // Steps: size every card → lay out with ELK (a port on every column row, orthogonal routing) → SVG string.
 //
-// Three looks share one layout and one card anatomy:
-//   graphite  no background of its own. Ink is currentColor, so the drawing reads on any page; the
-//             default for files (README, wikis).
-//   aurora    dark glass over an aurora backdrop drawn inside the SVG.
-//   clear     light glass over a pastel backdrop drawn inside the SVG.
-// Glass needs something behind it: aurora and clear show a blurred copy of their backdrop through the
-// cards (one blur for the whole drawing, masked by every card).
+// Every look shares one layout and one card anatomy: a panel with modest corners, key labels (PK, UK,
+// FK) in a gutter, rectangular tags, and orthogonal connectors with square ends.
+//   graphite  paints nothing behind the drawing. Ink is currentColor, so it reads on any page; the
+//             default for files.
+//   glass     frosted liquid glass panels over a stage in one of three themes (aurora, silk,
+//             caustic), each in a dark and a light version. Files get a still life: the stage drawn
+//             into the SVG, blurred once under every card. A live canvas passes `stage: false` and
+//             paints the stage and the glass itself (see the playground), so the SVG then holds only
+//             what sits on the glass.
 //
 // Output is deterministic. Text is never measured; widths follow fixed rules (monospace = cells ×
 // 0.6em, proportional = 0.57em per Latin letter and 1em per CJK character). The same input gives the
@@ -18,30 +20,41 @@
 
 import type { Model, ModelColumn, ModelTable, Relation } from "./model.ts";
 
-export type SvgLook = "graphite" | "aurora" | "clear";
+export type SvgLook = "graphite" | "aurora-dark" | "aurora-light" | "silk-dark" | "silk-light" | "caustic-dark" | "caustic-light";
 
 export interface SvgOptions {
   /** all = every column, keys = key and reference columns only (the rest become "+N columns") */
   columns?: "all" | "keys";
   /** collapse = fold audit tables into a tag on the audited table, expand = draw revinfo and *_aud */
   audit?: "collapse" | "expand";
-  /** graphite (default), aurora or clear */
+  /** graphite (default) or a glass look */
   look?: SvgLook;
   /** graphite only, for files: embed a <style> that picks the ink color for light and dark backgrounds */
   standalone?: boolean;
-  /** aurora and clear: paint the backdrop this many pixels beyond the drawing (with overflow visible),
-   *  for canvases that pan and zoom. 0 keeps the backdrop inside the drawing */
-  bleed?: number;
+  /** Glass looks: paint the stage and the glass into the SVG. Default true. A live canvas passes
+   *  false, paints both itself from `stageOf(look)` and `glassOf(look)`, and lays the SVG on top */
+  stage?: boolean;
   /** Prefix for every id in the SVG, so several drawings can share a page. Default "rz-" */
   idPrefix?: string;
+}
+
+/** Where a table's card sits in the drawing */
+export interface SvgBox {
+  table: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface SvgResult {
   svg: string;
   width: number;
   height: number;
-  /** The base color the drawing paints behind itself, or null when it paints nothing (graphite) */
+  /** The stage's base color, or null for graphite */
   background: string | null;
+  /** Every card, for pages that paint the glass themselves */
+  boxes: SvgBox[];
 }
 
 // Only the parts of ELK's graph format used here, declared structurally to avoid depending on elkjs types
@@ -105,153 +118,305 @@ const sansW = (s: string, size: number): number => [...s].reduce((w, ch) => w + 
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const f = (v: number): number => Math.round(v * 10) / 10;
+const f3 = (v: number): number => Math.round(v * 1000) / 1000;
 const up8 = (v: number): number => Math.ceil(v / 8) * 8;
 const maxOf = (xs: number[], floor = 0): number => xs.reduce((m, x) => Math.max(m, x), floor);
 
 // ---- looks ----
 
-/** A color and its opacity. Color may be "currentColor" */
-type Ink = readonly [string, number];
+/** A color and its opacity (or strength). Color may be "currentColor" */
+export type Ink = readonly [string, number];
 
-interface Look {
-  /** The backdrop: base color, color blobs [color, alpha, cx, cy, radius] relative to the drawing, dot grid */
-  backdrop: { base: string; blobs: readonly (readonly [string, number, number, number, number])[]; dots: Ink } | null;
-  frost: { blur: number; saturate: number } | null;
-  veil: Ink | null;
-  fillTop: Ink;
-  fillBottom: Ink;
-  capTop: Ink;
-  capBottom: Ink;
-  rim: readonly [Ink, Ink, Ink];
-  inner: Ink;
-  outline: Ink | null;
-  highlight: number;
-  /** [color, alpha, offset y, blur] */
-  shadow: readonly [string, number, number, number];
+/** The slow color behind the glass. Files draw it still; a live canvas animates it */
+export interface Stage {
+  /** The theme: ribbons of light under stars, flowing silk, or light through water */
+  style: "aurora" | "silk" | "caustic";
+  dark: boolean;
+  base: string;
+  /** Three colors and how strongly each shows */
+  colors: readonly [Ink, Ink, Ink];
+  /** Where each color sits in a still drawing: [cx, cy, radius], relative to the drawing */
+  spots: readonly (readonly [number, number, number])[];
+  /** The light that follows the pointer on a live canvas: color, strength, radius in pixels */
+  light: readonly [string, number, number];
+  /** Dots every GRID_STEP units */
+  grid: Ink;
+  /** Stars that twinkle (sparkles on a light stage), or null */
+  stars: Ink | null;
+  grain: number;
+  vignette: number;
+}
+
+/** The glass panel a table sits on */
+export interface Glass {
+  /** Blur behind the panel, in pixels */
+  frost: number;
+  /** Laid over the frosted stage so text stays readable */
+  veil: Ink;
+  /** A brighter wash that fades down the panel */
+  tint: Ink;
+  /** The lit edge */
+  rim: Ink;
+  /** Live canvas: how strongly the edge flares where it faces the light */
+  specular: number;
+  /** Live canvas: how far the edge bends what is behind it, in pixels */
+  lens: number;
+  shadow: Ink;
+}
+
+interface Inks {
   text: Ink;
   muted: Ink;
   faint: Ink;
   type: Ink;
   sep: Ink;
+  head: Ink;
   pk: Ink;
   uk: Ink;
   fk: Ink;
   nullable: Ink;
   line: Ink;
-  /** A soft halo under connectors and key dots, or null */
-  glow: Ink | null;
-  chip: Ink;
-  chipRim: Ink;
-  chipText: Ink;
+  tag: Ink;
+  tagRim: Ink;
+  tagText: Ink;
 }
+
+interface Look {
+  ink: Inks;
+  stage: Stage | null;
+  glass: Glass | null;
+}
+
+export const GRID_STEP = 24;
+/** Corner radius of a card. Modest on purpose: the drawing is a schematic, not a toy */
+export const CARD_RADIUS = 8;
 
 const C = "currentColor";
 const WHITE = "#FFFFFF";
 
-const LOOKS: Record<SvgLook, Look> = {
-  graphite: {
-    backdrop: null,
-    frost: null,
-    veil: null,
-    fillTop: [C, 0.085],
-    fillBottom: [C, 0.025],
-    capTop: [C, 0.06],
-    capBottom: [C, 0],
-    rim: [[WHITE, 0.5], [C, 0.1], [C, 0.22]],
-    inner: [C, 0.04],
-    outline: null,
-    highlight: 0.5,
-    shadow: ["#000000", 0.22, 12, 14],
+const INK: Record<"current" | "dark" | "light", Inks> = {
+  current: {
     text: [C, 1],
-    muted: [C, 0.58],
-    faint: [C, 0.4],
-    type: [C, 0.62],
+    muted: [C, 0.6],
+    faint: [C, 0.42],
+    type: [C, 0.6],
     sep: [C, 0.09],
+    head: [C, 0.04],
     pk: [C, 1],
-    uk: [C, 0.85],
-    fk: [C, 0.5],
+    uk: [C, 0.78],
+    fk: [C, 0.55],
     nullable: [C, 1],
     line: [C, 0.55],
-    glow: null,
-    chip: [C, 0.06],
-    chipRim: [C, 0.14],
-    chipText: [C, 0.7],
+    tag: [C, 0.04],
+    tagRim: [C, 0.18],
+    tagText: [C, 0.7],
   },
-  aurora: {
-    backdrop: {
-      base: "#080C18",
-      blobs: [
-        ["#6D5BFF", 0.5, 0.1, 0.12, 0.55],
-        ["#22D3EE", 0.3, 0.92, 0.18, 0.5],
-        ["#F472B6", 0.28, 0.62, 1.0, 0.55],
-        ["#34D399", 0.18, 0.08, 0.92, 0.45],
-      ],
-      dots: [WHITE, 0.09],
-    },
-    frost: { blur: 20, saturate: 1.15 },
-    veil: ["#0A0F1F", 0.42],
-    fillTop: [WHITE, 0.13],
-    fillBottom: [WHITE, 0.035],
-    capTop: [WHITE, 0.09],
-    capBottom: [WHITE, 0.02],
-    rim: [[WHITE, 0.7], [WHITE, 0.1], [WHITE, 0.32]],
-    inner: [WHITE, 0.06],
-    outline: null,
-    highlight: 0.75,
-    shadow: ["#000000", 0.55, 16, 18],
-    text: ["#F5F7FF", 1],
-    muted: ["#E1E7FF", 0.6],
-    faint: ["#E1E7FF", 0.38],
-    type: ["#E1E7FF", 0.66],
-    sep: [WHITE, 0.08],
-    pk: ["#FCD34D", 1],
-    uk: ["#C4B5FD", 1],
-    fk: ["#67E8F9", 0.75],
-    nullable: ["#FCD34D", 1],
-    line: ["#E5EAFF", 0.62],
-    glow: ["#B9C4FF", 0.22],
-    chip: [WHITE, 0.09],
-    chipRim: [WHITE, 0.16],
-    chipText: ["#E1E7FF", 0.78],
+  dark: {
+    text: ["#F6F7FB", 1],
+    muted: ["#DDE2F0", 0.62],
+    faint: ["#DDE2F0", 0.42],
+    type: ["#DDE2F0", 0.66],
+    sep: [WHITE, 0.09],
+    head: [WHITE, 0.035],
+    pk: ["#F6C76B", 1],
+    uk: ["#C8BBFF", 1],
+    fk: ["#86E1EC", 1],
+    nullable: ["#F6C76B", 1],
+    line: ["#E9ECF8", 0.62],
+    tag: [WHITE, 0.07],
+    tagRim: [WHITE, 0.16],
+    tagText: ["#E6EAF6", 0.8],
   },
-  clear: {
-    backdrop: {
-      base: "#EDF0F7",
-      blobs: [
-        ["#A5B4FC", 0.85, 0.08, 0.1, 0.55],
-        ["#F9A8D4", 0.7, 0.95, 0.15, 0.5],
-        ["#5EEAD4", 0.55, 0.72, 1.0, 0.55],
-        ["#FCD34D", 0.45, 0.15, 0.95, 0.45],
-      ],
-      dots: ["#1E293B", 0.09],
-    },
-    frost: { blur: 20, saturate: 1.5 },
-    veil: null,
-    fillTop: [WHITE, 0.66],
-    fillBottom: [WHITE, 0.4],
-    capTop: [WHITE, 0.5],
-    capBottom: [WHITE, 0.1],
-    rim: [[WHITE, 1], [WHITE, 0.55], [WHITE, 0.9]],
-    inner: [WHITE, 0.35],
-    outline: ["#0F172A", 0.1],
-    highlight: 1,
-    shadow: ["#1E293B", 0.2, 14, 16],
+  light: {
     text: ["#0B1020", 1],
     muted: ["#0B1020", 0.56],
-    faint: ["#0B1020", 0.38],
-    type: ["#0B1020", 0.62],
-    sep: ["#0F172A", 0.07],
-    pk: ["#D97706", 1],
-    uk: ["#7C3AED", 1],
-    fk: ["#0891B2", 0.75],
-    nullable: ["#D97706", 1],
-    line: ["#1E293B", 0.5],
-    glow: null,
-    chip: [WHITE, 0.75],
-    chipRim: ["#0F172A", 0.08],
-    chipText: ["#0B1020", 0.62],
+    faint: ["#0B1020", 0.4],
+    type: ["#0B1020", 0.6],
+    sep: ["#0F172A", 0.08],
+    head: [WHITE, 0.3],
+    pk: ["#B26A00", 1],
+    uk: ["#6D4FD8", 1],
+    fk: ["#0B7A90", 1],
+    nullable: ["#B26A00", 1],
+    line: ["#1E293B", 0.52],
+    tag: [WHITE, 0.6],
+    tagRim: ["#0F172A", 0.12],
+    tagText: ["#0B1020", 0.64],
   },
 };
+
+// Frosted through: the stage only tints the panel, the rim and the bevel do the glass
+const DARK_GLASS: Glass = {
+  frost: 22,
+  veil: ["#0F121C", 0.74],
+  tint: [WHITE, 0.07],
+  rim: [WHITE, 0.9],
+  specular: 1,
+  lens: 7,
+  shadow: ["#000000", 0.55],
+};
+const LIGHT_GLASS: Glass = {
+  frost: 22,
+  veil: ["#FAFBFD", 0.8],
+  tint: [WHITE, 0.4],
+  rim: [WHITE, 1],
+  specular: 0.8,
+  lens: 7,
+  shadow: ["#1B2140", 0.18],
+};
+
+const LOOKS: Record<SvgLook, Look> = {
+  graphite: { ink: INK.current, stage: null, glass: null },
+  "aurora-dark": {
+    ink: INK.dark,
+    glass: DARK_GLASS,
+    stage: {
+      style: "aurora",
+      dark: true,
+      base: "#05060C",
+      colors: [
+        ["#5A5FF0", 0.55],
+        ["#22C7A9", 0.62],
+        ["#E8A04A", 0.3],
+      ],
+      spots: [
+        [0.12, 0.12, 0.6],
+        [0.92, 0.2, 0.55],
+        [0.62, 1.0, 0.6],
+      ],
+      light: ["#FFFFFF", 0.1, 420],
+      grid: [WHITE, 0.1],
+      stars: [WHITE, 0.95],
+      grain: 0.025,
+      vignette: 0.35,
+    },
+  },
+  "aurora-light": {
+    ink: INK.light,
+    glass: LIGHT_GLASS,
+    stage: {
+      style: "aurora",
+      dark: false,
+      base: "#E9EBF1",
+      colors: [
+        ["#A9B1F7", 0.75],
+        ["#8FD8CC", 0.7],
+        ["#F7C893", 0.5],
+      ],
+      spots: [
+        [0.08, 0.1, 0.6],
+        [0.95, 0.15, 0.55],
+        [0.7, 1.0, 0.6],
+      ],
+      light: ["#FFFFFF", 0.22, 420],
+      grid: ["#1E2433", 0.1],
+      stars: ["#6E74DA", 0.45],
+      grain: 0.02,
+      vignette: 0.06,
+    },
+  },
+  "silk-dark": {
+    ink: INK.dark,
+    glass: DARK_GLASS,
+    stage: {
+      style: "silk",
+      dark: true,
+      base: "#0A0708",
+      colors: [
+        ["#D9893A", 0.5],
+        ["#5B2C7A", 0.55],
+        ["#F1B6C4", 0.32],
+      ],
+      spots: [
+        [0.85, 0.85, 0.65],
+        [0.15, 0.2, 0.6],
+        [0.55, 0.45, 0.35],
+      ],
+      light: ["#FFE3C2", 0.1, 420],
+      grid: ["#FFF1E6", 0.09],
+      stars: null,
+      grain: 0.025,
+      vignette: 0.4,
+    },
+  },
+  "silk-light": {
+    ink: INK.light,
+    glass: LIGHT_GLASS,
+    stage: {
+      style: "silk",
+      dark: false,
+      base: "#F2ECE6",
+      colors: [
+        ["#F2C28E", 0.62],
+        ["#C9B8EE", 0.58],
+        ["#FFFFFF", 0.55],
+      ],
+      spots: [
+        [0.85, 0.9, 0.65],
+        [0.12, 0.15, 0.6],
+        [0.5, 0.45, 0.35],
+      ],
+      light: ["#FFF8F0", 0.22, 420],
+      grid: ["#3A2A1C", 0.1],
+      stars: null,
+      grain: 0.02,
+      vignette: 0.06,
+    },
+  },
+  "caustic-dark": {
+    ink: INK.dark,
+    glass: DARK_GLASS,
+    stage: {
+      style: "caustic",
+      dark: true,
+      base: "#031018",
+      colors: [
+        ["#0E5E70", 0.6],
+        ["#9FE7F2", 0.3],
+        ["#F3D49A", 0.2],
+      ],
+      spots: [
+        [0.2, 0.25, 0.7],
+        [0.75, 0.4, 0.5],
+        [0.5, 1.05, 0.5],
+      ],
+      light: ["#CFF6FF", 0.1, 420],
+      grid: ["#DFF7FF", 0.09],
+      stars: null,
+      grain: 0.025,
+      vignette: 0.4,
+    },
+  },
+  "caustic-light": {
+    ink: INK.light,
+    glass: LIGHT_GLASS,
+    stage: {
+      style: "caustic",
+      dark: false,
+      base: "#E4F1F4",
+      colors: [
+        ["#9FD6E0", 0.6],
+        ["#FFFFFF", 0.5],
+        ["#F4E2C4", 0.45],
+      ],
+      spots: [
+        [0.2, 0.2, 0.65],
+        [0.7, 0.45, 0.5],
+        [0.55, 1.05, 0.5],
+      ],
+      light: ["#FFFFFF", 0.22, 420],
+      grid: ["#123A44", 0.1],
+      stars: null,
+      grain: 0.02,
+      vignette: 0.06,
+    },
+  },
+};
+
+/** The stage a look stands on, for a page that paints it itself; null for graphite */
+export const stageOf = (look: SvgLook): Stage | null => LOOKS[look].stage;
+/** The glass a look's cards are made of, for a page that paints it itself; null for graphite */
+export const glassOf = (look: SvgLook): Glass | null => LOOKS[look].glass;
 
 const fill = ([c, a]: Ink): string => (a === 1 ? `fill="${c}"` : `fill="${c}" fill-opacity="${a}"`);
 const stroke = ([c, a]: Ink): string => (a === 1 ? `stroke="${c}"` : `stroke="${c}" stroke-opacity="${a}"`);
@@ -260,10 +425,12 @@ const stop = (offset: number, [c, a]: Ink): string => `<stop offset="${offset}" 
 // ---- card metrics (on an 8-unit grid) ----
 
 const PAD = 16;
-const HEAD = 46;
+const HEAD = 44;
 const ROW = 28;
 const FOOT = 18;
-const RX = 14;
+const RX = CARD_RADIUS;
+/** Room for the key label (PK, UK, FK) before the column name */
+const KEY = 26;
 
 interface View {
   table: ModelTable;
@@ -280,13 +447,13 @@ interface View {
 
 function chips(c: ModelColumn, v: { refCols: Set<string> }): string[] {
   const out: string[] = [];
-  if (c.pk && v.refCols.has(c.name)) out.push("fk");
-  if (c.enumValues) out.push("enum");
-  if (c.enc) out.push("enc");
-  if (c.index) out.push("ix");
+  if (c.pk && v.refCols.has(c.name)) out.push("FK");
+  if (c.enumValues) out.push("ENUM");
+  if (c.enc) out.push("ENC");
+  if (c.index) out.push("IX");
   return out;
 }
-const chipW = (text: string): number => monoW(text, 9.5) + 12;
+const chipW = (text: string): number => monoW(text, 8.5) + 10;
 const chipsW = (list: string[]): number => (list.length ? list.reduce((w, x) => w + chipW(x) + 4, 0) + 6 : 0);
 const typeOf = (c: ModelColumn, t: ModelTable): string => c.type + (c.nullable && t.origin !== "audit" ? "?" : "");
 
@@ -302,13 +469,13 @@ function rowTitle(c: ModelColumn, t: ModelTable): string {
 
 function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "nameW"> {
   const t = v.table;
-  const nameW = maxOf(v.shown.map((c) => sansW(c.name, 12.5) + (c.pk ? 4 : 0)), 48);
+  const nameW = maxOf(v.shown.map((c) => sansW(c.name, 12.5) * (c.pk ? 1.04 : 1)), 48);
   const descW = maxOf(v.shown.map((c) => (c.description ? sansW(c.description, 11.5) : 0)));
   const typeW = maxOf(v.shown.map((c) => monoW(typeOf(c, t), 11)), 40);
   const chipW_ = maxOf(v.shown.map((c) => chipsW(chips(c, v))));
-  const rowW = PAD * 2 + 20 + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW;
-  const headW = PAD * 2 + sansW(t.name, 14) + 10 + (t.description ? sansW(t.description, 12) : 0) + (v.tag ? 14 + chipW(v.tag) : 0);
-  const footW = PAD * 2 + maxOf(v.foot.map((s) => sansW(s, 10.5)));
+  const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW;
+  const headW = PAD * 2 + sansW(t.name, 13.5) * 1.04 + 10 + (t.description ? sansW(t.description, 12) : 0) + (v.tag ? 14 + chipW(v.tag) : 0);
+  const footW = PAD * 2 + maxOf(v.foot.map((s) => monoW(s, 9.5)));
   return {
     w: up8(Math.max(rowW, headW, footW, 200)),
     h: up8(HEAD + v.shown.length * ROW + (v.foot.length ? v.foot.length * FOOT + 8 : 0) + 8),
@@ -317,65 +484,80 @@ function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "na
 }
 
 const rowY = (i: number): number => HEAD + 4 + i * ROW + ROW / 2;
-/** The header's shape: rounded top corners, square bottom */
+/** The header band: rounded top corners, square bottom */
 const capPath = (w: number): string => `M0,${RX} A${RX},${RX} 0 0 1 ${RX},0 H${w - RX} A${RX},${RX} 0 0 1 ${w},${RX} V${HEAD} H0 Z`;
 
-function chip(text: string, x: number, y: number, L: Look): string {
+function chip(text: string, x: number, y: number, I: Inks): string {
   const w = chipW(text);
   return (
-    `<g transform="translate(${f(x)},${f(y)})"><rect width="${f(w)}" height="15" rx="7.5" ${fill(L.chip)} ${stroke(L.chipRim)}/>` +
-    `<text x="${f(w / 2)}" y="10.6" text-anchor="middle" font-family="${MONO}" font-size="9.5" ${fill(L.chipText)}>${esc(text)}</text></g>`
+    `<g transform="translate(${f(x)},${f(y)})"><rect width="${f(w)}" height="14" rx="3" ${fill(I.tag)} ${stroke(I.tagRim)}/>` +
+    `<text x="${f(w / 2)}" y="10" text-anchor="middle" font-family="${MONO}" font-size="8.5" font-weight="500" ${fill(I.tagText)}>${esc(text)}</text></g>`
   );
 }
 
-function card(v: View, L: Look, id: (name: string) => string): string {
-  const t = v.table;
+function keyLabel(c: ModelColumn, v: View, I: Inks): [string, Ink] | null {
+  if (c.pk) return ["PK", I.pk];
+  if (c.uk) return ["UK", I.uk];
+  if (v.refCols.has(c.name)) return ["FK", I.fk];
+  return null;
+}
+
+/** The panel itself. Glass in a file: veil, wash, lit rim and highlight over the frost. Graphite: ink only.
+ *  On a live canvas the page paints the panel, so nothing is drawn here */
+function panel(v: View, L: Look, id: (name: string) => string, painted: boolean): string {
   const { w, h } = v;
+  const dash = v.table.origin === "external" ? ' stroke-dasharray="5 4"' : "";
+  if (!painted) return dash ? `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${stroke(L.ink.sep)}${dash}/>` : "";
   const s: string[] = [];
-  if (L.veil) s.push(`<rect width="${w}" height="${h}" rx="${RX}" ${fill(L.veil)}/>`);
-  s.push(`<rect width="${w}" height="${h}" rx="${RX}" fill="url(#${id("fill")})"/>`);
-  s.push(`<path d="${capPath(w)}" fill="url(#${id("cap")})"/>`);
-  if (L.outline) s.push(`<rect x="-0.5" y="-0.5" width="${w + 1}" height="${h + 1}" rx="${RX + 0.5}" fill="none" ${stroke(L.outline)}/>`);
-  s.push(
-    `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" stroke="url(#${id("rim")})"${t.origin === "external" ? ' stroke-dasharray="5 4"' : ""}/>`,
-  );
-  s.push(`<rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="${RX - 2}" fill="none" ${stroke(L.inner)}/>`);
-  s.push(`<rect x="${f(RX * 0.7)}" y="0.6" width="${f(w - RX * 1.4)}" height="1" fill="url(#${id("hi")})"/>`);
+  if (L.glass) {
+    s.push(`<rect width="${w}" height="${h}" rx="${RX}" ${fill(L.glass.veil)}/>`);
+    s.push(`<rect width="${w}" height="${h}" rx="${RX}" fill="url(#${id("wash")})"/>`);
+  } else {
+    s.push(`<rect width="${w}" height="${h}" rx="${RX}" fill="url(#${id("wash")})"/>`);
+  }
+  s.push(`<path d="${capPath(w)}" ${fill(L.ink.head)}/>`);
+  s.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" stroke="url(#${id("rim")})"${dash}/>`);
+  if (L.glass) s.push(`<rect x="${RX}" y="0.6" width="${w - RX * 2}" height="1" fill="url(#${id("spec")})"/>`);
+  return s.join("");
+}
+
+function card(v: View, L: Look, id: (name: string) => string, painted: boolean): string {
+  const t = v.table;
+  const I = L.ink;
+  const { w } = v;
+  const s: string[] = [panel(v, L, id, painted)];
 
   // header
   s.push(
-    `<text x="${PAD}" y="28" font-size="14" font-weight="650" letter-spacing="-0.01em" ${fill(L.text)}>${esc(t.name)}` +
-      (t.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(L.muted)}>${esc(t.description)}</tspan>` : "") +
+    `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${fill(I.text)}>${esc(t.name)}` +
+      (t.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(I.muted)}>${esc(t.description)}</tspan>` : "") +
       "</text>",
   );
-  if (v.tag) s.push(chip(v.tag, w - PAD - chipW(v.tag), 15, L));
-  s.push(`<rect x="${PAD}" y="${HEAD - 0.5}" width="${w - PAD * 2}" height="1" fill="url(#${id("sep")})"/>`);
+  if (v.tag) s.push(chip(v.tag, w - PAD - chipW(v.tag), 15, I));
+  s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
   // rows
   v.shown.forEach((c, i) => {
     const cy = rowY(i);
     const by = cy + 4.2;
     s.push(`<g class="rz-c" data-c="${esc(c.name)}"><title>${esc(rowTitle(c, t))}</title>`);
-    s.push(`<rect class="rz-hit" x="4" y="${f(cy - ROW / 2)}" width="${w - 8}" height="${ROW}" rx="6" fill="currentColor" fill-opacity="0"/>`);
-    if (i > 0) s.push(`<rect x="${PAD + 20}" y="${f(cy - ROW / 2)}" width="${w - PAD * 2 - 20}" height="1" fill="url(#${id("sep")})" opacity=".7"/>`);
-    if (c.pk) s.push(keyDot(PAD + 6, cy, L.pk, true, L, id));
-    else if (c.uk) s.push(keyDot(PAD + 6, cy, L.uk, false, L, id));
-    else if (v.refCols.has(c.name)) s.push(`<circle cx="${PAD + 6}" cy="${f(cy)}" r="2.2" ${fill(L.fk)}/>`);
-    s.push(
-      `<text x="${PAD + 20}" y="${f(by)}" font-size="12.5" ${fill(c.pk ? L.text : [L.text[0], L.text[1] * 0.92])}${c.pk ? ' font-weight="600"' : ""}>${esc(c.name)}</text>`,
-    );
-    if (c.description) s.push(`<text x="${f(PAD + 20 + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(L.muted)}>${esc(c.description)}</text>`);
+    s.push(`<rect class="rz-hit" x="1" y="${f(cy - ROW / 2)}" width="${w - 2}" height="${ROW}" fill="currentColor" fill-opacity="0"/>`);
+    if (i > 0) s.push(`<rect x="${PAD}" y="${f(cy - ROW / 2)}" width="${w - PAD * 2}" height="1" ${fill(I.sep)} opacity=".7"/>`);
+    const key = keyLabel(c, v, I);
+    if (key) s.push(`<text x="${PAD}" y="${f(by - 0.6)}" font-family="${MONO}" font-size="8.5" font-weight="600" ${fill(key[1])}>${key[0]}</text>`);
+    s.push(`<text x="${PAD + KEY}" y="${f(by)}" font-size="12.5" ${fill(I.text)}${c.pk ? ' font-weight="600"' : ""}>${esc(c.name)}</text>`);
+    if (c.description) s.push(`<text x="${f(PAD + KEY + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
     const right = w - PAD;
     const nullable = c.nullable && t.origin !== "audit";
     s.push(
-      `<text x="${right}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(L.type)}>${esc(c.type)}` +
-        (nullable ? `<tspan ${fill(L.nullable)} font-weight="700">?</tspan>` : "") +
+      `<text x="${right}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}` +
+        (nullable ? `<tspan ${fill(I.nullable)} font-weight="700">?</tspan>` : "") +
         "</text>",
     );
     let cx = right - monoW(typeOf(c, t), 11) - 8;
     for (const x of chips(c, v).reverse()) {
       cx -= chipW(x);
-      s.push(chip(x, cx, cy - 7.5, L));
+      s.push(chip(x, cx, cy - 7, I));
       cx -= 4;
     }
     s.push("</g>");
@@ -383,20 +565,12 @@ function card(v: View, L: Look, id: (name: string) => string): string {
 
   if (v.foot.length) {
     const fy = HEAD + 4 + v.shown.length * ROW + 4;
-    s.push(`<rect x="${PAD}" y="${fy}" width="${w - PAD * 2}" height="1" fill="url(#${id("sep")})"/>`);
-    v.foot.forEach((line, k) => s.push(`<text x="${PAD}" y="${f(fy + 15 + k * FOOT)}" font-size="10.5" ${fill(L.faint)}>${esc(line)}</text>`));
+    s.push(`<rect x="${PAD}" y="${fy}" width="${w - PAD * 2}" height="1" ${fill(I.sep)}/>`);
+    v.foot.forEach((line, k) =>
+      s.push(`<text x="${PAD}" y="${f(fy + 15 + k * FOOT)}" font-family="${MONO}" font-size="9.5" ${fill(I.faint)}>${esc(line)}</text>`),
+    );
   }
   return s.join("");
-}
-
-function keyDot(x: number, y: number, ink: Ink, filled: boolean, L: Look, id: (name: string) => string): string {
-  const halo = L.glow ? `<circle cx="${x}" cy="${f(y)}" r="6" fill="${ink[0]}" fill-opacity=".22" filter="url(#${id("soft")})"/>` : "";
-  return (
-    halo +
-    (filled
-      ? `<circle cx="${x}" cy="${f(y)}" r="3.4" ${fill(ink)}/>`
-      : `<circle cx="${x}" cy="${f(y)}" r="3" fill="none" ${stroke(ink)} stroke-width="1.4"/>`)
-  );
 }
 
 // ---- connectors ----
@@ -446,7 +620,11 @@ function views(model: Model, opts: { columns: "all" | "keys"; audit: "collapse" 
     const shown = opts.columns === "keys" ? table.columns.filter(isKey) : table.columns;
     const hidden = table.columns.length - shown.length;
     const tag =
-      table.origin === "external" ? "external" : table.origin === "audit" || (table.audit && !expand) ? (table.audit?.method ?? "envers") : null;
+      table.origin === "external"
+        ? "EXTERNAL"
+        : table.origin === "audit" || (table.audit && !expand)
+          ? (table.audit?.method ?? "envers").toUpperCase()
+          : null;
     const foot = table.constraints.map((k) => `${k.name ?? (k.kind === "unique" ? "unique" : "index")} (${k.columns.join(", ")})`);
     if (hidden) foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
     const base = { table, shown, hidden, refCols, tag, foot };
@@ -457,46 +635,145 @@ function views(model: Model, opts: { columns: "all" | "keys"; audit: "collapse" 
 
 const STANDALONE_STYLE = "<style>.rz{color:#1f2328}@media (prefers-color-scheme:dark){.rz{color:#e6edf3}}</style>";
 
-function defs(L: Look, id: (name: string) => string, W: number, H: number, bleed: number, cards: string): string {
+/** "#RRGGBB" → [r, g, b] in 0..1, for feColorMatrix */
+const rgb01 = (hex: string): number[] => [1, 3, 5].map((i) => f3(parseInt(hex.slice(i, i + 2), 16) / 255));
+
+function cardDefs(L: Look, id: (name: string) => string): string {
   const s: string[] = [];
-  s.push(`<linearGradient id="${id("fill")}" x1="0" y1="0" x2="0" y2="1">${stop(0, L.fillTop)}${stop(1, L.fillBottom)}</linearGradient>`);
-  s.push(`<linearGradient id="${id("cap")}" x1="0" y1="0" x2="0" y2="1">${stop(0, L.capTop)}${stop(1, L.capBottom)}</linearGradient>`);
-  s.push(`<linearGradient id="${id("rim")}" x1="0" y1="0" x2="1" y2="1">${stop(0, L.rim[0])}${stop(0.45, L.rim[1])}${stop(1, L.rim[2])}</linearGradient>`);
-  s.push(`<linearGradient id="${id("hi")}" x1="0" y1="0" x2="1" y2="0">${stop(0, [WHITE, 0])}${stop(0.5, [WHITE, L.highlight])}${stop(1, [WHITE, 0])}</linearGradient>`);
-  s.push(`<linearGradient id="${id("sep")}" x1="0" y1="0" x2="1" y2="0">${stop(0, [L.sep[0], 0])}${stop(0.15, L.sep)}${stop(0.85, L.sep)}${stop(1, [L.sep[0], 0])}</linearGradient>`);
-  s.push(`<filter id="${id("soft")}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter>`);
-  // A shadow that stays outside the card: blur the shape, offset it, then cut the shape itself out
-  const [sc, sa, sdy, sb] = L.shadow;
-  s.push(
-    `<filter id="${id("shadow")}" x="-40%" y="-40%" width="180%" height="200%"><feGaussianBlur in="SourceAlpha" stdDeviation="${sb}"/><feOffset dy="${sdy}" result="b"/>` +
-      `<feFlood flood-color="${sc}" flood-opacity="${sa}"/><feComposite in2="b" operator="in" result="s"/><feComposite in="s" in2="SourceAlpha" operator="out"/></filter>`,
-  );
-  if (L.backdrop) {
-    const B = L.backdrop;
-    const R = Math.max(W, H);
-    B.blobs.forEach(([color, alpha, cx, cy, r], i) =>
-      s.push(
-        `<radialGradient id="${id(`blob${i}`)}" gradientUnits="userSpaceOnUse" cx="${f(cx * W)}" cy="${f(cy * H)}" r="${f(r * R)}">` +
-          `<stop offset="0" stop-color="${color}" stop-opacity="${alpha}"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient>`,
-      ),
-    );
+  const g = L.glass;
+  if (g) {
+    s.push(`<linearGradient id="${id("wash")}" x1="0" y1="0" x2="0" y2="1">${stop(0, g.tint)}${stop(1, [g.tint[0], 0])}</linearGradient>`);
+    // Lit from the top left: a bright edge there, faint along the middle, a softer catch at the bottom right
     s.push(
-      `<pattern id="${id("dots")}" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1.05" ${fill(B.dots)}/></pattern>`,
+      `<linearGradient id="${id("rim")}" x1="0" y1="0" x2="1" y2="1">${stop(0, g.rim)}${stop(0.35, [g.rim[0], g.rim[1] * 0.18])}` +
+        `${stop(0.7, [g.rim[0], g.rim[1] * 0.12])}${stop(1, [g.rim[0], g.rim[1] * 0.45])}</linearGradient>`,
     );
-    // The backdrop at the drawing's size (what the glass blurs) and, for canvases, a wider one to look at.
-    // The dot grid is drawn on top separately, so a viewer can hide it (a <use> copy cannot be styled)
-    const layer = (x: number, y: number, w: number, h: number) =>
-      `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${B.base}"/>` +
-      B.blobs.map((_, i) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${id(`blob${i}`)})"/>`).join("");
-    s.push(`<g id="${id("backdrop")}">${layer(0, 0, W, H)}</g>`);
-    if (bleed > 0) s.push(`<g id="${id("backdrop-wide")}">${layer(-bleed, -bleed, W + bleed * 2, H + bleed * 2)}</g>`);
-    s.push(
-      `<filter id="${id("frost")}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">` +
-        `<feGaussianBlur stdDeviation="${L.frost!.blur}" edgeMode="duplicate"/><feColorMatrix type="saturate" values="${L.frost!.saturate}"/></filter>`,
-    );
-    s.push(`<mask id="${id("cards")}" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="black"/>${cards}</mask>`);
+    s.push(`<linearGradient id="${id("spec")}" x1="0" y1="0" x2="1" y2="0">${stop(0, [WHITE, 0])}${stop(0.5, [WHITE, g.rim[1] * 0.8])}${stop(1, [WHITE, 0])}</linearGradient>`);
+  } else {
+    s.push(`<linearGradient id="${id("wash")}" x1="0" y1="0" x2="0" y2="1">${stop(0, [C, 0.07])}${stop(1, [C, 0.025])}</linearGradient>`);
+    s.push(`<linearGradient id="${id("rim")}" x1="0" y1="0" x2="0" y2="1">${stop(0, [C, 0.3])}${stop(1, [C, 0.2])}</linearGradient>`);
   }
+  // Two shadows, a wide ambient one and a tight contact one, then the card's own shape is cut out so
+  // translucent glass never shows its shadow through itself
+  const [sc, sa] = g ? g.shadow : (["#000000", 0.16] as const);
+  s.push(
+    `<filter id="${id("shadow")}" x="-30%" y="-30%" width="160%" height="180%">` +
+      `<feGaussianBlur in="SourceAlpha" stdDeviation="18"/><feOffset dy="16" result="a"/>` +
+      `<feFlood flood-color="${sc}" flood-opacity="${sa}"/><feComposite in2="a" operator="in" result="ambient"/>` +
+      `<feGaussianBlur in="SourceAlpha" stdDeviation="1.5"/><feOffset dy="1" result="c"/>` +
+      `<feFlood flood-color="${sc}" flood-opacity="${f3(sa * 0.7)}"/><feComposite in2="c" operator="in" result="contact"/>` +
+      `<feMerge><feMergeNode in="ambient"/><feMergeNode in="contact"/></feMerge>` +
+      `<feComposite in2="SourceAlpha" operator="out"/></filter>`,
+  );
   return s.join("");
+}
+
+/** A fixed random sequence (mulberry32), so a still sky comes out the same every time */
+function random(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Aurora in a still drawing: two ribbons of light, each a bright wavering edge with light rising
+ *  from it, blurred together; then a sky of stars, the brightest with a small cross */
+function auroraSvg(S: Stage, id: (name: string) => string, W: number, H: number): { defs: string; body: string } {
+  const d: string[] = [];
+  const b: string[] = [];
+  // The second color hangs high and faint above the first; the third stays a low glow (a field)
+  const ribbons = [
+    { ink: S.colors[1], y: 0.46, amp: 0.08, freq: 1.2, phase: 0.6, rise: 0.32 },
+    { ink: [S.colors[0][0], S.colors[0][1] * 0.8] as const, y: 0.28, amp: 0.07, freq: 0.8, phase: 2.1, rise: 0.24 },
+  ];
+  d.push(`<filter id="${id("ribbons")}" x="-10%" y="-30%" width="120%" height="160%"><feGaussianBlur stdDeviation="${f(Math.max(W, H) / 110)}"/></filter>`);
+  ribbons.forEach((r, i) => {
+    const [color, k] = r.ink;
+    d.push(
+      `<linearGradient id="${id(`ribbon${i}`)}" x1="0" y1="0" x2="0" y2="1">${stop(0, [color, 0])}${stop(0.75, [color, f3(k * 0.3)])}${stop(1, [color, f3(k * 0.55)])}</linearGradient>`,
+    );
+    const edge: string[] = [];
+    const top: string[] = [];
+    for (let x = -48; x <= W + 48; x += 24) {
+      const u = (x / W) * Math.PI * 2;
+      const y = H * (r.y + r.amp * Math.sin(u * r.freq + r.phase));
+      const rise = H * r.rise * (0.75 + 0.25 * Math.sin(u * r.freq * 2.3 + r.phase * 1.7));
+      edge.push(`${f(x)},${f(y)}`);
+      top.push(`${f(x)},${f(y - rise)}`);
+    }
+    b.push(`<polygon points="${[...top, ...edge.slice().reverse()].join(" ")}" fill="url(#${id(`ribbon${i}`)})"/>`);
+    b.push(`<polyline points="${edge.join(" ")}" fill="none" stroke="${color}" stroke-opacity="${k}" stroke-width="${f(H / 90)}"/>`);
+  });
+  const sky: string[] = [];
+  if (S.stars) {
+    const [sc, sk] = S.stars;
+    const rand = random(7);
+    for (let y = 0; y < H; y += 28)
+      for (let x = 0; x < W; x += 28) {
+        if (rand() > 0.2) continue;
+        const sx = x + 6 + rand() * 16;
+        const sy = y + 6 + rand() * 16;
+        const bright = rand();
+        sky.push(`<circle cx="${f(sx)}" cy="${f(sy)}" r="${f(0.45 + bright * 0.8)}" fill="${sc}" fill-opacity="${f3(sk * (0.3 + 0.7 * bright))}"/>`);
+        if (bright > 0.9)
+          sky.push(`<path d="M${f(sx - 5)},${f(sy)}H${f(sx + 5)}M${f(sx)},${f(sy - 5)}V${f(sy + 5)}" stroke="${sc}" stroke-opacity="${f3(sk * 0.35)}" stroke-width="0.6"/>`);
+      }
+  }
+  return { defs: d.join(""), body: `<g filter="url(#${id("ribbons")})">${b.join("")}</g>${sky.join("")}` };
+}
+
+/** The stage for files: base and still light, a dot grid, grain and a vignette, sized to the drawing.
+ *  The glass blurs a copy of it (without grid and grain) through every card */
+function stageSvg(S: Stage, G: Glass, id: (name: string) => string, W: number, H: number, cards: string): { defs: string; under: string; frost: string } {
+  const d: string[] = [];
+  const R = Math.max(W, H);
+  const light: string[] = [`<rect width="${W}" height="${H}" fill="${S.base}"/>`];
+  // Under aurora ribbons the fields of color are only a faint glow
+  const field = S.style === "aurora" ? 0.35 : 1;
+  S.colors.forEach(([color, strength], i) => {
+    const [cx, cy, r] = S.spots[i];
+    d.push(
+      `<radialGradient id="${id(`spot${i}`)}" gradientUnits="userSpaceOnUse" cx="${f(cx * W)}" cy="${f(cy * H)}" r="${f(r * R)}">` +
+        `<stop offset="0" stop-color="${color}" stop-opacity="${f3(strength * field)}"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient>`,
+    );
+    light.push(`<rect width="${W}" height="${H}" fill="url(#${id(`spot${i}`)})"/>`);
+  });
+  if (S.style === "aurora") {
+    const a = auroraSvg(S, id, W, H);
+    d.push(a.defs);
+    light.push(a.body);
+  }
+  d.push(`<g id="${id("backdrop")}">${light.join("")}</g>`);
+  const step = GRID_STEP;
+  d.push(
+    `<pattern id="${id("grid")}" width="${step}" height="${step}" x="${-step / 2}" y="${-step / 2}" patternUnits="userSpaceOnUse">` +
+      `<rect x="${step / 2 - 0.6}" y="${step / 2 - 0.6}" width="1.2" height="1.2" ${fill(S.grid)}/></pattern>`,
+  );
+  const [gr, gg, gb] = rgb01(S.dark ? WHITE : "#000000");
+  d.push(
+    `<filter id="${id("grain")}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">` +
+      `<feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="7" stitchTiles="stitch"/>` +
+      `<feColorMatrix type="matrix" values="0 0 0 0 ${gr} 0 0 0 0 ${gg} 0 0 0 0 ${gb} ${f3(S.grain * 4)} 0 0 0 ${f3(-S.grain * 1.6)}"/></filter>`,
+  );
+  d.push(
+    `<radialGradient id="${id("vignette")}" cx="0.5" cy="0.45" r="0.75"><stop offset="0.55" stop-color="#000000" stop-opacity="0"/>` +
+      `<stop offset="1" stop-color="#000000" stop-opacity="${S.vignette}"/></radialGradient>`,
+  );
+  d.push(
+    `<filter id="${id("frost")}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">` +
+      `<feGaussianBlur stdDeviation="${G.frost}" edgeMode="duplicate"/><feColorMatrix type="saturate" values="1.35"/></filter>`,
+  );
+  d.push(`<mask id="${id("cards")}" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="black"/>${cards}</mask>`);
+  const under =
+    `<g class="rz-stage"><use href="#${id("backdrop")}"/>` +
+    `<rect class="rz-grid" width="${W}" height="${H}" fill="url(#${id("grid")})"/>` +
+    `<rect width="${W}" height="${H}" fill="#000000" filter="url(#${id("grain")})"/>` +
+    `<rect width="${W}" height="${H}" fill="url(#${id("vignette")})"/></g>`;
+  const frost = `<g mask="url(#${id("cards")})"><use href="#${id("backdrop")}" filter="url(#${id("frost")})"/></g>`;
+  return { defs: d.join(""), under, frost };
 }
 
 export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}): Promise<SvgResult> {
@@ -505,7 +782,6 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const L = LOOKS[look];
   const prefix = options.idPrefix ?? "rz-";
   const id = (name: string) => prefix + name;
-  const bleed = L.backdrop ? Math.max(0, options.bleed ?? 0) : 0;
   const { views: vs, relations } = views(model, opts);
   const byName = new Map(vs.map((v) => [v.table.name, v]));
   const portId = (table: string, column: string, side: "E" | "W") => `${table}::${column}::${side}`;
@@ -561,38 +837,33 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const pos = new Map((g.children ?? []).map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
   const W = Math.ceil(g.width ?? 0);
   const H = Math.ceil(g.height ?? 0);
-  const box = (v: View) => {
+  const boxes: SvgBox[] = vs.map((v) => {
     const p = pos.get(v.table.name)!;
-    return { x: f(p.x), y: f(p.y), w: v.w, h: v.h };
-  };
-  const cardRects = vs
-    .map((v) => {
-      const b = box(v);
-      return `<rect class="rz-m" data-t="${esc(v.table.name)}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="white"/>`;
-    })
-    .join("");
+    return { table: v.table.name, x: f(p.x), y: f(p.y), w: v.w, h: v.h };
+  });
+  // A live canvas paints the stage and the panels itself; the SVG then carries only what sits on them
+  const painted = !(L.stage && options.stage === false);
+  const cardRects = boxes.map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="white"/>`).join("");
+  const stage = L.stage && L.glass && painted ? stageSvg(L.stage, L.glass, id, W, H, cardRects) : null;
 
   const s: string[] = [];
   const label = `ERD: ${vs.map((v) => v.table.name).join(", ")}`;
   s.push(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="rz rz-${look}" role="img" aria-label="${esc(label)}" font-family="${SANS}" font-size="12"${bleed ? ' style="overflow:visible"' : ""}>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="rz rz-${look}" role="img" aria-label="${esc(label)}" font-family="${SANS}" font-size="12">`,
   );
-  if (options.standalone && !L.backdrop) s.push(STANDALONE_STYLE);
+  if (options.standalone && !L.stage) s.push(STANDALONE_STYLE);
   s.push(`<title>${esc(label)}</title>`);
-  s.push(`<defs>${defs(L, id, W, H, bleed, cardRects)}</defs>`);
-  if (L.backdrop) {
-    s.push(`<use href="#${id(bleed ? "backdrop-wide" : "backdrop")}"/>`);
-    s.push(`<rect class="rz-dots" x="${-bleed}" y="${-bleed}" width="${W + bleed * 2}" height="${H + bleed * 2}" fill="url(#${id("dots")})"/>`);
+  s.push(`<defs>${cardDefs(L, id)}${stage?.defs ?? ""}</defs>`);
+  if (stage) s.push(stage.under);
+  if (painted) {
+    // Shadows first, under the glass. The shadow filter only uses the shape's alpha, so the fill color
+    // is irrelevant. Each carries its table's data-t, so a viewer can fade it with the card
+    s.push('<g class="rz-shadows">');
+    for (const b of boxes)
+      s.push(`<rect class="rz-s" data-t="${esc(b.table)}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="currentColor" filter="url(#${id("shadow")})"/>`);
+    s.push("</g>");
   }
-  // Shadows first, under the glass. The shadow filter only uses the shape's alpha, so the fill color is irrelevant.
-  // Each table's shadow (rz-s) and frost cut-out (rz-m) carry its data-t, so a viewer can fade them with the card
-  s.push('<g class="rz-shadows">');
-  for (const v of vs) {
-    const b = box(v);
-    s.push(`<rect class="rz-s" data-t="${esc(v.table.name)}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="currentColor" filter="url(#${id("shadow")})"/>`);
-  }
-  s.push("</g>");
-  if (L.backdrop) s.push(`<g mask="url(#${id("cards")})"><use href="#${id("backdrop")}" filter="url(#${id("frost")})"/></g>`);
+  if (stage) s.push(stage.frost);
 
   s.push('<g class="rz-rels">');
   (g.edges ?? []).forEach((e, i) => {
@@ -605,26 +876,24 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor
     const start = { x: pp.x + pv.w, y: pp.y + rowY(pv.shown.findIndex((c) => c.name === r.parentColumn)) };
     const end = { x: cp.x, y: cp.y + rowY(cv.shown.findIndex((c) => c.name === r.childColumn)) };
-    const d = pathD(clean([start, ...(sec?.bendPoints ?? []), end]), 10);
-    const dash = r.kind === "logical" ? ' stroke-dasharray="5 5"' : "";
+    const d = pathD(clean([start, ...(sec?.bendPoints ?? []), end]), 3);
+    const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
+    const ink = L.ink.line;
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}">`);
-    if (L.glow) s.push(`<path d="${d}" fill="none" ${stroke(L.glow)} stroke-width="5" stroke-linecap="round" filter="url(#${id("soft")})"${dash}/>`);
-    s.push(`<path d="${d}" fill="none" ${stroke(L.line)} stroke-width="1.3" stroke-linecap="round"${dash}/>`);
-    // Parent (PK) end: an arrowhead, like resin's `->`. Child (FK) end: a dot and N (many) or 1 (one)
+    s.push(`<path d="${d}" fill="none" ${stroke(ink)} stroke-width="1.2"${dash}/>`);
+    // Primary key end: a chevron, like resin's `->`. Foreign key end: a square port and N (many) or 1 (one)
     s.push(
-      `<path d="M${f(start.x + 7)},${f(start.y - 5.5)} L${f(start.x + 1)},${f(start.y)} L${f(start.x + 7)},${f(start.y + 5.5)}" fill="none" ${stroke(L.line)} stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+      `<path d="M${f(start.x + 6.5)},${f(start.y - 4.5)} L${f(start.x + 1.5)},${f(start.y)} L${f(start.x + 6.5)},${f(start.y + 4.5)}" fill="none" ${stroke(ink)} stroke-width="1.3"/>`,
     );
-    s.push(`<circle cx="${f(end.x)}" cy="${f(end.y)}" r="3" ${fill(L.line)}/>`);
-    s.push(
-      `<text x="${f(end.x - 9)}" y="${f(end.y - 6)}" text-anchor="end" font-family="${MONO}" font-size="9.5" ${fill(L.line)}>${r.one ? "1" : "N"}</text>`,
-    );
+    s.push(`<rect x="${f(end.x - 2.5)}" y="${f(end.y - 2.5)}" width="5" height="5" ${fill(ink)}/>`);
+    s.push(`<text x="${f(end.x - 9)}" y="${f(end.y - 5)}" text-anchor="end" font-family="${MONO}" font-size="9" ${fill(ink)}>${r.one ? "1" : "N"}</text>`);
     s.push("</g>");
   });
   s.push("</g>", '<g class="rz-tables">');
-  for (const v of vs) {
-    const b = box(v);
-    s.push(`<g class="rz-t" data-t="${esc(v.table.name)}" transform="translate(${b.x},${b.y})">${card(v, L, id)}</g>`);
-  }
+  vs.forEach((v, i) => {
+    const b = boxes[i];
+    s.push(`<g class="rz-t" data-t="${esc(v.table.name)}" transform="translate(${b.x},${b.y})">${card(v, L, id, painted)}</g>`);
+  });
   s.push("</g></svg>");
-  return { svg: s.join(""), width: W, height: H, background: L.backdrop?.base ?? null };
+  return { svg: s.join(""), width: W, height: H, background: L.stage?.base ?? null, boxes };
 }
