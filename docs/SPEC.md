@@ -200,32 +200,35 @@ byte-identical output.
 layered algorithm with a port on every column row, so each connector runs from a foreign key row to
 the primary key row it points at.
 
-- **Cards**: the table name and description in the header, then one row per column: a dot for a
-  primary key, a ring for a unique column, the column name, its description, and the type at the
-  right edge (with `?` for nullable columns). Markers `enum`, `enc`, `ix` and `fk` sit before the
-  type. Composite constraints are listed under the rows.
-- **Connectors**: grey and orthogonal. Solid for physical FKs, dashed for logical references. An
-  arrowhead at the primary key end, as in `->`; a dot and `N` (one-to-many) or `1` (one-to-one)
-  at the foreign key end. Nullability is shown by the `?` on the foreign key row rather than at
-  the arrowhead, because many relations can share one primary key.
-- **External tables** have a dashed border and an `external` tag. **Audit tables** are folded into
-  an `envers` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
+- **Cards**: the table name and description in the header, then one row per column: a key label
+  (`PK`, `UK` or `FK`) in a gutter, the column name, its description, and the type at the right edge
+  (with `?` for nullable columns). Tags `ENUM`, `ENC`, `IX` and `FK` sit before the type. Composite
+  constraints are listed under the rows. Corners are small (8 units) and tags are rectangles.
+- **Connectors**: orthogonal with tight bends. Solid for physical FKs, dashed for logical
+  references. A chevron at the primary key end, as in `->`; a square port and `N` (one-to-many) or
+  `1` (one-to-one) at the foreign key end. Nullability is shown by the `?` on the foreign key row
+  rather than at the chevron, because many relations can share one primary key.
+- **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
+  an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
-- **Looks** (`look`), one layout and one card anatomy in three finishes:
+- **Looks** (`look`), one layout and one card anatomy in different finishes:
   - `graphite` (the default) paints no background. Ink is `currentColor` with a fixed ramp of
     opacities, so the drawing reads on any page. `standalone: true` adds a `<style>` that picks the
     ink color from `prefers-color-scheme`, for SVG files embedded with `<img>`.
-  - `aurora` (dark) and `clear` (light) are glass: translucent cards with a lit rim over a backdrop
-    the SVG draws itself (a base color, soft color fields and a dot grid). The backdrop is blurred
-    once for the whole drawing and shows through every card, so the cards read as frosted glass.
-    `toSvg` returns the backdrop's base color as `background` (`null` for graphite).
-- **Canvases**: `bleed` paints the glass backdrop that many pixels beyond the drawing (with
-  `overflow: visible`), for viewers that pan and zoom. `idPrefix` (default `rz-`) prefixes every id,
-  so several drawings can share a page.
+  - Glass, in three themes with a dark and a light version each: `aurora-dark`, `aurora-light`
+    (ribbons of light under a sky of stars), `silk-dark`, `silk-light` (folds of color) and
+    `caustic-dark`, `caustic-light` (light through water). Cards are frosted liquid glass: the stage
+    behind them is blurred and mostly veiled, with a lit rim and a soft shadow. The SVG draws the
+    stage itself (base color, light, dot grid, grain and vignette) as a still picture. `toSvg`
+    returns the stage's base color as `background` (`null` for graphite).
+- **Live canvases**: `stage: false` leaves the stage and the glass panels out, so a page can paint
+  them itself (the playground does, with WebGL, so the stage moves and the glass follows the
+  pointer); the SVG then holds only what sits on the glass. `toSvg` returns every card's position
+  as `boxes`. `idPrefix` (default `rz-`) prefixes every id, so several drawings can share a page.
 - **Hooks for viewers**: a table is `g.rz-t[data-t]`, a column row `g.rz-c[data-c]`, a connector
-  `g.rz-r` with `data-a`/`data-ac` (primary key side) and `data-b`/`data-bc` (foreign key side). In
-  the glass looks a table's shadow (`.rz-s`) and frost cut-out (`.rz-m`) carry the same `data-t`,
-  and the dot grid is `.rz-dots`, so a viewer can fade a table or hide the grid with CSS alone.
+  `g.rz-r` with `data-a`/`data-ac` (primary key side) and `data-b`/`data-bc` (foreign key side). In a
+  still glass drawing a table's shadow (`.rz-s`) carries the same `data-t`, and the dot grid is
+  `.rz-grid`, so a viewer can fade a table or hide the grid with CSS alone.
 - **Deterministic**: text is never measured. Widths follow fixed rules (monospace: 0.6em per
   cell; proportional: 0.57em per Latin letter, 1em per CJK character), so the same input yields the
   same SVG in a browser and on the command line.

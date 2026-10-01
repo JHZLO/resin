@@ -32,11 +32,11 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 | `src/checker.ts` | Semantic checks: missing references, duplicates, nullable keys, audit rules |
 | `src/model.ts` | Resolves references, cardinality and audit tables once, for every output |
 | `src/mermaid.ts` | Mermaid `erDiagram` output |
-| `src/svg.ts` | SVG output, laid out with ELK, in three looks: `graphite`, `aurora` and `clear` |
+| `src/svg.ts` | SVG output, laid out with ELK: `graphite`, or glass in three themes (`aurora`, `silk`, `caustic`), dark or light |
 | `src/index.ts` | The public API (`compile`, `toSvg`, ...) |
 | `src/cli.ts` | Command-line entry |
-| `playground/` | The web playground |
-| `examples/` | Example schemas and their golden output (`order.aurora.svg` and `order.clear.svg` cover the glass looks). A new `.erd` file gets golden tests automatically |
+| `playground/` | The web playground. `glass.ts` paints the live glass canvas with WebGL |
+| `examples/` | Example schemas and their golden output (`order.aurora-dark.svg` and `order.aurora-light.svg` cover the glass). A new `.erd` file gets golden tests automatically |
 
 ## Changing the grammar
 

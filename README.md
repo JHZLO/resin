@@ -14,8 +14,8 @@ primary key it points at.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="examples/order.aurora.svg">
-    <img src="examples/order.clear.svg" alt="An ERD drawn by resin as frosted glass cards: orders, order items and payments, with an external users table" width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="examples/order.aurora-dark.svg">
+    <img src="examples/order.aurora-light.svg" alt="An ERD drawn by resin as frosted glass cards over an aurora: orders, order items and payments, with an external users table" width="820">
   </picture>
 </p>
 
@@ -66,8 +66,9 @@ precisely.
 - **Audit tables in one line.** `audit envers(...)` generates Hibernate Envers `*_aud` and
   `revinfo` tables.
 - **Two outputs.** Mermaid, for anywhere Mermaid renders (GitHub, docs sites). SVG, drawn by resin
-  with column-level connectors, in three looks: plain ink that reads on light and dark pages, and two
-  glass looks, `aurora` and `clear`, that bring their own backdrop.
+  with column-level connectors: plain ink that reads on light and dark pages, or frosted glass in
+  three themes (aurora, silk, caustic), each dark or light. In the playground the glass is live: the
+  background moves and the glass catches the light under your pointer.
 - **Deterministic.** The same input gives byte-identical Mermaid and SVG.
 - **No runtime dependencies.** The SVG renderer takes an [ELK](https://github.com/kieler/elkjs)
   instance that you pass in.
@@ -88,7 +89,7 @@ Compile a file to Mermaid, or draw it as SVG:
 ```bash
 pnpm resin examples/order.erd
 pnpm resin examples/order.erd --svg > order.svg
-pnpm resin examples/order.erd --svg --look aurora > order.aurora.svg
+pnpm resin examples/order.erd --svg --look aurora-dark > order.aurora-dark.svg
 pnpm resin examples/shop.erd --svg --keys > shop.svg
 ```
 
@@ -119,7 +120,7 @@ if (result.model) {
 
 `compile` returns the syntax tree, the diagnostics, and, when there are no errors, the resolved
 model and its Mermaid source. `toSvg` draws a model; options choose the look (`graphite`, the
-default, or the glass looks `aurora` and `clear`), all columns or key columns only, and folded or
+default, or a glass theme such as `aurora-dark`), all columns or key columns only, and folded or
 expanded audit tables.
 
 ## The language at a glance
