@@ -18,23 +18,27 @@
   } catch (e) {}
 </script>
 <style>
-/* Layout: a toolbar over two panes (source | diagram) with a draggable splitter; one column on phones.
+/* Layout: a slim top bar over two panes (source | diagram) split by a draggable divider; one column on
+   phones. Controls that only affect the drawing float over the canvas. State is shown with neutral
+   fills; the accent is kept for focus, the active tab and the focused row.
    The diagram inherits `color` from the canvas, because resin's SVG draws everything in currentColor. */
 :root {
   --bg: #F3F4F6;
   --panel: #FFFFFF;
-  --canvas: #FAFAFA;
+  --canvas: #F7F8FA;
   --ink: #181C21;
   --muted: #586271;
   --faint: #8A929E;
   --rule: #DDE1E6;
+  --control: #FFFFFF;
+  --control-on: #E6E9ED;
   --code: #EEF0F3;
   --accent: #9A5A0C;
-  --on-accent: #FFFFFF;
   --accent-soft: rgba(205, 138, 30, 0.14);
   --active-line: rgba(24, 28, 33, 0.035);
   --selection: rgba(205, 138, 30, 0.22);
-  --grid-dot: rgba(24, 28, 33, 0.12);
+  --grid-dot: rgba(24, 28, 33, 0.2);
+  --shadow: 0 1px 2px rgba(24, 28, 33, 0.08), 0 4px 12px rgba(24, 28, 33, 0.06);
   --syn-kw: #1D57A3;
   --syn-type: #0F6F74;
   --syn-str: #2C7437;
@@ -49,18 +53,20 @@
   :root:not([data-theme="light"]) {
     --bg: #0E1013;
     --panel: #15181C;
-    --canvas: #111316;
+    --canvas: #101215;
     --ink: #E3E6EA;
     --muted: #97A1AD;
     --faint: #69727E;
-    --rule: #262B32;
+    --rule: #272C33;
+    --control: #1A1E23;
+    --control-on: #2C323A;
     --code: #1B1F24;
     --accent: #E2A64D;
-    --on-accent: #1B1307;
     --accent-soft: rgba(226, 166, 77, 0.14);
     --active-line: rgba(236, 237, 239, 0.035);
     --selection: rgba(226, 166, 77, 0.24);
-    --grid-dot: rgba(236, 237, 239, 0.09);
+    --grid-dot: rgba(236, 237, 239, 0.17);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
     --syn-kw: #86B4F2;
     --syn-type: #6FD0C9;
     --syn-str: #93CC92;
@@ -73,18 +79,20 @@
 :root[data-theme="dark"] {
   --bg: #0E1013;
   --panel: #15181C;
-  --canvas: #111316;
+  --canvas: #101215;
   --ink: #E3E6EA;
   --muted: #97A1AD;
   --faint: #69727E;
-  --rule: #262B32;
+  --rule: #272C33;
+  --control: #1A1E23;
+  --control-on: #2C323A;
   --code: #1B1F24;
   --accent: #E2A64D;
-  --on-accent: #1B1307;
   --accent-soft: rgba(226, 166, 77, 0.14);
   --active-line: rgba(236, 237, 239, 0.035);
   --selection: rgba(226, 166, 77, 0.24);
-  --grid-dot: rgba(236, 237, 239, 0.09);
+  --grid-dot: rgba(236, 237, 239, 0.17);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
   --syn-kw: #86B4F2;
   --syn-type: #6FD0C9;
   --syn-str: #93CC92;
@@ -110,61 +118,44 @@ body {
 button, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* toolbar */
+/* top bar */
 .bar {
   display: flex;
   align-items: center;
-  gap: 10px 20px;
-  flex-wrap: wrap;
-  padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  gap: 12px;
+  min-height: 48px;
+  padding: env(safe-area-inset-top, 0px) 12px 0 16px;
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
 }
-.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; margin-right: 4px; }
-.brand svg { width: 22px; height: 22px; color: var(--accent); }
-.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
+.brand svg { width: 20px; height: 20px; color: var(--accent); }
+.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
-.bar-controls, .bar-actions { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
-.bar-actions { margin-left: auto; }
-.field { display: inline-flex; align-items: center; gap: 8px; }
-.label { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; }
-select {
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 13px;
-}
-.seg { display: inline-flex; align-items: center; gap: 8px; }
-.seg-buttons { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; }
-.seg-buttons button {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 3px 11px;
-  border-radius: 999px;
-  font-size: 13px;
-}
-.seg-buttons button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.bar-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+/* buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--rule);
-  background: var(--panel);
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 13px;
+  background: var(--control);
   color: var(--ink);
+  font-size: 13px;
   text-decoration: none;
   white-space: nowrap;
 }
-.btn:hover { border-color: var(--faint); }
-.btn.ghost { border-color: transparent; color: var(--muted); }
-.btn.ghost:hover { color: var(--ink); }
-.btn.icon { padding: 4px 7px; }
-.btn.icon svg { width: 16px; height: 16px; }
+.btn:hover { background: var(--control-on); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); background: var(--control-on); }
+.btn.icon { width: 30px; justify-content: center; padding: 0; }
+.btn svg { width: 16px; height: 16px; flex: none; }
 #theme .i { display: none; }
 #theme[data-mode="auto"] .i-auto, #theme[data-mode="light"] .i-light, #theme[data-mode="dark"] .i-dark { display: block; }
 
@@ -172,7 +163,7 @@ select {
 .work {
   --split: 42%;
   display: grid;
-  grid-template-columns: minmax(0, var(--split)) 6px minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--split)) 1px minmax(0, 1fr);
   min-height: 0;
 }
 .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); }
@@ -180,25 +171,36 @@ select {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 38px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--rule);
   font-size: 13px;
+  flex: none;
 }
-.pane-title { font-family: var(--font-mono); color: var(--muted); }
+
+/* example picker: the file name in the editor header */
+.picker { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; margin-left: -8px; border-radius: 6px; color: var(--ink); }
+.picker:hover { background: var(--control-on); }
+.picker svg { width: 14px; height: 14px; color: var(--muted); flex: none; }
+.picker select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 0 14px 0 0;
+  cursor: pointer;
+}
+.picker select:focus-visible { outline: none; }
+.picker:focus-within { outline: 2px solid var(--accent); outline-offset: 0; }
+.picker .chev { position: absolute; right: 6px; width: 12px; height: 12px; pointer-events: none; }
 .problems-count { margin-left: auto; font-size: 12px; color: var(--muted); }
 .problems-count[data-state="error"] { color: var(--danger); font-weight: 600; }
 .problems-count[data-state="warning"] { color: var(--warn); font-weight: 600; }
 .editor { flex: 1; min-height: 0; overflow: hidden; }
 .editor .cm-editor { height: 100%; }
-.problems {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-  border-top: 1px solid var(--rule);
-  max-height: 32%;
-  overflow: auto;
-}
+.problems { list-style: none; margin: 0; padding: 4px 0; border-top: 1px solid var(--rule); max-height: 32%; overflow: auto; }
 .problem {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
@@ -215,23 +217,25 @@ select {
 .problem.is-error .problem-where { color: var(--danger); }
 .problem.is-warning .problem-where { color: var(--warn); }
 .problem-hint { grid-column: 2; color: var(--muted); }
-.splitter { background: var(--rule); cursor: col-resize; touch-action: none; }
+.splitter { background: var(--rule); cursor: col-resize; touch-action: none; position: relative; }
+.splitter::after { content: ""; position: absolute; inset: 0 -4px; }
 .splitter:hover, .splitter:focus-visible { background: var(--accent); outline: none; }
 
-/* diagram */
-.tabs { display: inline-flex; gap: 2px; align-self: stretch; }
+/* diagram pane */
+.tabs { display: inline-flex; gap: 4px; align-self: stretch; margin-left: -4px; }
 .tabs button {
   border: 0;
   background: transparent;
   color: var(--muted);
-  padding: 0 10px;
+  padding: 0 8px;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   font-size: 13px;
 }
+.tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
-.stats { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.head-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.stats { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.head-actions { margin-left: auto; display: inline-flex; gap: 4px; }
 .panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .panel[hidden] { display: none; }
 .viewport {
@@ -239,20 +243,88 @@ select {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--canvas);
+  background-color: var(--canvas);
   color: var(--ink);
   cursor: grab;
   touch-action: none;
+  user-select: none;
 }
 .viewport.grid {
-  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px);
-  background-size: 16px 16px;
+  background-image: radial-gradient(circle, var(--grid-dot) 1.1px, transparent 1.4px);
+  background-size: 18px 18px;
 }
 .viewport.is-panning { cursor: grabbing; }
-.content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .content svg { display: block; }
+.content svg .rz-t { cursor: pointer; }
+.viewport.is-panning .content svg .rz-t { cursor: grabbing; }
 .viewport.is-stale .content { opacity: 0.35; }
-.stale, .empty {
+
+/* floating controls over the canvas */
+.float {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.float.view { left: 12px; top: 12px; }
+.float.zoom { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+.float button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.float button:hover { background: var(--control-on); color: var(--ink); }
+.float button svg { width: 15px; height: 15px; }
+.float .sep { width: 1px; height: 18px; background: var(--rule); margin: 0 3px; }
+.float button[aria-pressed="true"] { background: var(--control-on); color: var(--ink); }
+#zoom-level { min-width: 48px; }
+
+/* switch inside a toggle button: neutral track, filled when on */
+.switch {
+  position: relative;
+  width: 22px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--faint);
+  flex: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.float button[aria-pressed="true"] .switch { background: var(--ink); border-color: var(--ink); }
+.float button[aria-pressed="true"] .switch::after { transform: translateX(10px); background: var(--panel); }
+
+/* focus: keep what is connected, fade the rest */
+.content svg .rz-t, .content svg .rz-r { transition: opacity 0.15s ease; }
+.content svg.is-focus .rz-t:not(.is-on), .content svg.is-focus .rz-r:not(.is-on) { opacity: 0.14; }
+.content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
+
+.notice {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -262,52 +334,22 @@ select {
   padding: 5px 12px;
   white-space: nowrap;
 }
-.stale { top: 12px; background: var(--panel); border: 1px solid var(--danger); color: var(--danger); }
+.stale { top: 56px; background: var(--panel); border: 1px solid var(--danger); color: var(--danger); box-shadow: var(--shadow); }
 .empty { top: 45%; color: var(--muted); }
-.zoom {
-  position: absolute;
-  right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--panel);
-}
-.zoom button {
-  border: 0;
-  background: transparent;
-  border-radius: 5px;
-  min-width: 30px;
-  height: 26px;
-  padding: 0 7px;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-.zoom button:hover { background: var(--active-line); color: var(--ink); }
-.zoom button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
-
-/* focus: keep what is connected, fade the rest */
-.content svg .rz-t, .content svg .rz-r { transition: opacity 0.12s ease; }
-.content svg.is-focus .rz-t:not(.is-on), .content svg.is-focus .rz-r:not(.is-on) { opacity: 0.14; }
-.content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
+.empty code, .code-actions code { font-family: var(--font-mono); font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
 
 /* mermaid tab */
-.code-panel { padding: 0; }
 .code-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 8px 8px 14px;
   border-bottom: 1px solid var(--rule);
   font-size: 13px;
   color: var(--muted);
 }
 .code-actions p { margin: 0; }
 .code-actions .btn { margin-left: auto; }
-.code-actions code, .empty code { font-family: var(--font-mono); font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
 #mermaid-out {
   flex: 1;
   margin: 0;
@@ -324,6 +366,7 @@ select {
   left: 50%;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
+  margin: 0;
   background: var(--ink);
   color: var(--panel);
   padding: 7px 14px;
@@ -333,17 +376,15 @@ select {
 }
 
 @media (max-width: 900px) {
-  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44vh 1px minmax(320px, 1fr); }
+  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44vh 1px minmax(340px, 1fr); }
   .splitter { cursor: default; pointer-events: none; }
-  .bar-actions { margin-left: 0; }
 }
 @media (max-width: 600px) {
-  .stats, #copy-svg { display: none; }
-  .pane-head { gap: 8px; padding: 0 8px; }
-  .tabs button { padding: 0 8px; }
+  .brand-sub, .stats, #copy-svg, .bar-actions .link-docs { display: none; }
+  .float.view button .label-long { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .content svg .rz-t, .content svg .rz-r { transition: none; }
+  .content svg .rz-t, .content svg .rz-r, .switch, .switch::after { transition: none; }
 }
 </style>
 </head>
@@ -353,43 +394,39 @@ select {
     <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="5" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><rect x="18" y="13" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>
     <span class="brand-name">resin</span><span class="brand-sub">playground</span>
   </a>
-  <div class="bar-controls">
-    <label class="field"><span class="label">Example</span>
-      <select id="example">
-        <option value="order">Orders</option>
-        <option value="shop">Shop (13 tables)</option>
-        <option value="blank">Blank</option>
-        <option value="" hidden>Your schema</option>
-      </select>
-    </label>
-    <div class="seg"><span class="label" id="l-columns">Columns</span>
-      <span class="seg-buttons" role="group" aria-labelledby="l-columns">
-        <button type="button" id="c-all" data-key="columns" data-v="all" aria-pressed="true">All</button>
-        <button type="button" id="c-keys" data-key="columns" data-v="keys" aria-pressed="false">Keys</button>
-      </span>
-    </div>
-    <div class="seg"><span class="label" id="l-audit">Audit</span>
-      <span class="seg-buttons" role="group" aria-labelledby="l-audit">
-        <button type="button" id="a-fold" data-key="audit" data-v="collapse" aria-pressed="true">Fold</button>
-        <button type="button" id="a-expand" data-key="audit" data-v="expand" aria-pressed="false">Expand</button>
-      </span>
-    </div>
-  </div>
   <div class="bar-actions">
-    <button type="button" class="btn" id="share">Copy link</button>
-    <button type="button" class="btn icon" id="theme" aria-label="Theme: auto" title="Theme: auto" data-mode="auto">
+    <button type="button" class="btn" id="share">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      Copy link
+    </button>
+    <button type="button" class="btn ghost icon" id="theme" aria-label="Theme: auto" title="Theme: auto" data-mode="auto">
       <svg class="i i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor" stroke="none"/></svg>
       <svg class="i i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
       <svg class="i i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
     </button>
-    <a class="btn ghost" href="https://github.com/JHZLO/resin/blob/main/docs/SPEC.md" target="_blank" rel="noopener">Reference</a>
-    <a class="btn ghost" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener">GitHub</a>
+    <a class="btn ghost link-docs" href="https://github.com/JHZLO/resin/blob/main/docs/SPEC.md" target="_blank" rel="noopener">Docs</a>
+    <a class="btn ghost icon" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+    </a>
   </div>
 </header>
 
 <main class="work" id="work">
   <section class="pane" aria-label="Source">
-    <div class="pane-head"><span class="pane-title">schema.erd</span><span class="problems-count" id="problem-count">No problems</span></div>
+    <div class="pane-head">
+      <label class="picker" title="Load an example">
+        <span class="sr-only">Example</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></svg>
+        <select id="example">
+          <option value="order">orders.erd</option>
+          <option value="shop">shop.erd</option>
+          <option value="blank">blank.erd</option>
+          <option value="" hidden>untitled.erd</option>
+        </select>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </label>
+      <span class="problems-count" id="problem-count">No problems</span>
+    </div>
     <div class="editor" id="editor"></div>
     <ul class="problems" id="problems" hidden></ul>
   </section>
@@ -402,25 +439,33 @@ select {
       </div>
       <span class="stats" id="stats"></span>
       <span class="head-actions">
-        <button type="button" class="btn" id="copy-svg">Copy SVG</button>
-        <button type="button" class="btn" id="download">Download SVG</button>
+        <button type="button" class="btn ghost" id="copy-svg">Copy SVG</button>
+        <button type="button" class="btn" id="download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+          SVG
+        </button>
       </span>
     </div>
     <div class="panel" id="panel-diagram" role="tabpanel" aria-labelledby="tab-diagram">
       <div class="viewport grid" id="viewport">
         <div class="content" id="content"></div>
-        <p class="empty" id="empty" hidden>Add a <code>table</code> to see it here.</p>
-        <p class="stale" id="stale" hidden>Showing the last valid diagram. Fix the errors to update it.</p>
-        <div class="zoom" role="group" aria-label="Zoom">
-          <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
-          <button type="button" id="zoom-level" aria-label="Actual size">100%</button>
-          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
-          <button type="button" id="zoom-fit">Fit</button>
-          <button type="button" id="grid-toggle" aria-pressed="true">Grid</button>
+        <p class="notice empty" id="empty" hidden>Add a <code>table</code> to see it here.</p>
+        <p class="notice stale" id="stale" hidden>Showing the last valid diagram. Fix the errors to update it.</p>
+        <div class="float view" role="group" aria-label="View">
+          <button type="button" id="toggle-keys" aria-pressed="false" title="Show only key and reference columns"><span class="switch" aria-hidden="true"></span><span>Keys<span class="label-long"> only</span></span></button>
+          <button type="button" id="toggle-audit" aria-pressed="false" title="Draw audit tables instead of folding them"><span class="switch" aria-hidden="true"></span><span>Audit<span class="label-long"> tables</span></span></button>
+        </div>
+        <div class="float zoom" role="group" aria-label="Zoom">
+          <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+          <button type="button" id="zoom-level" title="Actual size">100%</button>
+          <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12M12 6v12"/></svg></button>
+          <span class="sep" aria-hidden="true"></span>
+          <button type="button" id="zoom-fit" title="Fit to screen (double-click the canvas)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg>Fit</button>
+          <button type="button" id="grid-toggle" aria-pressed="true" title="Show grid"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg>Grid</button>
         </div>
       </div>
     </div>
-    <div class="panel code-panel" id="panel-mermaid" role="tabpanel" aria-labelledby="tab-mermaid" hidden>
+    <div class="panel" id="panel-mermaid" role="tabpanel" aria-labelledby="tab-mermaid" hidden>
       <div class="code-actions"><p>Paste into any Mermaid renderer, such as a <code>```mermaid</code> block on GitHub.</p><button type="button" class="btn" id="copy-mermaid">Copy</button></div>
       <pre id="mermaid-out"></pre>
     </div>

@@ -8,7 +8,7 @@ import shopExample from "../examples/shop.erd";
 import { type Diagnostic, type Model, compile, toSvg } from "../src/index.ts";
 import { createEditor } from "./editor.ts";
 import { type SharedState, decode, encode } from "./share.ts";
-import { PanZoom, bindFocus } from "./view.ts";
+import { type Focus, PanZoom, createFocus } from "./view.ts";
 
 const EXAMPLES: Record<string, string> = {
   order: orderExample,
@@ -24,6 +24,7 @@ const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: 
 const elk = new ELK();
 
 let lastModel: Model | null = null;
+let focus: Focus | null = null;
 let lastMermaid = "";
 let renderSeq = 0;
 let fitNext = true;
@@ -122,9 +123,14 @@ function showProblems(ds: Diagnostic[]): void {
 const viewport = byId("viewport");
 const content = byId("content");
 const zoomLevel = byId("zoom-level");
-const panzoom = new PanZoom(viewport, content, () => {
-  zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
-});
+const panzoom = new PanZoom(
+  viewport,
+  content,
+  () => {
+    zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
+  },
+  (target) => focus?.tap(target),
+);
 
 function setStale(stale: boolean): void {
   byId("stale").hidden = !stale || !lastModel;
@@ -155,7 +161,7 @@ async function render(): Promise<void> {
       fitNext = false;
     }
     const drawn = content.querySelector("svg");
-    if (drawn) bindFocus(drawn);
+    focus = drawn ? createFocus(drawn) : null;
     const tables = result.model.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
     const relations = result.model.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
     byId("stats").textContent = empty ? "" : `${tables} ${tables === 1 ? "table" : "tables"}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
@@ -175,10 +181,8 @@ function scheduleRender(): void {
 // ---- controls ----
 
 function syncControls(): void {
-  document.querySelectorAll<HTMLButtonElement>("[data-key]").forEach((b) => {
-    const key = b.dataset.key as "columns" | "audit";
-    b.setAttribute("aria-pressed", String(state[key] === b.dataset.v));
-  });
+  byId("toggle-keys").setAttribute("aria-pressed", String(state.columns === "keys"));
+  byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
   viewport.classList.toggle("grid", state.grid);
   const select = byId<HTMLSelectElement>("example");
@@ -186,19 +190,16 @@ function syncControls(): void {
   select.value = match ? match[0] : "";
 }
 
-document.querySelectorAll<HTMLButtonElement>("[data-key]").forEach((b) => {
-  b.addEventListener("click", () => {
-    const key = b.dataset.key as "columns" | "audit";
-    const value = b.dataset.v as never;
-    if (state[key] === value) return;
-    state[key] = value;
-    fitNext = true;
-    syncControls();
-    save();
-    scheduleHash();
-    render();
-  });
-});
+function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): void {
+  Object.assign(state, change);
+  fitNext = true;
+  syncControls();
+  save();
+  scheduleHash();
+  render();
+}
+byId("toggle-keys").addEventListener("click", () => setView({ columns: state.columns === "keys" ? "all" : "keys" }));
+byId("toggle-audit").addEventListener("click", () => setView({ audit: state.audit === "expand" ? "collapse" : "expand" }));
 
 byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
@@ -212,10 +213,13 @@ byId("grid-toggle").addEventListener("click", () => {
   syncControls();
   save();
 });
-byId("zoom-in").addEventListener("click", () => panzoom.zoomBy(1.25));
-byId("zoom-out").addEventListener("click", () => panzoom.zoomBy(0.8));
+byId("zoom-in").addEventListener("click", () => panzoom.zoomBy(1.25, undefined, undefined, true));
+byId("zoom-out").addEventListener("click", () => panzoom.zoomBy(0.8, undefined, undefined, true));
 byId("zoom-level").addEventListener("click", () => panzoom.actualSize());
-byId("zoom-fit").addEventListener("click", () => panzoom.fit());
+byId("zoom-fit").addEventListener("click", () => panzoom.fit(true));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") focus?.clear();
+});
 
 byId("share").addEventListener("click", async () => {
   await writeHash();
