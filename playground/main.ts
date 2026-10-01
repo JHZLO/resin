@@ -5,7 +5,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, compile, toSvg } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, compile, toSvg } from "../src/index.ts";
 import { createEditor } from "./editor.ts";
 import { type SharedState, decode, encode } from "./share.ts";
 import { type Focus, PanZoom, createFocus } from "./view.ts";
@@ -132,6 +132,13 @@ const panzoom = new PanZoom(
   (target) => focus?.tap(target),
 );
 
+/** The canvas draws glass: aurora on a dark theme, clear on a light one */
+function canvasLook(): SvgLook {
+  const set = document.documentElement.dataset.theme;
+  const dark = set ? set === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  return dark ? "aurora" : "clear";
+}
+
 function setStale(stale: boolean): void {
   byId("stale").hidden = !stale || !lastModel;
   viewport.classList.toggle("is-stale", stale && lastModel !== null);
@@ -147,8 +154,16 @@ async function render(): Promise<void> {
     return;
   }
   try {
-    const { svg, width, height } = await toSvg(result.model, elk, { columns: state.columns, audit: state.audit });
+    // The backdrop bleeds far past the drawing so panning never reaches its edge
+    const { svg, width, height, background } = await toSvg(result.model, elk, {
+      columns: state.columns,
+      audit: state.audit,
+      look: canvasLook(),
+      bleed: 6000,
+      idPrefix: "pg-",
+    });
     if (seq !== renderSeq) return; // a newer render has started
+    viewport.style.backgroundColor = background ?? "";
     lastModel = result.model;
     lastMermaid = result.mermaid ?? "";
     byId("mermaid-out").textContent = lastMermaid;
@@ -228,26 +243,60 @@ byId("share").addEventListener("click", async () => {
 
 byId("copy-mermaid").addEventListener("click", () => copy(lastMermaid, "Mermaid copied"));
 
-async function standaloneSvg(): Promise<string | null> {
+/** Files are plain (graphite) by default: no background, so they sit on any page. The glass looks
+ *  carry their backdrop with them */
+async function exportSvg(look: SvgLook): Promise<string | null> {
   if (!lastModel) return null;
-  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, standalone: true });
+  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, look, standalone: true });
   return svg + "\n";
 }
 
 byId("copy-svg").addEventListener("click", async () => {
-  const svg = await standaloneSvg();
+  const svg = await exportSvg("graphite");
   if (svg) await copy(svg, "SVG copied");
 });
 
-byId("download").addEventListener("click", async () => {
-  const svg = await standaloneSvg();
+async function download(look: SvgLook): Promise<void> {
+  const svg = await exportSvg(look);
   if (!svg) return;
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = "schema.svg";
+  a.download = look === "graphite" ? "schema.svg" : `schema.${look}.svg`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Download menu
+const downloadButton = byId("download");
+const downloadMenu = byId("download-menu");
+const menuItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>("[data-look]")];
+function setMenu(open: boolean, returnFocus = false): void {
+  downloadMenu.hidden = !open;
+  downloadButton.setAttribute("aria-expanded", String(open));
+  if (open) menuItems[0].focus();
+  else if (returnFocus) downloadButton.focus();
+}
+downloadButton.addEventListener("click", () => setMenu(downloadMenu.hidden));
+for (const item of menuItems)
+  item.addEventListener("click", () => {
+    setMenu(false, true);
+    download(item.dataset.look as SvgLook);
+  });
+downloadMenu.addEventListener("keydown", (e) => {
+  const i = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const next = e.key === "ArrowDown" ? i + 1 : Math.max(i, 0) - 1;
+    menuItems[(next + menuItems.length) % menuItems.length].focus();
+  } else if (e.key === "Escape") {
+    e.stopPropagation();
+    setMenu(false, true);
+  } else if (e.key === "Tab") setMenu(false);
+});
+// A small menu with nothing to lose: a press anywhere else closes it
+document.addEventListener("pointerdown", (e) => {
+  if (!downloadMenu.hidden && !downloadButton.parentElement!.contains(e.target as Node)) setMenu(false);
 });
 
 // Tabs
@@ -289,6 +338,10 @@ byId("theme").addEventListener("click", () => {
   } catch {
     /* the choice lasts for this visit */
   }
+  render(); // the glass follows the theme
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (theme === "auto") render();
 });
 
 // Splitter between the panes

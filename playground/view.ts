@@ -164,6 +164,8 @@ export interface Focus {
 export function createFocus(svg: SVGSVGElement): Focus {
   const rels = [...svg.querySelectorAll<SVGGElement>(".rz-r")];
   const tables = [...svg.querySelectorAll<SVGGElement>(".rz-t")];
+  // A table is its card plus, in the glass looks, its shadow and its frost cut-out
+  const parts = [...svg.querySelectorAll<SVGElement>("[data-t]")];
   let current: string | null = null;
 
   const clear = () => {
@@ -172,10 +174,13 @@ export function createFocus(svg: SVGSVGElement): Focus {
     svg.querySelectorAll(".is-on").forEach((el) => el.classList.remove("is-on"));
   };
   const tableEl = (name: string) => tables.find((t) => t.dataset.t === name);
+  const markTable = (name: string) => {
+    for (const p of parts) if (p.dataset.t === name) p.classList.add("is-on");
+  };
   const markRow = (table: string, column: string) => {
     const t = tableEl(table);
     if (!t) return;
-    t.classList.add("is-on");
+    markTable(table);
     [...t.querySelectorAll<SVGGElement>(".rz-c")].find((r) => r.dataset.c === column)?.classList.add("is-on");
   };
   const focusTable = (name: string) => {
@@ -187,7 +192,7 @@ export function createFocus(svg: SVGSVGElement): Focus {
         on.add(r.dataset.a!);
         on.add(r.dataset.b!);
       }
-    on.forEach((n) => tableEl(n)?.classList.add("is-on"));
+    on.forEach(markTable);
   };
   const focusRow = (table: string, column: string): boolean => {
     const hits = rels.filter((r) => (r.dataset.b === table && r.dataset.bc === column) || (r.dataset.a === table && r.dataset.ac === column));

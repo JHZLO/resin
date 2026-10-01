@@ -21,7 +21,8 @@
 /* Layout: a slim top bar over two panes (source | diagram) split by a draggable divider; one column on
    phones. Controls that only affect the drawing float over the canvas. State is shown with neutral
    fills; the accent is kept for focus, the active tab and the focused row.
-   The diagram inherits `color` from the canvas, because resin's SVG draws everything in currentColor. */
+   The canvas draws resin's glass looks, which paint their own backdrop: aurora on a dark theme, clear
+   on a light one. --stage matches each backdrop's base color so the first paint does not flash. */
 :root {
   --bg: #F3F4F6;
   --panel: #FFFFFF;
@@ -37,7 +38,7 @@
   --accent-soft: rgba(205, 138, 30, 0.14);
   --active-line: rgba(24, 28, 33, 0.035);
   --selection: rgba(205, 138, 30, 0.22);
-  --grid-dot: rgba(24, 28, 33, 0.2);
+  --stage: #EDF0F7;
   --shadow: 0 1px 2px rgba(24, 28, 33, 0.08), 0 4px 12px rgba(24, 28, 33, 0.06);
   --syn-kw: #1D57A3;
   --syn-type: #0F6F74;
@@ -65,7 +66,7 @@
     --accent-soft: rgba(226, 166, 77, 0.14);
     --active-line: rgba(236, 237, 239, 0.035);
     --selection: rgba(226, 166, 77, 0.24);
-    --grid-dot: rgba(236, 237, 239, 0.17);
+    --stage: #080C18;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
     --syn-kw: #86B4F2;
     --syn-type: #6FD0C9;
@@ -91,7 +92,7 @@
   --accent-soft: rgba(226, 166, 77, 0.14);
   --active-line: rgba(236, 237, 239, 0.035);
   --selection: rgba(226, 166, 77, 0.24);
-  --grid-dot: rgba(236, 237, 239, 0.17);
+  --stage: #080C18;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
   --syn-kw: #86B4F2;
   --syn-type: #6FD0C9;
@@ -236,6 +237,48 @@ button { cursor: pointer; }
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .stats { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .head-actions { margin-left: auto; display: inline-flex; gap: 4px; }
+.btn .chev { width: 12px; height: 12px; margin: 0 -2px 0 -1px; color: var(--muted); }
+
+/* download menu: plain (any page) or one of the glass looks with its backdrop */
+.menu-wrap { position: relative; display: inline-flex; }
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  display: grid;
+  gap: 2px;
+  width: 252px;
+  padding: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.menu[hidden] { display: none; }
+.menu button {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--control-on); outline: none; }
+.menu-title { font-size: 13px; line-height: 1.35; }
+.menu-sub { grid-column: 2; font-size: 12px; line-height: 1.35; color: var(--muted); }
+.swatch { position: relative; grid-row: span 2; width: 30px; height: 22px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--rule); }
+.swatch::after { content: ""; position: absolute; left: 7px; top: 6px; width: 16px; height: 10px; border-radius: 3px; }
+.swatch.graphite { background: repeating-conic-gradient(var(--control-on) 0 25%, var(--panel) 0 50%) 0 0 / 8px 8px; }
+.swatch.graphite::after { border: 1.5px solid var(--ink); opacity: 0.7; }
+.swatch.aurora { background: radial-gradient(circle at 15% 15%, #6D5BFF 0, transparent 65%), radial-gradient(circle at 95% 25%, #22D3EE 0, transparent 60%), radial-gradient(circle at 60% 110%, #F472B6 0, transparent 60%), #080C18; }
+.swatch.aurora::after { background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
+.swatch.clear { background: radial-gradient(circle at 10% 10%, #A5B4FC 0, transparent 65%), radial-gradient(circle at 95% 20%, #F9A8D4 0, transparent 60%), radial-gradient(circle at 70% 110%, #5EEAD4 0, transparent 60%), #EDF0F7; }
+.swatch.clear::after { background: rgba(255, 255, 255, 0.7); box-shadow: inset 0 0 0 1px #FFFFFF, 0 1px 2px rgba(15, 23, 42, 0.12); }
 .panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .panel[hidden] { display: none; }
 .viewport {
@@ -243,16 +286,14 @@ button { cursor: pointer; }
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background-color: var(--canvas);
+  background-color: var(--stage);
   color: var(--ink);
   cursor: grab;
   touch-action: none;
   user-select: none;
 }
-.viewport.grid {
-  background-image: radial-gradient(circle, var(--grid-dot) 1.1px, transparent 1.4px);
-  background-size: 18px 18px;
-}
+/* the dot grid is part of the drawing's backdrop, so it pans and zooms with the tables */
+.viewport:not(.grid) .rz-dots { display: none; }
 .viewport.is-panning { cursor: grabbing; }
 .content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .content svg { display: block; }
@@ -269,7 +310,9 @@ button { cursor: pointer; }
   padding: 3px;
   border: 1px solid var(--rule);
   border-radius: 8px;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
   box-shadow: var(--shadow);
 }
 .float.view { left: 12px; top: 12px; }
@@ -319,9 +362,10 @@ button { cursor: pointer; }
 .float button[aria-pressed="true"] .switch { background: var(--ink); border-color: var(--ink); }
 .float button[aria-pressed="true"] .switch::after { transform: translateX(10px); background: var(--panel); }
 
-/* focus: keep what is connected, fade the rest */
-.content svg .rz-t, .content svg .rz-r { transition: opacity 0.15s ease; }
-.content svg.is-focus .rz-t:not(.is-on), .content svg.is-focus .rz-r:not(.is-on) { opacity: 0.14; }
+/* focus: keep what is connected, fade the rest. A table's shadow (rz-s) and frost cut-out (rz-m) fade
+   with its card, so a faded table sinks into the backdrop instead of leaving an empty pane of glass */
+.content svg :is(.rz-t, .rz-r, .rz-s, .rz-m) { transition: opacity 0.15s ease; }
+.content svg.is-focus :is(.rz-t, .rz-r, .rz-s, .rz-m):not(.is-on) { opacity: 0.14; }
 .content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
 
 .notice {
@@ -384,7 +428,7 @@ button { cursor: pointer; }
   .float.view button .label-long { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .content svg .rz-t, .content svg .rz-r, .switch, .switch::after { transition: none; }
+  .content svg :is(.rz-t, .rz-r, .rz-s, .rz-m), .switch, .switch::after { transition: none; }
 }
 </style>
 </head>
@@ -440,10 +484,18 @@ button { cursor: pointer; }
       <span class="stats" id="stats"></span>
       <span class="head-actions">
         <button type="button" class="btn ghost" id="copy-svg">Copy SVG</button>
-        <button type="button" class="btn" id="download">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
-          SVG
-        </button>
+        <span class="menu-wrap">
+          <button type="button" class="btn" id="download" aria-haspopup="menu" aria-expanded="false" aria-controls="download-menu" title="Download SVG">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+            SVG
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="menu" id="download-menu" role="menu" aria-label="Download SVG" hidden>
+            <button type="button" role="menuitem" data-look="graphite"><span class="swatch graphite" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background, fits any page</span></button>
+            <button type="button" role="menuitem" data-look="aurora"><span class="swatch aurora" aria-hidden="true"></span><span class="menu-title">Aurora glass</span><span class="menu-sub">Dark, with its backdrop</span></button>
+            <button type="button" role="menuitem" data-look="clear"><span class="swatch clear" aria-hidden="true"></span><span class="menu-title">Clear glass</span><span class="menu-sub">Light, with its backdrop</span></button>
+          </div>
+        </span>
       </span>
     </div>
     <div class="panel" id="panel-diagram" role="tabpanel" aria-labelledby="tab-diagram">
