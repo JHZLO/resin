@@ -11,7 +11,7 @@ import { columnDetails, tableDetails } from "./details.ts";
 import { createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
-import { type Focus, PanZoom, createFocus } from "./view.ts";
+import { type Focus, MOVE_MS, PanZoom, createFocus } from "./view.ts";
 
 const EXAMPLES: Record<string, string> = {
   order: orderExample,
@@ -163,7 +163,7 @@ const panzoom = new PanZoom(
     glass?.setView(panzoom.scale, panzoom.x, panzoom.y, animate);
     // The popover rides along with its row; after an animated move, place it again once settled
     placePop();
-    if (animate) window.setTimeout(placePop, 220);
+    if (animate) window.setTimeout(placePop, MOVE_MS + 20);
   },
   (target, x, y) => {
     const table = target.closest<SVGGElement>(".rz-t")?.dataset.t ?? null;
@@ -175,7 +175,7 @@ const panzoom = new PanZoom(
       focus?.table(table);
     } else {
       closePop();
-      focus?.clear();
+      settleFocus();
     }
     glass?.refresh();
     glass?.ripple(x, y);
@@ -196,6 +196,12 @@ const rowEl = (table: string, column: string): SVGGElement | null =>
   [...content.querySelectorAll<SVGGElement>(".rz-t")]
     .find((t) => t.dataset.t === table)
     ?.querySelector<SVGGElement>(`.rz-c[data-c="${CSS.escape(column)}"]`) ?? null;
+
+/** With nothing picked, the table in the side panel keeps the focus; otherwise the focus clears */
+function settleFocus(): void {
+  if (inspected && !inspector.hidden) focus?.table(inspected);
+  else focus?.clear();
+}
 
 /** Bring a table to the middle of what the side panel leaves visible */
 function reveal(name: string, onlyIfCovered = false): void {
@@ -234,7 +240,7 @@ function pickTable(name: string): void {
 function pickColumn(table: string, column: string): void {
   if (popped && popped.table === table && popped.column === column && !pop.hidden) {
     closePop();
-    focus?.clear();
+    settleFocus();
     return;
   }
   focus?.row(table, column);
@@ -274,7 +280,8 @@ function closePop(): void {
   pop.hidden = true;
 }
 
-/** Under its row, or above it when there is no room below; hidden while the row is out of view */
+/** Under its row, or above it when there is no room below; hidden while the row is out of view.
+ *  It is placed with `translate`, so its entrance can grow it from the corner nearest the row */
 function placePop(): void {
   if (!popped || pop.hidden) return;
   const row = rowEl(popped.table, popped.column);
@@ -286,10 +293,12 @@ function placePop(): void {
   const h = pop.offsetHeight;
   const left = Math.max(8, Math.min(r.left - area.left + 12, right - w));
   let top = r.bottom - area.top + 6;
-  if (top + h > area.height - 8 && r.top - area.top - h - 6 > 8) top = r.top - area.top - h - 6;
+  const above = top + h > area.height - 8 && r.top - area.top - h - 6 > 8;
+  if (above) top = r.top - area.top - h - 6;
   const seen = r.bottom > area.top && r.top < area.bottom && r.right > area.left && r.left - area.left < right;
   pop.style.visibility = seen ? "" : "hidden";
-  pop.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+  pop.style.transformOrigin = above ? "bottom left" : "top left";
+  pop.style.translate = `${Math.round(left)}px ${Math.round(top)}px`;
 }
 
 byId("inspector-close").addEventListener("click", () => {
@@ -438,12 +447,23 @@ byId("zoom-in").addEventListener("click", () => panzoom.zoomBy(1.25, undefined, 
 byId("zoom-out").addEventListener("click", () => panzoom.zoomBy(0.8, undefined, undefined, true));
 byId("zoom-level").addEventListener("click", () => panzoom.actualSize());
 byId("zoom-fit").addEventListener("click", () => panzoom.fit(true));
+/** Keyboard actions never animate: the change lands at once, glass included */
+function instantly(change: () => void): void {
+  diagramPanel.classList.add("is-instant");
+  change();
+  void diagramPanel.offsetWidth; // apply the change while transitions are off
+  diagramPanel.classList.remove("is-instant");
+  glass?.refresh(true);
+}
+
+// Escape closes the innermost thing that is open: the popover, then the side panel
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!pop.hidden) closePop();
-  else if (!inspector.hidden) closeInspector();
-  focus?.clear();
-  glass?.refresh();
+  instantly(() => {
+    if (!pop.hidden) closePop();
+    else if (!inspector.hidden) closeInspector();
+    settleFocus();
+  });
 });
 
 byId("share").addEventListener("click", async () => {
@@ -528,9 +548,8 @@ for (const tab of tabs)
       t.setAttribute("aria-selected", String(on));
       byId(t.getAttribute("aria-controls")!).hidden = !on;
     }
-    // The live canvas rests while the Mermaid tab covers it
+    // The live canvas rests while the Mermaid tab covers it. Coming back keeps the view as it was
     glass?.pause(tab.id !== "tab-diagram");
-    if (tab.id === "tab-diagram") requestAnimationFrame(() => panzoom.fit());
   });
 
 // Theme: auto → light → dark
@@ -598,9 +617,12 @@ function fold(hide: boolean, animate = true): void {
     work.classList.add("is-moving");
     window.setTimeout(() => work.classList.remove("is-moving"), 300);
   }
+  // Focus inside the pane would be lost when it goes inert: hand it to the button that brings it back
+  const hadFocus = byId("source").contains(document.activeElement);
   work.classList.toggle("is-folded", hide);
   byId("source").toggleAttribute("inert", hide);
   byId("editor-show").hidden = !hide;
+  if (hide && hadFocus) byId("editor-show").focus();
   try {
     if (hide) localStorage.setItem(EDITOR_STORE, "hidden");
     else localStorage.removeItem(EDITOR_STORE);
@@ -613,10 +635,11 @@ byId("editor-show").addEventListener("click", () => {
   fold(false);
   editor.view.focus();
 });
+// From the keyboard the fold is instant: it is done often, and keyboard actions never animate
 document.addEventListener("keydown", (e) => {
   if (e.key !== "\\" || !(e.metaKey || e.ctrlKey)) return;
   e.preventDefault();
-  fold(!folded());
+  fold(!folded(), false);
   if (!folded()) editor.view.focus();
 });
 try {

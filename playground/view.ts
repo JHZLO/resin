@@ -9,6 +9,8 @@ const MIN = 0.1;
 const MAX = 4;
 /** Movement in CSS pixels before a press becomes a drag */
 const DRAG_THRESHOLD = 4;
+/** How long an animated pan or zoom takes (zoom buttons, fit, bringing a table into view) */
+export const MOVE_MS = 200;
 
 export class PanZoom {
   scale = 1;
@@ -58,12 +60,13 @@ export class PanZoom {
   fit(animate = false): void {
     const vw = this.viewport.clientWidth;
     const vh = this.viewport.clientHeight;
+    // Hidden (another tab) or empty: fit as soon as there is room; the resize observer calls back
+    this.auto = true;
     if (!this.width || !this.height || !vw || !vh) return;
     this.scale = clamp(Math.min((vw - 48) / this.width, (vh - 48) / this.height, 1.25));
     this.x = (vw - this.width * this.scale) / 2;
     this.y = (vh - this.height * this.scale) / 2;
     this.apply(animate);
-    this.auto = true;
   }
 
   /** Zoom by a factor around a point in viewport coordinates (the center by default) */
@@ -91,7 +94,8 @@ export class PanZoom {
 
   private apply(animate = false): void {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    this.content.style.transition = animate && !reduce ? "transform 0.2s cubic-bezier(0.2, 0, 0, 1)" : "none";
+    // The page's --ease-out. The live glass under the drawing runs the same curve (glass.ts)
+    this.content.style.transition = animate && !reduce ? `transform ${MOVE_MS}ms cubic-bezier(0.23, 1, 0.32, 1)` : "none";
     this.content.style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.scale})`;
     this.onChange(animate && !reduce);
   }

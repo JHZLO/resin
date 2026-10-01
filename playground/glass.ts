@@ -11,11 +11,17 @@
 // The SVG never repaints while the pointer moves; only this canvas does.
 
 import { CARD_RADIUS, GRID_STEP, type Glass, type Ink, type Stage, type SvgBox } from "../src/svg.ts";
+import { MOVE_MS } from "./view.ts";
 
-const FOLLOW = 0.14;
+/** How quickly the light catches up with the pointer, and brightens or dims, per second. Measured in
+ *  time rather than frames, so it feels the same on a 60 Hz and a 120 Hz screen */
+const FOLLOW = 9;
+const GLOW = 5;
 const PARALLAX = 0.3;
-const TWEEN_MS = 200;
 const RIPPLES = 4;
+/** A faded table's glass fades with its card: the same 150ms and the same curve as the page's CSS */
+const DIM_MS = 150;
+const DIMMED = 0.14;
 const STYLE = { aurora: 0, silk: 1, caustic: 2 } as const;
 
 const VS_SCREEN = `#version 300 es
@@ -300,7 +306,44 @@ const rgb = (hex: string): [number, number, number] => {
   return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 };
 const rgba = ([c, a]: Ink): [number, number, number, number] => [...rgb(c), a];
-const easeOut = (t: number): number => 1 - (1 - t) ** 3;
+
+/** A CSS cubic-bezier timing function, so the glass moves exactly like the SVG over it */
+function bezier(x1: number, y1: number, x2: number, y2: number): (t: number) => number {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const x = (s: number) => ((ax * s + bx) * s + cx) * s;
+  const slope = (s: number) => (3 * ax * s + 2 * bx) * s + cx;
+  return (t) => {
+    if (t <= 0 || t >= 1) return Math.min(1, Math.max(0, t));
+    let s = t;
+    for (let i = 0; i < 8; i++) {
+      const err = x(s) - t;
+      if (Math.abs(err) < 1e-6) break;
+      const d = slope(s);
+      if (Math.abs(d) < 1e-6) break;
+      s -= err / d;
+    }
+    if (!(s >= 0 && s <= 1)) {
+      // Newton left the curve: bisect instead
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 24; i++) {
+        s = (lo + hi) / 2;
+        if (x(s) < t) lo = s;
+        else hi = s;
+      }
+    }
+    return ((ay * s + by) * s + cy) * s;
+  };
+}
+/** The page's --ease-out, as on the drawing's own pan and zoom (view.ts) */
+const easeOut = bezier(0.23, 1, 0.32, 1);
+/** CSS `ease`, as on the cards' fade */
+const ease = bezier(0.25, 0.1, 0.25, 1);
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {
   const program = gl.createProgram()!;
@@ -352,6 +395,11 @@ export class LiveGlass {
   private boxes: SvgBox[] = [];
   private svg: SVGSVGElement | null = null;
   private count = 0;
+  /** Each table's glass: shown, where it is fading from, and where to */
+  private dims = new Float32Array(0);
+  private dimFrom = new Float32Array(0);
+  private dimTo = new Float32Array(0);
+  private dimStart = 0;
   private gridOn = true;
   private w = 1;
   private h = 1;
@@ -388,7 +436,7 @@ export class LiveGlass {
     });
     this.canvas.addEventListener("webglcontextrestored", () => {
       this.init();
-      this.upload();
+      this.upload(true);
       this.kick();
     });
     viewport.addEventListener("pointermove", (e) => this.point(e), { passive: true });
@@ -409,7 +457,7 @@ export class LiveGlass {
   setBoxes(boxes: SvgBox[], svg: SVGSVGElement | null): void {
     this.boxes = boxes;
     this.svg = svg;
-    this.upload();
+    this.upload(true);
     this.kick();
   }
 
@@ -434,9 +482,10 @@ export class LiveGlass {
     this.kick();
   }
 
-  /** Draw again, after the focus changed for instance */
-  refresh(): void {
-    this.upload();
+  /** Draw again after the focus changed. The glass fades with its card, unless the change came from
+   *  the keyboard (instant) */
+  refresh(instant = false): void {
+    this.upload(instant);
     this.kick();
   }
 
@@ -504,16 +553,39 @@ export class LiveGlass {
     this.texSize = [0, 0];
   }
 
-  private upload(): void {
-    const gl = this.gl;
+  /** Which tables are faded, from the drawing's focus. New boxes, or an instant change, skip the fade */
+  private upload(instant = false): void {
     const svg = this.svg;
     // A focused drawing keeps faded tables faded
     const on = svg?.classList.contains("is-focus") ? new Set([...svg.querySelectorAll<SVGGElement>(".rz-t.is-on")].map((el) => el.dataset.t)) : null;
+    const to = Float32Array.from(this.boxes, (b) => (on && !on.has(b.table) ? DIMMED : 1));
+    const fresh = to.length !== this.dims.length;
+    this.dimFrom = fresh || instant || this.reduce.matches ? to : this.dims.slice();
+    this.dimTo = to;
+    this.dimStart = performance.now();
+    this.dims = this.dimFrom.slice();
+    this.write();
+  }
+
+  /** The instance buffer: each card's rect and how faded its glass is */
+  private write(): void {
+    const gl = this.gl;
     const data = new Float32Array(this.boxes.length * 5);
-    this.boxes.forEach((b, i) => data.set([b.x, b.y, b.w, b.h, on && !on.has(b.table) ? 0.14 : 1], i * 5));
+    this.boxes.forEach((b, i) => data.set([b.x, b.y, b.w, b.h, this.dims[i] ?? 1], i * 5));
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
     this.count = this.boxes.length;
+  }
+
+  /** Step the glass fade; true while it is still fading */
+  private fade(now: number): boolean {
+    if (this.dims.every((d, i) => d === this.dimTo[i])) return false;
+    const t = Math.min(1, (now - this.dimStart) / DIM_MS);
+    const e = ease(t);
+    this.dims = this.dimTo.map((to, i) => this.dimFrom[i] + (to - this.dimFrom[i]) * e);
+    if (t >= 1) this.dims = this.dimTo.slice();
+    this.write();
+    return t < 1;
   }
 
   private resize(): void {
@@ -575,12 +647,13 @@ export class LiveGlass {
     const idle = now - this.lastInput > 4000;
     this.skip = idle ? !this.skip : false;
     if (!still) this.time += dt;
-    const k = still ? 1 : FOLLOW;
+    const k = still ? 1 : 1 - Math.exp(-FOLLOW * dt);
     this.pos.x += (this.target.x - this.pos.x) * k;
     this.pos.y += (this.target.y - this.pos.y) * k;
-    this.glow += (this.glowTarget - this.glow) * (still ? 1 : 0.08);
+    this.glow += (this.glowTarget - this.glow) * (still ? 1 : 1 - Math.exp(-GLOW * dt));
+    const fading = this.fade(now);
     if (this.tween) {
-      const t = Math.min(1, (now - this.tween.start) / TWEEN_MS);
+      const t = Math.min(1, (now - this.tween.start) / MOVE_MS);
       const e = easeOut(t);
       const { from } = this.tween;
       this.shown = {
@@ -591,10 +664,10 @@ export class LiveGlass {
       if (t >= 1) this.tween = null;
     }
     this.ripples = this.ripples.filter((r) => now - r.born < 2600);
-    if (!this.skip || this.tween) this.draw(now);
+    if (!this.skip || this.tween || fading) this.draw(now);
     // The stage flows on its own; with reduced motion it only redraws when something changes
     const settling = Math.abs(this.target.x - this.pos.x) > 0.3 || Math.abs(this.target.y - this.pos.y) > 0.3 || Math.abs(this.glowTarget - this.glow) > 0.003;
-    if (!still || settling || this.tween || this.ripples.length) this.kick();
+    if (!still || settling || fading || this.tween || this.ripples.length) this.kick();
   }
 
   private draw(now: number): void {

@@ -23,8 +23,14 @@
    fills; the accent is kept for focus, the active tab and the focused row.
    The canvas is a WebGL stage (playground/glass.ts) painted under the SVG: the chosen background
    theme (aurora, silk or caustic), dark or light with the page. --stage matches the aurora base so
-   the first paint does not flash. */
+   the first paint does not flash.
+   Motion: the background is the only thing that moves on its own. Everything else moves only to
+   answer the user, with the curves below, in under 300ms; keyboard actions land at once. Hover
+   answers a real pointer only. */
 :root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --bg: #F3F4F6;
   --panel: #FFFFFF;
   --canvas: #F7F8FA;
@@ -172,10 +178,13 @@ button { cursor: pointer; }
   font-size: 13px;
   text-decoration: none;
   white-space: nowrap;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
 }
-.btn:hover { background: var(--control-on); }
+/* every button answers the press itself, before the click lands */
+.btn:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .btn:hover { background: var(--control-on); } }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
-.btn.ghost:hover { color: var(--ink); background: var(--control-on); }
+@media (hover: hover) and (pointer: fine) { .btn.ghost:hover { color: var(--ink); background: var(--control-on); } }
 .btn.icon { width: 30px; justify-content: center; padding: 0; }
 .btn svg { width: 16px; height: 16px; flex: none; }
 #theme .i { display: none; }
@@ -188,7 +197,8 @@ button { cursor: pointer; }
   grid-template-columns: minmax(0, var(--split)) 1px minmax(0, 1fr);
   min-height: 0;
 }
-.work.is-moving { transition: grid-template-columns 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), grid-template-rows 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* the fold plays when the button is pressed; from the keyboard it is instant */
+.work.is-moving { transition: grid-template-columns 240ms var(--ease-out), grid-template-rows 240ms var(--ease-out); }
 .work.is-folded { grid-template-columns: minmax(0, 0%) 0px minmax(0, 1fr); }
 .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--panel); }
 /* hidden once the fold has played, so nothing inside can take focus */
@@ -208,7 +218,7 @@ button { cursor: pointer; }
 
 /* example picker: the file name in the editor header */
 .picker { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; margin-left: -8px; border-radius: 6px; color: var(--ink); }
-.picker:hover { background: var(--control-on); }
+@media (hover: hover) and (pointer: fine) { .picker:hover { background: var(--control-on); } }
 .picker svg { width: 14px; height: 14px; color: var(--muted); flex: none; }
 .picker select {
   appearance: none;
@@ -258,7 +268,7 @@ button { cursor: pointer; }
 .status-problems[data-state="error"]::before { background: var(--danger); }
 .status-problems[data-state="warning"] { color: var(--warn); font-weight: 600; cursor: pointer; }
 .status-problems[data-state="warning"]::before { background: var(--warn); }
-.status-problems:not([data-state="ok"]):hover { background: var(--control-on); }
+@media (hover: hover) and (pointer: fine) { .status-problems:not([data-state="ok"]):hover { background: var(--control-on); } }
 .status-pos { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 
 /* scrollbars: thin and quiet, darker on hover */
@@ -279,14 +289,15 @@ button { cursor: pointer; }
   padding: 5px 12px;
   font-size: 12.5px;
 }
-.problem:hover { background: var(--active-line); }
+@media (hover: hover) and (pointer: fine) { .problem:hover { background: var(--active-line); } }
 .problem-where { font-family: var(--font-mono); color: var(--faint); font-variant-numeric: tabular-nums; }
 .problem.is-error .problem-where { color: var(--danger); }
 .problem.is-warning .problem-where { color: var(--warn); }
 .problem-hint { grid-column: 2; color: var(--muted); }
 .splitter { background: var(--rule); cursor: col-resize; touch-action: none; position: relative; z-index: 6; transition: background-color 0.15s ease; }
 .splitter::after { content: ""; position: absolute; inset: 0 -4px; }
-.splitter:hover, .splitter:focus-visible { background: var(--accent); outline: none; }
+.splitter:focus-visible { background: var(--accent); outline: none; }
+@media (hover: hover) and (pointer: fine) { .splitter:hover { background: var(--accent); } }
 
 /* diagram pane */
 .tabs { display: inline-flex; gap: 4px; align-self: stretch; margin-left: -4px; }
@@ -299,7 +310,7 @@ button { cursor: pointer; }
   margin-bottom: -1px;
   font-size: 13px;
 }
-.tabs button:hover { color: var(--ink); }
+@media (hover: hover) and (pointer: fine) { .tabs button:hover { color: var(--ink); } }
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .stats { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .head-actions { margin-left: auto; display: inline-flex; gap: 4px; }
@@ -320,6 +331,12 @@ button { cursor: pointer; }
   border-radius: 10px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  transform-origin: top right;
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+/* it grows out of its button and leaves at once */
+@starting-style {
+  .menu { opacity: 0; transform: scale(0.97) translateY(-4px); }
 }
 .menu[hidden] { display: none; }
 
@@ -337,10 +354,13 @@ button { cursor: pointer; }
   background: var(--panel);
   border-left: 1px solid var(--rule);
   box-shadow: -16px 0 32px rgba(0, 0, 0, 0.14);
-  animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+/* it slides in from the edge it lives on; a transition, so a quick close and reopen picks up where it is */
+@starting-style {
+  .inspector { opacity: 0; transform: translateX(28px); }
 }
 .inspector[hidden] { display: none; }
-@keyframes slide-in { from { transform: translateX(28px); opacity: 0; } }
 .ins-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 14px; border-bottom: 1px solid var(--rule); flex: none; }
 .ins-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .ins-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
@@ -356,13 +376,13 @@ button { cursor: pointer; }
 .d-section h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .d-section ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
 .d-col { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; padding: 5px 6px; border-radius: 6px; }
-.d-col:hover { background: var(--active-line); }
+@media (hover: hover) and (pointer: fine) { .d-col:hover { background: var(--active-line); } }
 .d-key { font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
 .k-pk { color: var(--k-pk); }
 .k-uk { color: var(--k-uk); }
 .k-fk { color: var(--k-fk); }
 .d-col-name { justify-self: start; padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
-.d-col-name:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) { .d-col-name:hover { text-decoration: underline; text-underline-offset: 3px; } }
 .d-type { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 .d-col-desc, .d-col-facts { grid-column: 2 / -1; font-size: 12px; color: var(--muted); }
 .d-col-facts { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; }
@@ -371,7 +391,7 @@ button { cursor: pointer; }
 .d-table code, .d-pop code { font-family: var(--font-mono); font-size: 12px; }
 .d-rel-meta { display: block; font-size: 11.5px; color: var(--faint); }
 .d-link { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12px; color: var(--accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; }
-.d-link:hover { text-decoration-color: currentColor; }
+@media (hover: hover) and (pointer: fine) { .d-link:hover { text-decoration-color: currentColor; } }
 
 /* the column popover: a small card under its row, with text that can be selected and copied */
 .pop {
@@ -390,6 +410,12 @@ button { cursor: pointer; }
   font-size: 12.5px;
   line-height: 1.45;
   user-select: text;
+  /* placed with `translate` by the page; `scale` grows it from the corner nearest its row */
+  transform-origin: top left;
+  transition: opacity 150ms var(--ease-out), scale 150ms var(--ease-out);
+}
+@starting-style {
+  .pop { opacity: 0; scale: 0.97; }
 }
 .d-pop-head { display: flex; align-items: baseline; gap: 8px; }
 .d-pop-name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
@@ -408,8 +434,11 @@ button { cursor: pointer; }
   border-radius: 6px;
   background: transparent;
   text-align: left;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease;
 }
-.menu button:hover, .menu button:focus-visible { background: var(--control-on); outline: none; }
+.menu button:active { transform: scale(0.97); }
+.menu button:focus-visible { background: var(--control-on); outline: none; }
+@media (hover: hover) and (pointer: fine) { .menu button:hover { background: var(--control-on); } }
 .menu-title { font-size: 13px; line-height: 1.35; }
 .menu-sub { grid-column: 2; font-size: 12px; line-height: 1.35; color: var(--muted); }
 .swatch { position: relative; grid-row: span 2; width: 30px; height: 22px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--rule); }
@@ -426,7 +455,7 @@ button { cursor: pointer; }
 .swatch[class*="-dark"]::after { background: rgba(15, 18, 28, 0.78); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
 .swatch[class*="-light"]::after { background: rgba(250, 251, 253, 0.86); box-shadow: inset 0 0 0 1px #FFFFFF, 0 1px 2px rgba(15, 23, 42, 0.14); }
 .sw { width: 14px; height: 10px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.4); }
-.panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; container-type: inline-size; }
 .panel[hidden] { display: none; }
 .viewport {
   position: relative;
@@ -448,8 +477,8 @@ button { cursor: pointer; }
 .content svg .rz-t { cursor: pointer; }
 .viewport.is-panning .content svg .rz-t { cursor: grabbing; }
 /* rows and table names answer the pointer faintly, so they read as clickable; clicking does the rest */
-.content svg .rz-hit { transition: fill-opacity 0.12s ease; }
-.content svg :is(.rz-c, .rz-head):hover > .rz-hit { fill-opacity: 0.07; }
+.content svg .rz-hit { transition: fill-opacity 120ms ease; }
+@media (hover: hover) and (pointer: fine) { .content svg :is(.rz-c, .rz-head):hover > .rz-hit { fill-opacity: 0.07; } }
 .viewport.is-panning .content svg .rz-hit { fill-opacity: 0; }
 .viewport.is-stale .content { opacity: 0.35; }
 
@@ -484,13 +513,15 @@ button { cursor: pointer; }
   color: var(--muted);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
 }
-.float button:hover { background: var(--control-on); color: var(--ink); }
+.float button:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .float button:hover { background: var(--control-on); color: var(--ink); } }
 .float button svg { width: 15px; height: 15px; }
 .float .sep { width: 1px; height: 18px; background: var(--rule); margin: 0 3px; }
 .float button[aria-pressed="true"] { background: var(--control-on); color: var(--ink); }
 .float .seg { display: inline-flex; gap: 2px; }
-.float .seg button[aria-pressed="true"], .float .seg button[aria-pressed="true"]:hover { background: var(--ink); color: var(--panel); }
+.float .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 #zoom-level { min-width: 48px; }
 
 /* switch inside a toggle button: neutral track, filled when on */
@@ -501,7 +532,7 @@ button { cursor: pointer; }
   border-radius: 999px;
   border: 1px solid var(--faint);
   flex: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 150ms ease, border-color 150ms ease;
 }
 .switch::after {
   content: "";
@@ -512,14 +543,14 @@ button { cursor: pointer; }
   height: 8px;
   border-radius: 50%;
   background: var(--faint);
-  transition: transform 0.15s ease, background-color 0.15s ease;
+  transition: transform 150ms var(--ease-out), background-color 150ms ease;
 }
 .float button[aria-pressed="true"] .switch { background: var(--ink); border-color: var(--ink); }
 .float button[aria-pressed="true"] .switch::after { transform: translateX(10px); background: var(--panel); }
 
 /* focus: keep what is connected, fade the rest. The live canvas fades the glass under a faded table;
    the still drawing fades its shadow (rz-s) with the card */
-.content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 0.15s ease; }
+.content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 150ms ease; }
 .content svg.is-focus :is(.rz-t, .rz-r, .rz-s):not(.is-on) { opacity: 0.14; }
 .content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
 
@@ -564,7 +595,7 @@ button { cursor: pointer; }
   position: fixed;
   left: 50%;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
+  transform: translate(-50%, 0);
   margin: 0;
   background: var(--ink);
   color: var(--panel);
@@ -572,7 +603,13 @@ button { cursor: pointer; }
   border-radius: 999px;
   font-size: 13px;
   z-index: 10;
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
 }
+@starting-style {
+  .toast { opacity: 0; transform: translate(-50%, 6px); }
+}
+/* a keyboard action lands at once (see instantly() in main.ts) */
+.panel.is-instant, .panel.is-instant * { transition: none !important; }
 
 @media (max-width: 900px) {
   .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44vh 1px minmax(340px, 1fr); }
@@ -584,8 +621,21 @@ button { cursor: pointer; }
   .link-source { width: 30px; justify-content: center; padding: 0; }
   .float.view button .label-long, .float.stages .label-long, .float.zoom .label-long { display: none; }
 }
+/* with the side panel open on a narrow canvas, the floating controls drop their labels so the zoom
+   group, which moves aside for the panel, does not land on the background picker */
+@container (max-width: 860px) {
+  .panel.has-inspector .float .label-long { display: none; }
+}
+/* reduced motion: fewer and gentler, not none. Things still fade; nothing slides, grows or presses */
 @media (prefers-reduced-motion: reduce) {
-  .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after { transition: none; }
+  .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after, .work.is-moving { transition: none; }
+  .btn:active, .float button:active, .menu button:active { transform: none; }
+  .menu, .inspector, .toast, .pop { transition: opacity 150ms ease; }
+  @starting-style {
+    .menu, .inspector { transform: none; }
+    .toast { transform: translate(-50%, 0); }
+    .pop { scale: none; }
+  }
 }
 </style>
 </head>
