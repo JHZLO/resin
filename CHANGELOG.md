@@ -20,4 +20,7 @@ The first public version of the language, grammar v0.2.
 - A resolved model shared by every output.
 - Mermaid `erDiagram` output, tested against Mermaid 11.16.
 - SVG output laid out with ELK, with connectors from each foreign key row to its primary key row.
-- A command-line entry (`pnpm resin <file.erd> [--svg]`) and a web playground.
+- Three SVG looks: `graphite`, plain ink with no background (the default), and the glass looks
+  `aurora` (dark) and `clear` (light), with frosted cards over a backdrop the SVG draws itself.
+- A command-line entry (`pnpm resin <file.erd> [--svg [--look <look>]]`) and a web playground that
+  draws aurora on a dark theme and clear on a light one, and downloads plain or glass SVG.

@@ -211,11 +211,23 @@ the primary key row it points at.
 - **External tables** have a dashed border and an `external` tag. **Audit tables** are folded into
   an `envers` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
-- **Ink** is `currentColor` with a fixed ramp of opacities; nothing paints a background, so the
-  drawing reads on any page. `standalone: true` adds a `<style>` that picks the ink color from
-  `prefers-color-scheme`, for SVG files embedded with `<img>`.
+- **Looks** (`look`), one layout and one card anatomy in three finishes:
+  - `graphite` (the default) paints no background. Ink is `currentColor` with a fixed ramp of
+    opacities, so the drawing reads on any page. `standalone: true` adds a `<style>` that picks the
+    ink color from `prefers-color-scheme`, for SVG files embedded with `<img>`.
+  - `aurora` (dark) and `clear` (light) are glass: translucent cards with a lit rim over a backdrop
+    the SVG draws itself (a base color, soft color fields and a dot grid). The backdrop is blurred
+    once for the whole drawing and shows through every card, so the cards read as frosted glass.
+    `toSvg` returns the backdrop's base color as `background` (`null` for graphite).
+- **Canvases**: `bleed` paints the glass backdrop that many pixels beyond the drawing (with
+  `overflow: visible`), for viewers that pan and zoom. `idPrefix` (default `rz-`) prefixes every id,
+  so several drawings can share a page.
+- **Hooks for viewers**: a table is `g.rz-t[data-t]`, a column row `g.rz-c[data-c]`, a connector
+  `g.rz-r` with `data-a`/`data-ac` (primary key side) and `data-b`/`data-bc` (foreign key side). In
+  the glass looks a table's shadow (`.rz-s`) and frost cut-out (`.rz-m`) carry the same `data-t`,
+  and the dot grid is `.rz-dots`, so a viewer can fade a table or hide the grid with CSS alone.
 - **Deterministic**: text is never measured. Widths follow fixed rules (monospace: 0.6em per
-  cell; proportional: 0.56em per Latin letter, 1em per CJK character), so the same input yields the
+  cell; proportional: 0.57em per Latin letter, 1em per CJK character), so the same input yields the
   same SVG in a browser and on the command line.
 
 ## 7. Diagnostics
