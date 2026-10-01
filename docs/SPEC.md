@@ -201,13 +201,15 @@ layered algorithm with a port on every column row, so each connector runs from a
 the primary key row it points at.
 
 - **Cards**: the table name and description in the header, then one row per column: a key label
-  (`PK`, `UK` or `FK`) in a gutter, the column name, its description, and the type at the right edge
-  (with `?` for nullable columns). Tags `ENUM`, `ENC`, `IX` and `FK` sit before the type. Composite
+  (`PK`, `UK` or `FK`) in a gutter, the column name, its description, and the type at the right edge.
+  A nullable column is marked `NULL` after its type, as in DDL; a card with any nullable column keeps
+  a narrow column for it, so the types stay aligned. Tags `ENUM`, `ENC`, `IX` and `FK` sit before the
+  type. Composite
   constraints are listed under the rows. Corners are small (8 units), tags are rectangles and the
   edge is one even line.
 - **Connectors**: orthogonal with tight bends. Solid for physical FKs, dashed for logical
   references. A chevron at the primary key end, as in `->`; a square port and `N` (one-to-many) or
-  `1` (one-to-one) at the foreign key end. Nullability is shown by the `?` on the foreign key row
+  `1` (one-to-one) at the foreign key end. Nullability is shown by the `NULL` on the foreign key row
   rather than at the chevron, because many relations can share one primary key. `edges: "curved"`
   draws S-bends with level ends instead, and keeps the routed path, with wide bends, wherever an
   S-bend would cross another card.

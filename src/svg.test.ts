@@ -29,6 +29,23 @@ describe("toSvg", () => {
     expect(height).toBeGreaterThan(0);
   });
 
+  it("marks nullable columns NULL after the type, and keeps the types of a card aligned", async () => {
+    const src = "table t {\n id bigint pk\n note varchar?\n}\ntable u {\n id bigint pk\n}";
+    const { svg } = await toSvg(modelOf(src), elk);
+    expect(count(svg, ">NULL</text>")).toBe(1);
+    expect(svg).not.toContain(">?<");
+    // In t, both types end where the NULL column starts; u has no nullable column and keeps none
+    const [t, u] = svg.split('class="rz-t"').slice(1);
+    const typeEnds = (card: string) => [...card.matchAll(/<text x="([\d.]+)" y="[\d.]+" text-anchor="end" font-family="[^"]+" font-size="11"/g)].map((m) => Number(m[1]));
+    const [idEnd, noteEnd] = typeEnds(t);
+    expect(idEnd).toBe(noteEnd);
+    expect(typeEnds(u)[0]).toBeGreaterThan(0);
+    expect(count(u, ">NULL</text>")).toBe(0);
+    // The row's tooltip says it in words either way
+    expect(svg).toContain("<title>note varchar NULL</title>");
+    expect(svg).toContain("<title>id bigint NOT NULL</title>");
+  });
+
   it("draws revinfo and *_aud when audit tables are expanded", async () => {
     const { svg } = await toSvg(modelOf(ORDER), elk, { audit: "expand" });
     expect(count(svg, 'class="rz-t"')).toBe(7);

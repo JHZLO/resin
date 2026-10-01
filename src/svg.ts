@@ -453,10 +453,15 @@ function chips(c: ModelColumn, v: { refCols: Set<string> }): string[] {
 }
 const chipW = (text: string): number => monoW(text, 8.5) + 10;
 const chipsW = (list: string[]): number => (list.length ? list.reduce((w, x) => w + chipW(x) + 4, 0) + 6 : 0);
-const typeOf = (c: ModelColumn, t: ModelTable): string => c.type + (c.nullable && t.origin !== "audit" ? "?" : "");
+/** Nullability is spelled out the way DDL does: `varchar NULL`. Generated audit tables leave it out */
+const isNull = (c: ModelColumn, t: ModelTable): boolean => c.nullable && t.origin !== "audit";
+const NULL_SIZE = 8.5;
+/** The NULL column at a card's right edge, kept only by cards that have a nullable column, so the
+ *  types stay aligned */
+const NULL_W = monoW("NULL", NULL_SIZE) + 7;
 
 function rowTitle(c: ModelColumn, t: ModelTable): string {
-  const parts = [`${c.name} ${typeOf(c, t)}`];
+  const parts = [`${c.name} ${c.type}${t.origin === "audit" ? "" : c.nullable ? " NULL" : " NOT NULL"}`];
   if (c.description) parts.push(c.description);
   if (c.enumValues) parts.push(c.enumValues.join(" / "));
   if (c.ukName) parts.push(`unique ${c.ukName}`);
@@ -469,9 +474,10 @@ function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "na
   const t = v.table;
   const nameW = maxOf(v.shown.map((c) => sansW(c.name, 12.5) * (c.pk ? 1.04 : 1)), 48);
   const descW = maxOf(v.shown.map((c) => (c.description ? sansW(c.description, 11.5) : 0)));
-  const typeW = maxOf(v.shown.map((c) => monoW(typeOf(c, t), 11)), 40);
+  const typeW = maxOf(v.shown.map((c) => monoW(c.type, 11)), 40);
   const chipW_ = maxOf(v.shown.map((c) => chipsW(chips(c, v))));
-  const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW;
+  const nullW = v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
+  const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW + nullW;
   const headW = PAD * 2 + sansW(t.name, 13.5) * 1.04 + 10 + (t.description ? sansW(t.description, 12) : 0) + (v.tag ? 14 + chipW(v.tag) : 0);
   const footW = PAD * 2 + maxOf(v.foot.map((s) => monoW(s, 9.5)));
   return {
@@ -535,7 +541,8 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   s.push("</g>");
   s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
-  // rows
+  // rows. Types line up at the right edge, or just left of the NULL column when the card has one
+  const nullW = v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
   v.shown.forEach((c, i) => {
     const cy = rowY(i);
     const by = cy + 4.2;
@@ -546,14 +553,13 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
     if (key) s.push(`<text x="${PAD}" y="${f(by - 0.6)}" font-family="${MONO}" font-size="8.5" font-weight="600" ${fill(key[1])}>${key[0]}</text>`);
     s.push(`<text x="${PAD + KEY}" y="${f(by)}" font-size="12.5" ${fill(I.text)}${c.pk ? ' font-weight="600"' : ""}>${esc(c.name)}</text>`);
     if (c.description) s.push(`<text x="${f(PAD + KEY + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
-    const right = w - PAD;
-    const nullable = c.nullable && t.origin !== "audit";
-    s.push(
-      `<text x="${right}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}` +
-        (nullable ? `<tspan ${fill(I.nullable)} font-weight="700">?</tspan>` : "") +
-        "</text>",
-    );
-    let cx = right - monoW(typeOf(c, t), 11) - 8;
+    const right = w - PAD - nullW;
+    s.push(`<text x="${f(right)}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
+    if (isNull(c, t))
+      s.push(
+        `<text x="${w - PAD}" y="${f(by - 0.6)}" text-anchor="end" font-family="${MONO}" font-size="${NULL_SIZE}" font-weight="600" letter-spacing="0.02em" ${fill(I.nullable)}>NULL</text>`,
+      );
+    let cx = right - monoW(c.type, 11) - 8;
     for (const x of chips(c, v).reverse()) {
       cx -= chipW(x);
       s.push(chip(x, cx, cy - 7, I));
