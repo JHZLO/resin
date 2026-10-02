@@ -120,9 +120,10 @@ function emptyHint(): HTMLElement {
   return el;
 }
 
-/** Turns pasted text into what goes in, or returns null to paste it as it is. `rest` is the document
- *  without the selection the paste replaces */
-export type PasteConverter = (pasted: string, rest: string) => string | null;
+/** Turns pasted text into what goes in, or returns null to paste it as it is. `doc` is the document
+ *  before the paste and `rest` the document without the selection the paste replaces. `whole` puts
+ *  the text in place of the whole document instead of the selection */
+export type PasteConverter = (pasted: string, doc: string, rest: string) => { text: string; whole: boolean } | null;
 
 export function createEditor(
   parent: HTMLElement,
@@ -157,13 +158,15 @@ export function createEditor(
             if (!pasted) return false;
             const { from, to } = view.state.selection.main;
             const doc = view.state.doc;
-            const converted = convertPaste(pasted, doc.sliceString(0, from) + doc.sliceString(to));
+            const converted = convertPaste(pasted, doc.toString(), doc.sliceString(0, from) + doc.sliceString(to));
             if (converted === null) return false;
             event.preventDefault();
             view.dispatch({ changes: { from, to, insert: pasted }, selection: { anchor: from + pasted.length }, userEvent: "input.paste" });
+            const start = converted.whole ? 0 : from;
+            const end = converted.whole ? view.state.doc.length : from + pasted.length;
             view.dispatch({
-              changes: { from, to: from + pasted.length, insert: converted },
-              selection: { anchor: from + converted.length },
+              changes: { from: start, to: end, insert: converted.text },
+              selection: { anchor: converted.whole ? 0 : start + converted.text.length },
               annotations: isolateHistory.of("full"),
               scrollIntoView: true,
             });

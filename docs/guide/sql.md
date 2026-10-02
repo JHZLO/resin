@@ -59,7 +59,7 @@ A column without `NOT NULL` may be empty in SQL, so it gets a `?`. The keys and 
 
 ## Where to paste it
 
-In the [playground](playground.md), paste the SQL anywhere in the editor. It comes in as resin, and a message says how many tables were converted. One undo (Ctrl or Cmd + Z) brings back the SQL exactly as you pasted it. When the document already has tables, references to them point at them instead of adding external tables.
+In the [playground](playground.md), paste the SQL into the editor. It comes in as resin, and a message says how many tables were converted. In an empty editor, or over an example you have not changed, it takes the whole document. Into a document of your own it goes where you paste it, and references to the tables already there point at them instead of adding external tables. One undo (Ctrl or Cmd + Z) brings back the SQL exactly as you pasted it.
 
 On the command line, `--from-sql` prints the resin on standard output and lists what did not convert, with its line in the SQL, on standard error:
 

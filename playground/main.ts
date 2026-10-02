@@ -747,21 +747,23 @@ byId("problem-count").addEventListener("click", () => {
 
 // ---- pasting SQL ----
 
-/** SQL DDL pasted into the editor comes in as resin. References to tables already in the document
- *  point at them; one undo brings back the SQL as it was pasted */
-function convertSql(pasted: string, rest: string): string | null {
+/** SQL DDL pasted into the editor comes in as resin. An empty editor or an example nobody has
+ *  edited is a starting point, not work, so the SQL takes its place; into a document of one's own it
+ *  goes where it was pasted, and references to tables already there point at them. One undo brings
+ *  back the SQL as it was pasted */
+function convertSql(pasted: string, doc: string, rest: string): { text: string; whole: boolean } | null {
   if (!looksLikeSql(pasted)) return null;
-  const known = parse(rest).doc.tables.map((t) => t.name.text);
-  const converted = fromSql(pasted, { known });
+  const whole = doc.trim() === "" || Object.values(EXAMPLES).includes(doc);
+  const converted = fromSql(pasted, { known: whole ? [] : parse(rest).doc.tables.map((t) => t.name.text) });
   if (converted.tables === 0) return null;
   const n = converted.tables;
   toast(`Converted ${n} ${n === 1 ? "table" : "tables"} from SQL. Undo to keep the SQL as pasted`, 4000);
-  if (rest.trim() === "") {
+  if (whole || rest.trim() === "") {
     fitNext = true;
-    return converted.source;
+    return { text: converted.source, whole };
   }
   // Into a document that has tables already: keep a blank line on either side
-  return `\n${converted.source}\n`;
+  return { text: `\n${converted.source}\n`, whole: false };
 }
 
 // ---- boot ----
@@ -772,6 +774,9 @@ const editor = createEditor(
   state.code,
   (text) => {
     state.code = text;
+    // The file name follows the text: an edited example is untitled
+    const match = Object.entries(EXAMPLES).find(([, example]) => example === text);
+    byId<HTMLSelectElement>("example").value = match ? match[0] : "";
     save();
     scheduleHash();
     scheduleRender();
