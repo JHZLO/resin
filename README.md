@@ -11,6 +11,16 @@ as an SVG where every foreign key row is wired to the primary key it points at.
 
 **[Try it in the playground](https://jhzlo.github.io/resin/playground/)** | [Docs](https://jhzlo.github.io/resin/docs/) | [Language reference](docs/SPEC.md) | [Contributing](CONTRIBUTING.md)
 
+Paste DDL from DataGrip or another database tool. Focus on connected entities and trace key
+references.
+
+[![Preview: focus on connected entities and trace key references. Click to watch the full resin demo.](website/media/resin-demo-preview.webp)](https://jhzlo.github.io/resin/#demo)
+
+**[Watch the 32-second demo](https://jhzlo.github.io/resin/#demo)** | [Download MP4 (8.9 MB)](https://jhzlo.github.io/resin/assets/resin-demo.mp4)
+
+<details>
+<summary>Example schema and diagram</summary>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="examples/order.aurora-dark.svg">
@@ -41,6 +51,8 @@ table order_items "Order lines" {
   unique(order_id, product_id) as uk_order_product
 }
 ```
+
+</details>
 
 ## Why
 

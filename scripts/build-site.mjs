@@ -6,7 +6,7 @@
 // An example that does not compile, or compiles with a warning, fails the build: the docs show only
 // what resin really accepts.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import ELK from "elkjs";
 import { build } from "esbuild";
 import { Marked } from "marked";
@@ -336,6 +336,17 @@ ${siteHead("", "home", false)}
 </div>
 <p class="cta-note">Runs in your browser. Nothing to install.</p>
 </div>
+<figure class="showcase glass demo" id="demo" aria-labelledby="demo-title">
+<figcaption class="demo-caption">
+<h2 id="demo-title">Paste DDL. Get an ERD.</h2>
+<p id="demo-description">Copy DDL from DataGrip or another database tool. Paste it into resin, focus on connected entities, and trace key references.</p>
+<span class="demo-duration">32-second demo</span>
+</figcaption>
+<video controls playsinline preload="none" width="1920" height="1080" poster="assets/resin-demo-poster.jpg" aria-labelledby="demo-title" aria-describedby="demo-description">
+<source src="assets/resin-demo.mp4" type="video/mp4">
+<a href="assets/resin-demo.mp4">Watch the 32-second resin demo (MP4)</a>
+</video>
+</figure>
 <div class="showcase glass">
 <div class="win-bar"><span class="win-tab on">orders.erd</span><span class="win-tab">Diagram</span></div>
 <div class="win-body"><pre class="code">${highlightResin(shown)}</pre><div class="win-fig"><img class="fig on-dark" src="docs/figures/${drawn.hash}.dark.svg" alt="The orders example drawn by resin: orders, order items and payments, with an external users table"><img class="fig on-light" src="docs/figures/${drawn.hash}.light.svg" alt="The orders example drawn by resin: orders, order items and payments, with an external users table"></div></div>
@@ -392,6 +403,9 @@ async function renderAssets() {
   await writeFile("site/assets/site.js", result.outputFiles[0].text);
   await writeFile("site/assets/site.css", await readFile("website/site.css", "utf8"));
   await writeFile("site/assets/mark.svg", MARK_FILE);
+  for (const file of ["resin-demo.mp4", "resin-demo-poster.jpg"]) {
+    await copyFile(`website/media/${file}`, `site/assets/${file}`);
+  }
 }
 
 await rm("site/docs", { recursive: true, force: true });
