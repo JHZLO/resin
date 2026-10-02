@@ -8,7 +8,7 @@ import shopExample from "../examples/shop.erd";
 import { type Diagnostic, type Model, type SvgLook, compile, fromSql, looksLikeSql, parse, toSvg } from "../src/index.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
-import { createEditor } from "./editor.ts";
+import { type PasteConverter, createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
 import { type Focus, MOVE_MS, PanZoom, createFocus } from "./view.ts";
@@ -77,14 +77,14 @@ async function writeHash(): Promise<void> {
 // ---- toast ----
 
 let toastTimer = 0;
-function toast(message: string, ms = 1800): void {
+function toast(message: string): void {
   const el = byId("toast");
   el.textContent = message;
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     el.hidden = true;
-  }, ms);
+  }, 1800);
 }
 
 async function copy(text: string, done: string): Promise<void> {
@@ -747,23 +747,98 @@ byId("problem-count").addEventListener("click", () => {
 
 // ---- pasting SQL ----
 
+// The SQL line under the editor's header. Until the first conversion it says that pasting SQL
+// converts it; after a paste it says what the paste became: how many tables, how many notes (the
+// `%%` comments the conversion left, which it steps through) and Undo. Closing the hint, or using
+// it once, keeps it closed on later visits
+const SQL_HINT_STORE = "resin.sqlhint";
+const sqlBar = byId("sql-bar");
+const sqlText = byId("sql-text");
+const sqlNotes = byId("sql-notes");
+const sqlUndo = byId("sql-undo");
+byId("sql-key").textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? "Cmd V" : "Ctrl V";
+
+/** The last conversion: the document a plain paste would have left, the one it became, and its notes */
+let conversion: { raw: string; converted: string; notes: string[] } | null = null;
+let hintSeen = false;
+try {
+  hintSeen = localStorage.getItem(SQL_HINT_STORE) === "seen";
+} catch {
+  /* show the hint */
+}
+function rememberHint(): void {
+  hintSeen = true;
+  try {
+    localStorage.setItem(SQL_HINT_STORE, "seen");
+  } catch {
+    /* the hint stays closed for this visit */
+  }
+}
+sqlBar.hidden = hintSeen;
+
+function closeSqlBar(): void {
+  conversion = null;
+  sqlBar.hidden = true;
+}
+
+function showConverted(tables: number, raw: string, converted: string, source: string): void {
+  rememberHint();
+  const notes = source.split("\n").filter((l) => l.trimStart().startsWith("%%")).map((l) => l.trim());
+  conversion = { raw, converted, notes };
+  const count = document.createElement("b");
+  count.textContent = `${tables} ${tables === 1 ? "table" : "tables"}`;
+  sqlText.replaceChildren("Converted ", count, " from SQL");
+  sqlNotes.textContent = `${notes.length} ${notes.length === 1 ? "note" : "notes"}`;
+  sqlNotes.hidden = notes.length === 0;
+  sqlUndo.hidden = false;
+  sqlBar.dataset.state = "done";
+  sqlBar.hidden = false;
+}
+
+/** After the conversion, an undo back to the plain paste closes the line. Any other edit drops Undo,
+ *  which would no longer undo the conversion, and the line stays while a note is left to go to */
+function followSqlBar(text: string): void {
+  if (!conversion || text === conversion.converted) return;
+  if (text === conversion.raw || !conversion.notes.some((n) => text.includes(n))) closeSqlBar();
+  else sqlUndo.hidden = true;
+}
+
+sqlUndo.addEventListener("click", () => {
+  editor.undo();
+  editor.view.focus();
+});
+// Each press goes to the next note after the cursor, and around again from the top
+sqlNotes.addEventListener("click", () => {
+  if (!conversion) return;
+  const lines = editor.getText().split("\n");
+  const at = lines.flatMap((l, i) => (conversion!.notes.includes(l.trim()) ? [i + 1] : []));
+  if (at.length === 0) return;
+  const doc = editor.view.state.doc;
+  const current = doc.lineAt(editor.view.state.selection.main.head).number;
+  const next = at.find((n) => n > current) ?? at[0];
+  editor.focusAt(next, lines[next - 1].indexOf("%%") + 1);
+});
+byId("sql-close").addEventListener("click", () => {
+  rememberHint();
+  closeSqlBar();
+});
+
 /** SQL DDL pasted into the editor comes in as resin. An empty editor or an example nobody has
  *  edited is a starting point, not work, so the SQL takes its place; into a document of one's own it
  *  goes where it was pasted, and references to tables already there point at them. One undo brings
  *  back the SQL as it was pasted */
-function convertSql(pasted: string, doc: string, rest: string): { text: string; whole: boolean } | null {
+function convertSql(pasted: string, doc: string, rest: string): ReturnType<PasteConverter> {
   if (!looksLikeSql(pasted)) return null;
   const whole = doc.trim() === "" || Object.values(EXAMPLES).includes(doc);
   const converted = fromSql(pasted, { known: whole ? [] : parse(rest).doc.tables.map((t) => t.name.text) });
   if (converted.tables === 0) return null;
-  const n = converted.tables;
-  toast(`Converted ${n} ${n === 1 ? "table" : "tables"} from SQL. Undo to keep the SQL as pasted`, 4000);
+  const applied = (raw: string, after: string) => showConverted(converted.tables, raw, after, converted.source);
   if (whole || rest.trim() === "") {
     fitNext = true;
-    return { text: converted.source, whole };
+    return { text: converted.source, whole, applied };
   }
   // Into a document that has tables already: keep a blank line on either side
-  return { text: `\n${converted.source}\n`, whole: false };
+  return { text: `\n${converted.source}\n`, whole: false, applied };
 }
 
 // ---- boot ----
@@ -777,6 +852,7 @@ const editor = createEditor(
     // The file name follows the text: an edited example is untitled
     const match = Object.entries(EXAMPLES).find(([, example]) => example === text);
     byId<HTMLSelectElement>("example").value = match ? match[0] : "";
+    followSqlBar(text);
     save();
     scheduleHash();
     scheduleRender();

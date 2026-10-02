@@ -31,7 +31,8 @@ The first public version of the language, grammar v0.2.
   default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
 - SQL import: `fromSql`, `resin <file.sql> --from-sql` and pasting into the playground write SQL DDL
-  as resin. One reader takes MySQL, PostgreSQL, SQLite, SQL Server and Oracle, dumps included; keys,
+  as resin. In the playground a line under the editor's header says that pasting converts, and then
+  what the paste became, with its notes and Undo. One reader takes MySQL, PostgreSQL, SQLite, SQL Server and Oracle, dumps included; keys,
   indexes, foreign keys, enum values, comments and Hibernate Envers tables carry over, and what
   resin cannot write stays as a comment. `--infer-refs` reads `<table>_id` columns as logical
   references.

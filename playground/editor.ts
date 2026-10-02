@@ -5,7 +5,7 @@
 // A paste can be converted on its way in (the app turns SQL into resin). The text goes in as pasted
 // first and is converted in a second history step, so one undo brings back exactly what was pasted.
 
-import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory, undo } from "@codemirror/commands";
 import { HighlightStyle, StreamLanguage, bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { type Diagnostic as CmDiagnostic, lintGutter, setDiagnostics } from "@codemirror/lint";
 import { EditorState, type Text } from "@codemirror/state";
@@ -108,6 +108,7 @@ export interface Editor {
   view: EditorView;
   getText(): string;
   setText(text: string): void;
+  undo(): void;
   showDiagnostics(ds: Diagnostic[]): void;
   focusAt(line: number, col: number): void;
 }
@@ -122,8 +123,13 @@ function emptyHint(): HTMLElement {
 
 /** Turns pasted text into what goes in, or returns null to paste it as it is. `doc` is the document
  *  before the paste and `rest` the document without the selection the paste replaces. `whole` puts
- *  the text in place of the whole document instead of the selection */
-export type PasteConverter = (pasted: string, doc: string, rest: string) => { text: string; whole: boolean } | null;
+ *  the text in place of the whole document instead of the selection. `applied` hears the document
+ *  as a plain paste would have left it, and as it is after the conversion */
+export type PasteConverter = (
+  pasted: string,
+  doc: string,
+  rest: string,
+) => { text: string; whole: boolean; applied?: (raw: string, converted: string) => void } | null;
 
 export function createEditor(
   parent: HTMLElement,
@@ -162,6 +168,7 @@ export function createEditor(
             if (converted === null) return false;
             event.preventDefault();
             view.dispatch({ changes: { from, to, insert: pasted }, selection: { anchor: from + pasted.length }, userEvent: "input.paste" });
+            const raw = view.state.doc.toString();
             const start = converted.whole ? 0 : from;
             const end = converted.whole ? view.state.doc.length : from + pasted.length;
             view.dispatch({
@@ -170,6 +177,7 @@ export function createEditor(
               annotations: isolateHistory.of("full"),
               scrollIntoView: true,
             });
+            converted.applied?.(raw, view.state.doc.toString());
             return true;
           },
         }),
@@ -193,6 +201,9 @@ export function createEditor(
     },
     showDiagnostics(ds) {
       view.dispatch(setDiagnostics(view.state, ds.map((d) => toCm(view.state.doc, d))));
+    },
+    undo() {
+      undo(view);
     },
     focusAt(line, col) {
       const l = view.state.doc.line(Math.min(Math.max(line, 1), view.state.doc.lines));

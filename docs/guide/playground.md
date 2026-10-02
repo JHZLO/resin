@@ -4,7 +4,9 @@ The [playground](https://jhzlo.github.io/resin/playground/) is an editor on the 
 
 ## Pasting SQL
 
-Paste a `CREATE TABLE` script into the editor and it comes in as resin: keys, indexes, foreign keys, enum values and comments carry over. In an empty editor, or over an example you have not changed, it takes the whole document; into a document of your own it goes where you paste it. One undo brings back the SQL exactly as you pasted it. See [Importing SQL](sql.md) for what converts and what is left out.
+Paste a `CREATE TABLE` script into the editor and it comes in as resin: keys, indexes, foreign keys, enum values and comments carry over. A line under the editor's header says so until you first use it. In an empty editor, or over an example you have not changed, the SQL takes the whole document; into a document of your own it goes where you paste it.
+
+After a paste the same line says how many tables were converted. When the conversion left notes (the `%%` comments for what resin cannot write yet, and the count of skipped views and triggers), a button with their number steps through them. Undo, on the line or with Ctrl or Cmd + Z, brings back the SQL exactly as you pasted it. See [Importing SQL](sql.md) for what converts and what is left out.
 
 ## Reading a diagram
 
