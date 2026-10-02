@@ -35,6 +35,15 @@ Draws a model and resolves to `{ svg, width, height, background, boxes }`. `boxe
 
 resin itself has no runtime dependencies. Layout needs [elkjs](https://github.com/kieler/elkjs), which you pass in, so code that only checks a document never loads it.
 
+## lint(doc)
+
+Checks a document that compiled without errors against the [lint rules](lint.md) and returns their findings: warnings, in source order, each with the name of its rule in `rule`. `LINT_RULES` lists the rules.
+
+```ts
+const result = compile(source);
+const findings = result.model ? lint(result.doc) : [];
+```
+
 ## fromSql(sql, options)
 
 Converts SQL DDL to resin source, as the playground does on paste; [Importing SQL](sql.md) lists the rules. It returns:

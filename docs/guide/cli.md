@@ -15,6 +15,8 @@ usage: resin <file.erd> [options]
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
+  --lint           check the lint rules too; print only the problems, and
+                   exit with 1 when there is an error or a lint finding
   --from-sql       read SQL DDL and print it as resin
     --infer-refs   also read <table>_id columns as logical references (~>)
 ```
@@ -30,6 +32,14 @@ pnpm resin schema.erd --model > schema.json
 ```
 
 The SVG is ready to embed with `<img>`: with the default look it picks its ink color from the reader's light or dark theme.
+
+## Lint
+
+`--lint` checks the file against the [lint rules](lint.md) as well, prints nothing but the problems and exits with status 1 when there is an error or a finding, which makes it a CI step:
+
+```bash
+pnpm resin schema.erd --lint
+```
 
 ## From SQL
 
@@ -53,5 +63,5 @@ examples/sql/postgres.sql:68:5: note: table `order_items`: not converted: compos
 | Status | When |
 |---|---|
 | `0` | The file compiled, possibly with warnings |
-| `1` | There was at least one error; nothing was printed but the problems. With `--from-sql`: the file creates no table |
+| `1` | There was at least one error; nothing was printed but the problems. With `--lint`: also a lint finding. With `--from-sql`: the file creates no table |
 | `2` | The command was wrong: no file, or an unknown look |

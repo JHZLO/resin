@@ -15,7 +15,7 @@ table orders "Customer orders" {
 
 table order_items "Order lines" {
   id          bigint  pk
-  order_id    bigint  -> orders.id  index as ix_order_id
+  order_id    bigint  -> orders.id
   product_id  bigint  "Product in the catalog service"
   quantity    int
   created_at  datetime
@@ -25,7 +25,7 @@ table order_items "Order lines" {
 table payments "Payments" {
   id             bigint         pk
   order_id       bigint         uk ~> orders  "One payment per order"
-  payer_user_id  bigint?        ~> users
+  payer_user_id  bigint?        ~> users  index
   amount         decimal(12,2)
   method         varchar        enum(CARD, BANK_TRANSFER)
   created_at     datetime

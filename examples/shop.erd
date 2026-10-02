@@ -6,7 +6,7 @@ external table users "Accounts service" {
 
 table categories "Categories" {
   id         bigint       pk
-  parent_id  bigint?      -> categories  "Parent category"
+  parent_id  bigint?      -> categories  index  "Parent category"
   name       varchar(50)
 }
 
@@ -36,7 +36,7 @@ table carts "Carts" {
 table cart_items "Cart items" {
   id         bigint  pk
   cart_id    bigint  -> carts
-  option_id  bigint  -> product_options
+  option_id  bigint  -> product_options  index
   quantity   int
   unique(cart_id, option_id) as uk_cart_option
 }
@@ -52,15 +52,15 @@ table orders "Orders" {
   id          bigint       pk
   user_id     bigint       ~> users  index as ix_user_id
   order_no    varchar(32)  uk as uk_order_no
-  coupon_id   bigint?      ~> coupons
+  coupon_id   bigint?      ~> coupons  index
   status      varchar      enum(PENDING, PAID, CANCELED)
   created_at  datetime
 } audit envers(status)
 
 table order_items "Order items" {
   id         bigint         pk
-  order_id   bigint         -> orders
-  option_id  bigint         ~> product_options
+  order_id   bigint         -> orders  index
+  option_id  bigint         ~> product_options  index
   quantity   int
   price      decimal(12,2)
 }
@@ -75,22 +75,22 @@ table payments "Payments" {
 
 table refunds "Refunds" {
   id          bigint         pk
-  payment_id  bigint         -> payments
+  payment_id  bigint         -> payments  index
   amount      decimal(12,2)
   reason      varchar(200)?
 }
 
 table coupon_usages "Coupon usages" {
   id         bigint    pk
-  coupon_id  bigint    -> coupons
-  user_id    bigint    ~> users
+  coupon_id  bigint    -> coupons  index
+  user_id    bigint    ~> users  index
   order_id   bigint    uk ~> orders
   used_at    datetime
 }
 
 table shipments "Shipments" {
   id           bigint        pk
-  order_id     bigint        -> orders
+  order_id     bigint        -> orders  index
   carrier      varchar(20)
   tracking_no  varchar(40)?
   shipped_at   datetime?

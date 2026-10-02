@@ -25,10 +25,12 @@ table courses {
 
 table enrollments {
   student_id   bigint    pk  -> students
-  course_id    bigint    pk  -> courses
+  course_id    bigint    pk  -> courses  index
   enrolled_at  datetime
 }
 ```
+
+The primary key's index starts with `student_id`, so it serves lookups by student; `course_id` gets an `index` of its own, or finding a course's enrollments would read the whole table. [Lint](lint.md) reports a reference column that no index starts with.
 
 A primary key cannot be nullable. A reference that leaves out the target column points at the primary key, so that table needs a single-column one.
 

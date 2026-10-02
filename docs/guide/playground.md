@@ -8,6 +8,10 @@ Paste a `CREATE TABLE` script into the editor and it comes in as resin: keys, in
 
 After a paste the same line says how many tables were converted. When the conversion left notes (the `%%` comments for what resin cannot write yet, and the count of skipped views and triggers), a button with their number steps through them. Undo, on the line or with Ctrl or Cmd + Z, brings back the SQL exactly as you pasted it. See [Importing SQL](sql.md) for what converts and what is left out.
 
+## Lint
+
+The playground runs the [lint rules](lint.md) on every change. The status bar under the editor counts the findings next to the compiler's own problems, as in `3 lint findings`; press the count to list them under the editor, and again to close the list. The playground remembers whether it was open. In the editor a finding has a dotted underline and a dot in the gutter; hover over it for the message, the hint and the rule. Errors and warnings of the compiler open the list by themselves, as before.
+
 ## Reading a diagram
 
 Click a table's name for a side panel that lists its columns, indexes and references as tables. Its left edge resizes it. Click a column, on the diagram or in the panel, for a small card with its details; its text can be selected and copied. A column that holds or receives a reference also highlights that reference.

@@ -38,7 +38,7 @@ const NAV = [
     ],
   ],
   ["Outputs", [["svg", "SVG"], ["cli", "Command line"], ["library", "Library"]]],
-  ["Reference", [["grammar", "Grammar"], ["diagnostics", "Diagnostics"], ["migrating", "Migrating from v0.1"]]],
+  ["Reference", [["grammar", "Grammar"], ["diagnostics", "Diagnostics"], ["lint", "Lint"], ["migrating", "Migrating from v0.1"]]],
 ];
 const PAGES = NAV.flatMap(([group, pages]) => pages.map(([slug, title]) => ({ group, slug, title })));
 /** Where a page lives, from the site's root */

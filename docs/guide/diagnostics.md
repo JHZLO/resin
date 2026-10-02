@@ -44,6 +44,10 @@ schema.erd:8:27: error: referenced table `customer` is not in this document
 | `` `unique(...)` over a single column`` | Use the column modifier `uk`, or `index` for `index(...)` |
 | ``primary key `id` is always part of the audit table`` | Drop it from the `audit envers(...)` list |
 
+## Lint
+
+[Lint rules](lint.md) report schema design that compiles but is likely a mistake, such as a reference column without an index. They are warnings too, with the rule's name after the message, as in `[ref-index]`. The playground runs them on every change; on the command line `--lint` does.
+
 ## Old syntax
 
 The parser recognizes the syntax of v0.1 and says how to write it now, as in ``index names go after `as` since v0.2``. See [Migrating from v0.1](migrating.md).

@@ -102,6 +102,10 @@ const theme = EditorView.theme({
   ".cm-diagnostic-warning": { borderLeft: "3px solid var(--warn)" },
   ".cm-lintRange-error": { backgroundImage: "none", textDecoration: "underline wavy var(--danger)", textUnderlineOffset: "3px" },
   ".cm-lintRange-warning": { backgroundImage: "none", textDecoration: "underline wavy var(--warn)", textUnderlineOffset: "3px" },
+  // Lint findings are advice: a dotted line in the warn color, and a dot in the gutter
+  ".cm-diagnostic-info": { borderLeft: "3px solid var(--warn)" },
+  ".cm-lintRange-info": { backgroundImage: "none", textDecoration: "underline dotted var(--warn)", textDecorationThickness: "1.5px", textUnderlineOffset: "4px" },
+  ".cm-lint-marker-info": { content: "none", width: "6px", height: "6px", margin: "5px 4px", borderRadius: "50%", backgroundColor: "var(--warn)" },
 });
 
 export interface Editor {
@@ -222,7 +226,7 @@ function toCm(doc: Text, d: Diagnostic): CmDiagnostic {
   return {
     from,
     to: Math.max(to, from),
-    severity: d.severity,
-    message: d.hint ? `${d.message}\nhint: ${d.hint}` : d.message,
+    severity: d.rule ? "info" : d.severity,
+    message: [d.message, d.hint && `hint: ${d.hint}`, d.rule && `lint: ${d.rule}`].filter(Boolean).join("\n"),
   };
 }

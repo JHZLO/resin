@@ -1,10 +1,10 @@
-// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys] [--expand-audit] | --model | --ast`,
+// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys] [--expand-audit] | --model | --ast | --lint`,
 // or `pnpm resin <file.sql> --from-sql [--infer-refs]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
 // from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync } from "node:fs";
-import { type SvgLook, compile, formatDiagnostic, fromSql, toSvg } from "./index.ts";
+import { type SvgLook, compile, formatDiagnostic, fromSql, lint, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
        resin <file.sql> --from-sql [--infer-refs]
@@ -18,6 +18,8 @@ const USAGE = `usage: resin <file.erd> [options]
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
+  --lint           check the lint rules too; print only the problems, and
+                   exit with 1 when there is an error or a lint finding
   --from-sql       read SQL DDL and print it as resin
     --infer-refs   also read <table>_id columns as logical references (~>)`;
 
@@ -50,6 +52,15 @@ if (args.includes("--from-sql")) {
 }
 
 const result = compile(source);
+
+if (args.includes("--lint")) {
+  // Lint needs a document that compiled; with errors there is nothing to lint yet
+  const findings = result.model ? lint(result.doc) : [];
+  const all = [...result.diagnostics, ...findings].sort((a, b) => a.span.line - b.span.line || a.span.col - b.span.col);
+  for (const d of all) console.error(formatDiagnostic(d, source, file) + "\n");
+  process.exit(result.model === null || findings.length > 0 ? 1 : 0);
+}
+
 for (const d of result.diagnostics) console.error(formatDiagnostic(d, source, file) + "\n");
 
 if (args.includes("--ast")) console.log(JSON.stringify(result.doc, null, 2));

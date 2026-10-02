@@ -61,7 +61,7 @@ table orders "Customer orders" {
 
 table order_items "Order lines" {
   id          bigint  pk
-  order_id    bigint  -> orders.id  index as ix_order_id
+  order_id    bigint  -> orders.id
   product_id  bigint  "Product in the catalog service"
   quantity    int
   created_at  datetime

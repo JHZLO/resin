@@ -27,7 +27,7 @@ table orders "Customer orders" {
 
 table order_items "Order lines" {
   id          bigint  pk
-  order_id    bigint  -> orders.id  index as ix_order_id
+  order_id    bigint  -> orders.id
   product_id  bigint  "Product in the catalog service"
   quantity    int
   created_at  datetime
@@ -286,3 +286,24 @@ resin.
   comment `%% Partial unique index ...`, because it is unique among some rows only.
 - Every comment of this kind, every skipped object and every statement that could not be read is
   also reported as a note with its line and column in the SQL.
+
+## 9. Lint
+
+`lint(doc)` checks a document that compiled without errors against rules of schema design. A finding
+is a warning that carries the name of its rule; it never stops the output. The command line runs the
+rules with `--lint`, and the playground runs them on every change.
+
+An **index of a table** is any of: the primary key (its columns in document order), a `uk`, a
+`unique(...)`, a column `index` and an `index(...)`. An index **starts with** a column when the
+column is the first in its list.
+
+| Rule | Reported when | Where | Message |
+|---|---|---|---|
+| `ref-index` | A column of a table (not external) holds a reference (`->` or `~>`) and no index of the table starts with it | The column name | ``reference column `c` has no index`` |
+| `no-pk` | A table (not external) has no primary key | The table name | ``table `t` has no primary key`` |
+| `unrelated` | The document has two or more tables, and no reference joins this one to another table. A reference of a table to itself does not count | The table name | ``table `t` has no references to or from other tables``; for an external table, ``external table `t` is not referenced`` |
+| `type-drift` | Columns of one name appear in two or more tables with different type names (arguments are not compared). The type most of them have is taken as the norm, the first one on a tie, and every other column is reported. A column whose reference already gets the type mismatch warning is left out of the comparison | The type | ``column `c` is int here but bigint in `t1`, `t2` `` (at most three tables, then `and N more`) |
+| `dup-index` | An `index` or `index(...)` whose column list is the start of another index's list. When the lists are equal, the later one is reported, unless the other is unique. Also a `uk` or `unique(...)` over exactly the primary key's columns | The `index`, `uk`, `unique` or `index(` keyword | ``the index on (`a`) is covered by `ix_ab` (`a`, `b`)``; ``unique on (`id`) repeats the primary key`` |
+
+Every finding has a hint on how to fix it. In compiler format the rule follows the message in
+brackets: ``schema.erd:28:3: warning: reference column `payer_user_id` has no index [ref-index]``.

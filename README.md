@@ -45,7 +45,7 @@ table orders "Customer orders" {
 
 table order_items "Order lines" {
   id          bigint  pk
-  order_id    bigint  -> orders.id  index as ix_order_id
+  order_id    bigint  -> orders.id
   product_id  bigint
   quantity    int
   unique(order_id, product_id) as uk_order_product
@@ -80,6 +80,10 @@ the tables on frosted glass over a background of their own, in three themes (aur
 caustic), each dark or light. The same input always gives byte-identical output, and the renderer
 has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
 pass in.
+
+Lint rules go further than compiling: they point at a reference column without an index, a table
+without a primary key or one nothing joins, a column name typed two ways, and an index another one
+covers. `pnpm resin schema.erd --lint` fails a CI step on any of them.
 
 An existing schema does not have to be written by hand. Paste a `CREATE TABLE` script into the
 playground, or run `pnpm resin schema.sql --from-sql`, and it comes back as resin: keys, indexes,

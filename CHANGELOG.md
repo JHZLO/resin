@@ -30,6 +30,10 @@ The first public version of the language, grammar v0.2.
   status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
   default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
+- Lint rules for schema design: a reference column without an index (`ref-index`), a table without a
+  primary key (`no-pk`), a table no reference joins (`unrelated`), a column name typed two ways
+  (`type-drift`) and an index another one covers (`dup-index`). `lint(doc)`, `resin --lint` (exits
+  with 1 on a finding, for CI) and the playground, which runs them on every change.
 - SQL import: `fromSql`, `resin <file.sql> --from-sql` and pasting into the playground write SQL DDL
   as resin. In the playground a line under the editor's header says that pasting converts, and then
   what the paste became, with its notes and Undo. One reader takes MySQL, PostgreSQL, SQLite, SQL Server and Oracle, dumps included; keys,

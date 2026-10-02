@@ -13,6 +13,8 @@ export interface Diagnostic {
   span: Span;
   /** One line on how to fix it, when there is one */
   hint?: string;
+  /** The lint rule that found it (lint.ts); absent for the compiler's own diagnostics */
+  rule?: string;
 }
 
 export const error = (message: string, span: Span, hint?: string): Diagnostic =>
@@ -37,7 +39,7 @@ export function formatDiagnostic(d: Diagnostic, source: string, file = "<input>"
   const gutter = String(line).length;
   const pad = " ".repeat(gutter);
   const out = [
-    `${file}:${line}:${col}: ${d.severity}: ${d.message}`,
+    `${file}:${line}:${col}: ${d.severity}: ${d.message}${d.rule ? ` [${d.rule}]` : ""}`,
     `${pad} |`,
     `${line} | ${text.replace(/\r$/, "")}`,
     `${pad} | ${" ".repeat(Math.max(0, col - 1))}${"^".repeat(Math.max(1, len))}`,

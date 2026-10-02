@@ -19,6 +19,8 @@ export { lower } from "./model.ts";
 export { toSvg } from "./svg.ts";
 export type { ElkLike, SvgLook, SvgOptions, SvgResult } from "./svg.ts";
 export { fromSql, looksLikeSql } from "./sql.ts";
+export { LINT_RULES, lint } from "./lint.ts";
+export type { LintRule } from "./lint.ts";
 export type { SqlImport, SqlImportOptions, SqlNote } from "./sql.ts";
 
 export interface CompileResult {

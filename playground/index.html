@@ -311,6 +311,15 @@ button { cursor: pointer; }
 .problem.is-error .problem-where { color: var(--danger); }
 .problem.is-warning .problem-where { color: var(--warn); }
 .problem-hint { grid-column: 2; color: var(--muted); }
+.problem code { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink); }
+/* lint findings: advice, in the warn color, with the rule's name after the message */
+.problem.is-lint .problem-where { color: var(--warn); }
+.problem-rule { margin-left: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+.status-lint { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 6px; border: 0; border-radius: 5px; background: none; font-size: 12px; color: var(--warn); }
+.status-lint::before { content: ""; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
+.status-lint.is-open { background: var(--control-on); }
+.status-lint.is-open::before { transform: rotate(180deg); }
+@media (hover: hover) and (pointer: fine) { .status-lint:hover { background: var(--control-on); } }
 .splitter { background: var(--rule); cursor: col-resize; touch-action: none; position: relative; z-index: 6; transition: background-color 0.15s ease; }
 .splitter::after { content: ""; position: absolute; inset: 0 -4px; }
 .splitter:focus-visible { background: var(--accent); outline: none; }
@@ -708,6 +717,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
     <ul class="problems" id="problems" hidden></ul>
     <div class="status">
       <button type="button" class="status-problems" id="problem-count" data-state="ok" title="Go to the first problem">No problems</button>
+      <button type="button" class="status-lint" id="lint-count" aria-controls="problems" aria-expanded="false" title="List the lint findings" hidden></button>
       <span class="status-pos" id="cursor-pos">Ln 1, Col 1</span>
     </div>
   </section>

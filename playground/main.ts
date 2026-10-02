@@ -5,7 +5,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, compile, fromSql, looksLikeSql, parse, toSvg } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, compile, fromSql, lint, looksLikeSql, parse, toSvg } from "../src/index.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
@@ -100,33 +100,69 @@ async function copy(text: string, done: string): Promise<void> {
 
 let problems: Diagnostic[] = [];
 
-function showProblems(ds: Diagnostic[]): void {
+// Lint findings are advice, so they wait behind a count in the status bar; the compiler's own
+// problems open the list by themselves. Whether the findings are listed is remembered
+const LINT_STORE = "resin.lint";
+let lintFindings: Diagnostic[] = [];
+let lintOpen = false;
+try {
+  lintOpen = localStorage.getItem(LINT_STORE) === "open";
+} catch {
+  /* start closed */
+}
+
+/** `name` in a message, set in code type */
+function richText(el: HTMLElement, text: string): void {
+  el.replaceChildren(
+    ...text.split(/(`[^`]+`)/).map((part) => {
+      if (!/^`[^`]+`$/.test(part)) return document.createTextNode(part);
+      const c = document.createElement("code");
+      c.textContent = part.slice(1, -1);
+      return c;
+    }),
+  );
+}
+
+function showProblems(ds: Diagnostic[], findings: Diagnostic[] = []): void {
   problems = ds;
+  lintFindings = findings;
   const errors = ds.filter((d) => d.severity === "error").length;
   const warnings = ds.length - errors;
   const count = byId("problem-count");
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   count.textContent = ds.length === 0 ? "No problems" : [errors && plural(errors, "error"), warnings && plural(warnings, "warning")].filter(Boolean).join(", ");
   count.dataset.state = errors ? "error" : warnings ? "warning" : "ok";
+  const lintCount = byId("lint-count");
+  lintCount.textContent = plural(findings.length, "lint finding");
+  lintCount.hidden = findings.length === 0;
+  lintCount.setAttribute("aria-expanded", String(lintOpen));
+  lintCount.classList.toggle("is-open", lintOpen);
 
+  const shown = lintOpen ? [...ds, ...findings].sort((a, b) => a.span.line - b.span.line || a.span.col - b.span.col) : ds;
   const list = byId("problems");
   list.replaceChildren(
-    ...ds.map((d) => {
+    ...shown.map((d) => {
       const li = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `problem is-${d.severity}`;
+      button.className = `problem is-${d.rule ? "lint" : d.severity}`;
       const where = document.createElement("span");
       where.className = "problem-where";
       where.textContent = `${d.span.line}:${d.span.col}`;
       const text = document.createElement("span");
       text.className = "problem-text";
-      text.textContent = d.message;
+      richText(text, d.message);
+      if (d.rule) {
+        const rule = document.createElement("span");
+        rule.className = "problem-rule";
+        rule.textContent = d.rule;
+        text.append(rule);
+      }
       button.append(where, text);
       if (d.hint) {
         const hint = document.createElement("span");
         hint.className = "problem-hint";
-        hint.textContent = d.hint;
+        richText(hint, d.hint);
         button.append(hint);
       }
       button.addEventListener("click", () => editor.focusAt(d.span.line, d.span.col));
@@ -134,8 +170,19 @@ function showProblems(ds: Diagnostic[]): void {
       return li;
     }),
   );
-  list.hidden = ds.length === 0;
+  list.hidden = shown.length === 0;
 }
+
+byId("lint-count").addEventListener("click", () => {
+  lintOpen = !lintOpen;
+  try {
+    if (lintOpen) localStorage.setItem(LINT_STORE, "open");
+    else localStorage.removeItem(LINT_STORE);
+  } catch {
+    /* the choice lasts for this visit */
+  }
+  showProblems(problems, lintFindings);
+});
 
 // ---- rendering ----
 
@@ -430,8 +477,10 @@ function setStale(stale: boolean): void {
 async function render(): Promise<void> {
   const seq = ++renderSeq;
   const result = compile(state.code);
-  editor.showDiagnostics(result.diagnostics);
-  showProblems(result.diagnostics);
+  // The lint rules need resolved references, so they run only on a document that compiled
+  const findings = result.model ? lint(result.doc) : [];
+  editor.showDiagnostics([...result.diagnostics, ...findings]);
+  showProblems(result.diagnostics, findings);
   if (!result.model) {
     setStale(true);
     return;
