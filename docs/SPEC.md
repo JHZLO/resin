@@ -216,3 +216,73 @@ The parser recognizes v0.1 syntax and says how to write it in v0.2.
 | `unique name(a, b)` / `index name(a, b)` | `unique(a, b) as name` / `index(a, b) as name` |
 | `} audit(a, b)` / `} audit` | `} audit envers(a, b)` / `} audit envers` |
 | An outside reference written as a description | Declare an `external table` and use `~>` |
+
+## 8. Importing SQL
+
+`fromSql(sql)` (the playground's paste, `resin --from-sql`) writes SQL DDL as resin. It is part of the
+language's definition in the same way as the drawing: these rules say what each SQL fact means in
+resin.
+
+### 8.1 Reading
+
+- One reader takes every dialect: MySQL and MariaDB, PostgreSQL, SQLite, SQL Server and Oracle.
+  Names are quoted with `"..."`, `` `...` `` or `[...]`; a `[` that cannot start a name (`text[]`)
+  is punctuation. Strings take `''`, and also `\'` when the text uses backticks (MySQL dumps).
+  Comments are `--`, `/* */` and `#` at the start of a line. MySQL's `/*!NNNNN ... */` is read as
+  code.
+- Statements end at `;`, at a line holding only `GO` or `/`, at the delimiter `DELIMITER` sets, and
+  before a line that starts with `CREATE` or `ALTER` outside parentheses. psql meta-commands and the
+  data of `COPY ... FROM stdin` are skipped.
+- Each statement is read on its own. Read are `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE` (`ADD`
+  constraints and columns, `ALTER COLUMN ... SET` / `DROP NOT NULL`, `MODIFY`), `CREATE [UNIQUE]
+  INDEX`, `COMMENT ON TABLE` / `COLUMN`, `CREATE TYPE ... AS ENUM`, `ALTER TYPE ... ADD VALUE` and
+  SQL Server's `sp_addextendedproperty` for `MS_Description`. Every other statement is skipped.
+- Tables are resolved in two passes: first `CREATE TABLE`, `DROP TABLE` and enum types, in order;
+  then `ALTER TABLE`, `CREATE INDEX` and `COMMENT ON`, in order. References are resolved last.
+- Table and column names match without regard to case or schema. The `CREATE TABLE` spelling is
+  written. Two tables of one name in different schemas are written `` `schema.name` ``.
+
+### 8.2 Mapping
+
+| SQL | resin |
+|---|---|
+| `NOT NULL`, or a primary key column | No `?` |
+| Any other column | `?` |
+| `PRIMARY KEY` (column, table or `ALTER TABLE ADD`) | `pk` on each column |
+| A unique constraint or unique index over one column | `uk` / `uk as name`. Left out on a column that is the whole primary key |
+| The same over several columns | `unique(...)` / `unique(...) as name`. Left out when it is the primary key |
+| An index over one column | `index` / `index as name`; a second index on the same column is left out |
+| The same over several columns | `index(...)` / `index(...) as name` |
+| A one-column foreign key to `t.c` | `-> t` when `c` is the primary key of `t`, `-> t.c` otherwise |
+| A foreign key to a table the SQL does not create | `-> t`, and `external table t` with the columns referenced; a lone column is its `pk`. Without a column, the column is taken to be `id` |
+| A foreign key to a table in `known` | `-> t` / `-> t.c`, with no external table |
+| MySQL `enum('A', ...)` | Type `enum`, `enum(A, ...)` |
+| A column whose type is a `CREATE TYPE ... AS ENUM` | That type, `enum(...)` |
+| `CHECK (c IN (...))`, `CHECK (c = ANY (ARRAY[...]))`, `CHECK (c = v OR c = w ...)` | `enum(...)` on `c` |
+| A column or table comment (`COMMENT`, `COMMENT=`, `COMMENT ON`, `MS_Description`) | The description, on one line |
+| `revinfo`, and `<t>_aud` holding `rev` and `revtype` for a table `t` with a primary key | `audit envers` on `t` when `<t>_aud` holds every column `audit envers` would, `audit envers(...)` with the columns it holds otherwise; `revinfo` and `<t>_aud` are not written |
+| `CREATE VIEW` of the name of a table created before it | The table is dropped (mysqldump's placeholder) |
+
+- **Types** are lowercased and normalized to one name with number arguments: multi-word names
+  (`character varying` → `varchar`, `double precision` → `double`, `timestamp with time zone` →
+  `timestamptz`), `serial` types to their integer type, integer display widths and `unsigned`
+  dropped, non-number arguments (`max`, `*`) drop the arguments, the schema of a type is dropped,
+  arrays get PostgreSQL's `_` prefix (`text[]` → `_text`), and a column with no type is `any`.
+- **Names** that are not identifiers, and **enum values** that are neither identifiers nor numbers,
+  are written in backticks.
+- **Inferred references** (`inferReferences`) are off by default. A column without a reference
+  whose name ends in `_id` or `Id` points with `~>` at the table named by the words before it,
+  singular or plural, possibly after up to three leading words, when that table's primary key is
+  one column of the same type name. The output then starts with a comment saying so.
+
+### 8.3 What is left out
+
+- Not written: defaults, auto-increment and identity, checks other than value lists, `ON DELETE` /
+  `ON UPDATE`, collations, storage and partition options, sequences, privileges and data.
+- Views, materialized views, triggers, functions and procedures are not written; the first line
+  counts them: `%% Skipped: 2 views, 1 trigger`.
+- Composite foreign keys and expression indexes are not written. Each stays in its table as a
+  comment, `%% Not converted: ...`. A partial unique index is written as a plain index with the
+  comment `%% Partial unique index ...`, because it is unique among some rows only.
+- Every comment of this kind, every skipped object and every statement that could not be read is
+  also reported as a note with its line and column in the SQL.

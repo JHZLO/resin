@@ -69,6 +69,11 @@ caustic), each dark or light. The same input always gives byte-identical output,
 has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
 pass in.
 
+An existing schema does not have to be written by hand. Paste a `CREATE TABLE` script into the
+playground, or run `pnpm resin schema.sql --from-sql`, and it comes back as resin: keys, indexes,
+foreign keys, enum values and comments carry over, from MySQL, PostgreSQL, SQLite, SQL Server or
+Oracle DDL, dumps included. What resin cannot write yet stays as a comment in its table.
+
 In the [playground](https://jhzlo.github.io/resin/playground/) the glass is live: the background drifts, the
 stars twinkle and the glass catches the light under your pointer. Click a table name to see its
 columns, indexes and relations as tables, or a column to see its details. Connectors can be angular
@@ -91,6 +96,12 @@ Draw a file as SVG:
 pnpm resin examples/order.erd > order.svg
 pnpm resin examples/order.erd --look aurora-dark > order.aurora-dark.svg
 pnpm resin examples/shop.erd --keys --curved > shop.svg
+```
+
+Convert SQL DDL to resin:
+
+```bash
+pnpm resin examples/sql/postgres.sql --from-sql > schema.erd
 ```
 
 Errors come out in compiler format:

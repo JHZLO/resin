@@ -1,0 +1,14 @@
+table Users "People who sign in" {
+  Id           int            pk
+  Email        nvarchar(255)  "Login address"
+  DisplayName  nvarchar?
+  Status       varchar(10)    enum(ACTIVE, BLOCKED)
+}
+
+table `Order Details` {
+  OrderId  int
+  UserId   int            -> Users  index as IX_Details_User
+  Total    any?
+  Qty      int
+  Price    decimal(10,2)
+}

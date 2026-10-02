@@ -1,0 +1,13 @@
+%% Skipped: 1 trigger
+
+table DEPARTMENTS {
+  DEPARTMENT_ID    number(4,0)   pk
+  DEPARTMENT_NAME  varchar2(30)
+}
+
+table EMPLOYEES "employees table" {
+  EMPLOYEE_ID    number(6,0)
+  EMAIL          varchar2(25)  uk as EMP_EMAIL_UK  "Email id of the employee"
+  HIRE_DATE      date?
+  DEPARTMENT_ID  number(4,0)?  -> DEPARTMENTS
+}

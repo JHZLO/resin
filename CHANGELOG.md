@@ -30,5 +30,10 @@ The first public version of the language, grammar v0.2.
   status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
   default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
+- SQL import: `fromSql`, `resin <file.sql> --from-sql` and pasting into the playground write SQL DDL
+  as resin. One reader takes MySQL, PostgreSQL, SQLite, SQL Server and Oracle, dumps included; keys,
+  indexes, foreign keys, enum values, comments and Hibernate Envers tables carry over, and what
+  resin cannot write stays as a comment. `--infer-refs` reads `<table>_id` columns as logical
+  references.
 - A website: a landing page, docs for every construct of the language with a diagram for each
   example, and the playground, now at `/playground/`. Links to the old address still open it.

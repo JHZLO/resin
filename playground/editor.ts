@@ -1,8 +1,11 @@
 // The playground editor: CodeMirror 6 with a small resin tokenizer and resin's diagnostics shown as
 // lint marks. Diagnostics are pushed in by the app after every compile rather than pulled by a
 // CodeMirror linter, because the app compiles on every change anyway.
+//
+// A paste can be converted on its way in (the app turns SQL into resin). The text goes in as pasted
+// first and is converted in a second history step, so one undo brings back exactly what was pasted.
 
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { HighlightStyle, StreamLanguage, bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { type Diagnostic as CmDiagnostic, lintGutter, setDiagnostics } from "@codemirror/lint";
 import { EditorState, type Text } from "@codemirror/state";
@@ -113,15 +116,20 @@ export interface Editor {
 function emptyHint(): HTMLElement {
   const el = document.createElement("span");
   el.style.whiteSpace = "pre";
-  el.textContent = 'Start with a table:\n\ntable users "People who sign in" {\n  id     bigint        pk\n  email  varchar(255)  uk\n}';
+  el.textContent = 'Start with a table:\n\ntable users "People who sign in" {\n  id     bigint        pk\n  email  varchar(255)  uk\n}\n\nOr paste SQL (CREATE TABLE ...) to convert it.';
   return el;
 }
+
+/** Turns pasted text into what goes in, or returns null to paste it as it is. `rest` is the document
+ *  without the selection the paste replaces */
+export type PasteConverter = (pasted: string, rest: string) => string | null;
 
 export function createEditor(
   parent: HTMLElement,
   text: string,
   onChange: (text: string) => void,
   onCursor: (line: number, col: number) => void = () => {},
+  convertPaste: PasteConverter = () => null,
 ): Editor {
   const view = new EditorView({
     parent,
@@ -143,6 +151,25 @@ export function createEditor(
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         EditorView.contentAttributes.of({ "aria-label": "resin source" }),
         placeholder(emptyHint()),
+        EditorView.domEventHandlers({
+          paste(event, view) {
+            const pasted = event.clipboardData?.getData("text/plain");
+            if (!pasted) return false;
+            const { from, to } = view.state.selection.main;
+            const doc = view.state.doc;
+            const converted = convertPaste(pasted, doc.sliceString(0, from) + doc.sliceString(to));
+            if (converted === null) return false;
+            event.preventDefault();
+            view.dispatch({ changes: { from, to, insert: pasted }, selection: { anchor: from + pasted.length }, userEvent: "input.paste" });
+            view.dispatch({
+              changes: { from, to: from + pasted.length, insert: converted },
+              selection: { anchor: from + converted.length },
+              annotations: isolateHistory.of("full"),
+              scrollIntoView: true,
+            });
+            return true;
+          },
+        }),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChange(u.state.doc.toString());
           if (u.docChanged || u.selectionSet) {

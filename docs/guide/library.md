@@ -35,6 +35,23 @@ Draws a model and resolves to `{ svg, width, height, background, boxes }`. `boxe
 
 resin itself has no runtime dependencies. Layout needs [elkjs](https://github.com/kieler/elkjs), which you pass in, so code that only checks a document never loads it.
 
+## fromSql(sql, options)
+
+Converts SQL DDL to resin source, as the playground does on paste; [Importing SQL](sql.md) lists the rules. It returns:
+
+| Field | What it holds |
+|---|---|
+| `source` | The resin source. Empty when the SQL creates no table |
+| `notes` | What did not convert, or converted with a caveat: `{ message, line, col }`, positions in the SQL |
+| `tables` | How many tables were converted, not counting the external tables added for references |
+
+| Option | What it does |
+|---|---|
+| `known` | Names of tables already in the document the result goes into. References to them point at them instead of adding external tables |
+| `inferReferences` | Also read `<table>_id` columns without a foreign key as logical references (`~>`) |
+
+`looksLikeSql(text)` tells whether a text is SQL that creates a table, for deciding when to convert.
+
 ## Lower-level steps
 
 `parse`, `check` and `lower` are the steps `compile` runs, exported for tools that need one of them on its own: an editor that wants the syntax tree, say, or a linter that only checks.

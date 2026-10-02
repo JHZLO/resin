@@ -1,11 +1,13 @@
-// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys] [--expand-audit] | --model | --ast`
-// Diagnostics go to stderr in compiler format; the result (the SVG, model JSON or syntax tree JSON)
-// goes to stdout. Exits with 1 when there are errors.
+// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys] [--expand-audit] | --model | --ast`,
+// or `pnpm resin <file.sql> --from-sql [--infer-refs]`.
+// Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
+// from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync } from "node:fs";
-import { type SvgLook, compile, formatDiagnostic, toSvg } from "./index.ts";
+import { type SvgLook, compile, formatDiagnostic, fromSql, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
+       resin <file.sql> --from-sql [--infer-refs]
 
   (no option)      print the diagram as SVG (needs elkjs)
     --look <look>  graphite (default, no background), or a glass theme:
@@ -15,7 +17,9 @@ const USAGE = `usage: resin <file.erd> [options]
     --keys         show key and reference columns only
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
-  --ast            print the syntax tree as JSON`;
+  --ast            print the syntax tree as JSON
+  --from-sql       read SQL DDL and print it as resin
+    --infer-refs   also read <table>_id columns as logical references (~>)`;
 
 const LOOKS: readonly SvgLook[] = ["graphite", "aurora-dark", "aurora-light", "silk-dark", "silk-light", "caustic-dark", "caustic-light"];
 
@@ -33,6 +37,18 @@ if (!LOOKS.includes(look as SvgLook)) {
 }
 
 const source = readFileSync(file, "utf8");
+
+if (args.includes("--from-sql")) {
+  const converted = fromSql(source, { inferReferences: args.includes("--infer-refs") });
+  for (const n of converted.notes) console.error(`${file}:${n.line}:${n.col}: note: ${n.message}`);
+  if (converted.tables === 0) {
+    console.error(`resin: ${file} has no CREATE TABLE to convert`);
+    process.exit(1);
+  }
+  process.stdout.write(converted.source);
+  process.exit(0);
+}
+
 const result = compile(source);
 for (const d of result.diagnostics) console.error(formatDiagnostic(d, source, file) + "\n");
 

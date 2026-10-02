@@ -1,0 +1,13 @@
+%% Skipped: 1 trigger
+
+table teams {
+  id    integer  pk
+  name  text     uk
+}
+
+table members {
+  id       integer   pk
+  team_id  integer?  -> teams  index as members_team
+  role     text?     enum(owner, member)
+  meta     any?
+}

@@ -1,0 +1,25 @@
+%% Skipped: 1 view, 1 procedure
+
+external table users {
+  id  bigint  pk
+}
+
+table orders "Customer orders" {
+  id          bigint          pk
+  user_id     bigint          -> users  index as idx_user_id  "Customer"
+  order_no    varchar(32)     uk as uk_order_no  "Order number"
+  status      enum            enum(PENDING, PAID, CANCELED)
+  amount      decimal(12,2)?
+  note        text?           index as idx_note  "It's a \"note\""
+  created_at  datetime(6)
+  key         varchar(64)?
+  index(user_id, status) as idx_user_status
+}
+
+table order_items {
+  id          bigint  pk
+  order_id    bigint  -> orders
+  product_id  bigint
+  qty         int
+  unique(order_id, product_id) as uk_order_product
+}

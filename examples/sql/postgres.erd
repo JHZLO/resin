@@ -1,0 +1,27 @@
+%% Skipped: 1 function, 1 materialized view, 1 trigger
+
+table users {
+  id          bigint        pk
+  email       varchar(255)  uk as users_email_key
+  tags        _text
+  created_at  timestamptz
+  %% Not converted: index users_lower_email on (lower((email)::text))
+}
+
+table orders "Customer orders" {
+  id          bigint         pk
+  user_id     bigint?        -> users  index as orders_user_id_idx  "Who placed it (may be empty)"
+  status      order_status   enum(PENDING, PAID, `in progress`)
+  kind        varchar(16)    enum(ONLINE, STORE)
+  total       numeric(12,2)
+  deleted_at  timestamp?
+  %% Partial unique index orders_one_open on (user_id) WHERE (deleted_at IS NULL), drawn as a plain index
+}
+
+table order_items {
+  order_id  bigint   pk  -> orders
+  line      integer  pk
+  shop_id   bigint?
+  sku       text?
+  %% Not converted: composite foreign key (shop_id, sku) -> shop_items (shop_id, sku)
+}

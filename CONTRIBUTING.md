@@ -30,6 +30,7 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 | `src/parser.ts` | Hand-written recursive descent parser. Drops a broken line and keeps reading |
 | `src/checker.ts` | Semantic checks: missing references, duplicates, nullable keys, audit rules |
 | `src/model.ts` | Resolves references, cardinality and audit tables once, for every output |
+| `src/sql-lexer.ts`, `src/sql-parser.ts`, `src/sql.ts` | SQL import: one tokenizer for every dialect, a lenient reader per statement, then resolution in two passes and resin output (SPEC §8) |
 | `src/svg.ts` | SVG output, laid out with ELK: `graphite`, or glass in three themes (`aurora`, `silk`, `caustic`), dark or light |
 | `src/index.ts` | The public API (`compile`, `toSvg`, ...) |
 | `src/cli.ts` | Command-line entry |
@@ -38,6 +39,7 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 | `website/` | The landing page's and the docs' style and script, the code highlighter, and the logo (`brand/mark.svg`) |
 | `scripts/build-site.mjs` | Builds `site/`: the landing page, the docs and the playground, for GitHub Pages |
 | `examples/` | Example schemas and their golden output (`order.aurora-dark.svg` and `order.aurora-light.svg` cover the glass). A new `.erd` file gets golden tests automatically |
+| `examples/sql/` | SQL in each dialect and the resin it converts to. A new `.sql` file gets a golden test automatically |
 
 ## Changing the grammar
 

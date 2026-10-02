@@ -5,7 +5,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, compile, toSvg } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, compile, fromSql, looksLikeSql, parse, toSvg } from "../src/index.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { createEditor } from "./editor.ts";
@@ -77,14 +77,14 @@ async function writeHash(): Promise<void> {
 // ---- toast ----
 
 let toastTimer = 0;
-function toast(message: string): void {
+function toast(message: string, ms = 1800): void {
   const el = byId("toast");
   el.textContent = message;
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     el.hidden = true;
-  }, 1800);
+  }, ms);
 }
 
 async function copy(text: string, done: string): Promise<void> {
@@ -745,6 +745,25 @@ byId("problem-count").addEventListener("click", () => {
   if (problems.length) editor.focusAt(problems[0].span.line, problems[0].span.col);
 });
 
+// ---- pasting SQL ----
+
+/** SQL DDL pasted into the editor comes in as resin. References to tables already in the document
+ *  point at them; one undo brings back the SQL as it was pasted */
+function convertSql(pasted: string, rest: string): string | null {
+  if (!looksLikeSql(pasted)) return null;
+  const known = parse(rest).doc.tables.map((t) => t.name.text);
+  const converted = fromSql(pasted, { known });
+  if (converted.tables === 0) return null;
+  const n = converted.tables;
+  toast(`Converted ${n} ${n === 1 ? "table" : "tables"} from SQL. Undo to keep the SQL as pasted`, 4000);
+  if (rest.trim() === "") {
+    fitNext = true;
+    return converted.source;
+  }
+  // Into a document that has tables already: keep a blank line on either side
+  return `\n${converted.source}\n`;
+}
+
 // ---- boot ----
 
 const cursorPos = byId("cursor-pos");
@@ -760,6 +779,7 @@ const editor = createEditor(
   (line, col) => {
     cursorPos.textContent = `Ln ${line}, Col ${col}`;
   },
+  convertSql,
 );
 
 async function adopt(shared: Partial<typeof state> | null): Promise<void> {

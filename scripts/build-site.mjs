@@ -20,7 +20,7 @@ const elk = new ELK();
 
 /** The docs' table of contents: groups of [file name in docs/guide, title] */
 const NAV = [
-  ["Getting started", [["introduction", "Introduction"], ["quick-start", "Quick start"], ["playground", "Playground"]]],
+  ["Getting started", [["introduction", "Introduction"], ["quick-start", "Quick start"], ["playground", "Playground"], ["sql", "Importing SQL"]]],
   [
     "Language",
     [

@@ -4,6 +4,7 @@ From a clone of the repository, `pnpm resin` compiles one file; see [Quick start
 
 ```text
 usage: resin <file.erd> [options]
+       resin <file.sql> --from-sql [--infer-refs]
 
   (no option)      print the diagram as SVG (needs elkjs)
     --look <look>  graphite (default, no background), or a glass theme:
@@ -14,6 +15,8 @@ usage: resin <file.erd> [options]
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
+  --from-sql       read SQL DDL and print it as resin
+    --infer-refs   also read <table>_id columns as logical references (~>)
 ```
 
 ## Output
@@ -28,10 +31,27 @@ pnpm resin schema.erd --model > schema.json
 
 The SVG is ready to embed with `<img>`: with the default look it picks its ink color from the reader's light or dark theme.
 
+## From SQL
+
+`--from-sql` reads a SQL file and prints it as resin. What did not convert is listed on standard error, with its line in the SQL:
+
+```bash
+pnpm resin schema.sql --from-sql > schema.erd
+```
+
+For the PostgreSQL dump in the repository, `pnpm resin examples/sql/postgres.sql --from-sql` notes, among others:
+
+```text
+examples/sql/postgres.sql:60:1: note: table `users`: not converted: index users_lower_email on (lower((email)::text))
+examples/sql/postgres.sql:68:5: note: table `order_items`: not converted: composite foreign key (shop_id, sku) -> shop_items (shop_id, sku)
+```
+
+[Importing SQL](sql.md) describes what converts.
+
 ## Exit status
 
 | Status | When |
 |---|---|
 | `0` | The file compiled, possibly with warnings |
-| `1` | There was at least one error; nothing was printed but the problems |
+| `1` | There was at least one error; nothing was printed but the problems. With `--from-sql`: the file creates no table |
 | `2` | The command was wrong: no file, or an unknown look |
