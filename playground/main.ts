@@ -34,7 +34,6 @@ const elk = new ELK();
 
 let lastModel: Model | null = null;
 let focus: Focus | null = null;
-let lastMermaid = "";
 let renderSeq = 0;
 let fitNext = true;
 let lastBoxes: { table: string; x: number; y: number; w: number; h: number }[] = [];
@@ -452,8 +451,6 @@ async function render(): Promise<void> {
     viewport.style.backgroundColor = background ?? "";
     glass?.setLook(stageOf(look), glassOf(look));
     lastModel = result.model;
-    lastMermaid = result.mermaid ?? "";
-    byId("mermaid-out").textContent = lastMermaid;
     const empty = result.model.tables.length === 0;
     byId("empty").hidden = !empty;
     content.innerHTML = empty ? "" : svg;
@@ -580,8 +577,6 @@ byId("share").addEventListener("click", async () => {
   await copy(location.href, "Link copied");
 });
 
-byId("copy-mermaid").addEventListener("click", () => copy(lastMermaid, "Mermaid copied"));
-
 /** Files are plain (graphite) by default: no background, so they sit on any page. A glass look carries
  *  its background with it, as a still picture */
 async function exportSvg(look: SvgLook): Promise<string | null> {
@@ -647,19 +642,6 @@ downloadMenu.addEventListener("keydown", (e) => {
 document.addEventListener("pointerdown", (e) => {
   if (!downloadMenu.hidden && !downloadButton.parentElement!.contains(e.target as Node)) setMenu(false);
 });
-
-// Tabs
-const tabs = [byId("tab-diagram"), byId("tab-mermaid")];
-for (const tab of tabs)
-  tab.addEventListener("click", () => {
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute("aria-selected", String(on));
-      byId(t.getAttribute("aria-controls")!).hidden = !on;
-    }
-    // The live canvas rests while the Mermaid tab covers it. Coming back keeps the view as it was
-    glass?.pause(tab.id !== "tab-diagram");
-  });
 
 // Theme: auto → light → dark
 const THEMES = ["auto", "light", "dark"] as const;

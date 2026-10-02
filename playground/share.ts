@@ -1,5 +1,5 @@
 // Shareable links: the playground state, deflated and base64url-encoded into the URL hash,
-// in the spirit of mermaid.live's `#pako:` links. Uses the browser's built-in compression streams.
+// so a link carries the whole document. Uses the browser's built-in compression streams.
 
 const PREFIX = "#erd:";
 

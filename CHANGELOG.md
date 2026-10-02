@@ -18,12 +18,11 @@ The first public version of the language, grammar v0.2.
 - `audit envers(...)`, which generates Hibernate Envers `*_aud` and `revinfo` tables.
 - Diagnostics with line, column and hints; several errors per run.
 - A resolved model shared by every output.
-- Mermaid `erDiagram` output, tested against Mermaid 11.16.
 - SVG output laid out with ELK, with connectors from each foreign key row to its primary key row.
   A nullable column is marked `NULL` after its type, as in DDL.
 - SVG looks: `graphite`, plain ink with no background (the default), and frosted glass in three
   themes, each dark or light: `aurora` (ribbons of light under stars), `silk` and `caustic`.
-- A command-line entry (`pnpm resin <file.erd> [--svg [--look <look>]]`) and a web playground with a
+- A command-line entry (`pnpm resin <file.erd> [--look <look>]`) and a web playground with a
   live glass canvas (WebGL): the background moves with the pointer's light, and a tap sends a ripple.
   Clicking a table name opens a side panel that lists its columns (key, type, NULL or NOT NULL,
   description, enum values), indexes and relations as tables; its left edge resizes it. Clicking a

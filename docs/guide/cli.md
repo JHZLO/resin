@@ -5,8 +5,7 @@ From a clone of the repository, `pnpm resin` compiles one file; see [Quick start
 ```text
 usage: resin <file.erd> [options]
 
-  (no option)      print Mermaid erDiagram
-  --svg            print SVG (needs elkjs)
+  (no option)      print the diagram as SVG (needs elkjs)
     --look <look>  graphite (default, no background), or a glass theme:
                    aurora-dark, aurora-light, silk-dark, silk-light,
                    caustic-dark, caustic-light
@@ -22,12 +21,12 @@ usage: resin <file.erd> [options]
 The result goes to standard output, and problems go to standard error in compiler format, so a redirect keeps them apart:
 
 ```bash
-pnpm resin schema.erd > schema.mmd
-pnpm resin schema.erd --svg --keys --curved > schema.svg
+pnpm resin schema.erd > schema.svg
+pnpm resin schema.erd --keys --curved > schema.keys.svg
 pnpm resin schema.erd --model > schema.json
 ```
 
-An SVG written with `--svg` is ready to embed with `<img>`: with the default look it picks its ink color from the reader's light or dark theme.
+The SVG is ready to embed with `<img>`: with the default look it picks its ink color from the reader's light or dark theme.
 
 ## Exit status
 

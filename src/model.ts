@@ -1,4 +1,4 @@
-// Checked syntax tree → model. Every output (Mermaid, SVG) reads the model and nothing else.
+// Checked syntax tree → model. Every output (the SVG, the JSON of `--model`) reads the model and nothing else.
 //
 // Why a separate step: resolving references, deciding one-to-one versus one-to-many, whether a parent
 // is optional, expanding audit tables — if every output derived these on its own, outputs would drift

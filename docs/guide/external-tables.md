@@ -24,4 +24,4 @@ A reference into another service usually has no database constraint behind it, s
 
 ## In the diagram
 
-External tables have a dashed border and an `EXTERNAL` tag. In Mermaid they get `:::external` and a dashed `classDef`.
+External tables have a dashed border and an `EXTERNAL` tag.

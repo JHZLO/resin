@@ -1,6 +1,10 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
 import type { Model } from "./model.ts";
+
+const EXAMPLES = join(import.meta.dirname, "../examples");
 
 const model = (src: string): Model => {
   const r = compile(src);
@@ -88,4 +92,11 @@ describe("lower", () => {
       ["revinfo", "p_aud", "audit"],
     ]);
   });
+});
+
+describe("examples", () => {
+  for (const file of readdirSync(EXAMPLES).filter((f) => f.endsWith(".erd")).sort())
+    it(`${file} compiles without a diagnostic`, () => {
+      expect(compile(readFileSync(join(EXAMPLES, file), "utf8")).diagnostics).toEqual([]);
+    });
 });

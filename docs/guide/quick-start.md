@@ -29,12 +29,11 @@ table orders {
 }
 ```
 
-Then compile it. With no options resin prints Mermaid; `--svg` prints its own drawing:
+Then draw it. resin prints the SVG to standard output:
 
 ```bash
-pnpm resin shop.erd > shop.mmd
-pnpm resin shop.erd --svg > shop.svg
-pnpm resin shop.erd --svg --look aurora-dark > shop.dark.svg
+pnpm resin shop.erd > shop.svg
+pnpm resin shop.erd --look aurora-dark > shop.dark.svg
 ```
 
 By default the SVG has no background, so it reads on light and dark pages alike. [Command line](cli.md) lists every option.

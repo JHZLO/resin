@@ -11,7 +11,7 @@ table orders "Customer orders" {
 
 ## Names and descriptions
 
-Table names are unique within a document, external tables included. The description, in double quotes, is for people: it shows next to the name in the diagram and in the Mermaid output, and resin reads nothing into it.
+Table names are unique within a document, external tables included. The description, in double quotes, is for people: it shows next to the name in the diagram and in the side panel, and resin reads nothing into it.
 
 A short table can sit on one line:
 
@@ -35,7 +35,7 @@ table payments {
 
 ## Comments
 
-`%%` starts a comment that runs to the end of the line, as in Mermaid. See [Names and comments](names.md).
+`%%` starts a comment that runs to the end of the line. See [Names and comments](names.md).
 
 ## Other kinds of table
 

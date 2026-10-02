@@ -1,7 +1,7 @@
 {
   "name": "resin",
   "version": "0.2.0",
-  "description": "A small language for entity-relationship diagrams. Compiles to Mermaid and to its own SVG.",
+  "description": "A small language for entity-relationship diagrams, drawn as SVG.",
   "keywords": [
     "erd",
     "er-diagram",
@@ -9,7 +9,6 @@
     "dsl",
     "database",
     "schema",
-    "mermaid",
     "svg"
   ],
   "homepage": "https://jhzlo.github.io/resin/",
@@ -57,9 +56,7 @@
     "@types/node": "^26.6.3",
     "elkjs": "0.12.0",
     "esbuild": "^0.28.2",
-    "jsdom": "^30.1.1",
     "marked": "^18.0.14",
-    "mermaid": "11.16.0",
     "typescript": "~5.9.3",
     "vitest": "^5.0.2"
   },

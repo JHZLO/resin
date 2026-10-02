@@ -1,6 +1,6 @@
 # SVG
 
-`--svg` on the command line, and `toSvg` in code, draw the diagram with resin's own renderer. It lays out the tables with ELK's layered algorithm, with a port on every column row, so each connector runs from a foreign key row to the primary key row it points at.
+The command line, and `toSvg` in code, draw the diagram with resin's own renderer. It lays out the tables with ELK's layered algorithm, with a port on every column row, so each connector runs from a foreign key row to the primary key row it points at.
 
 ```erd example file=shop.erd
 external table users "Accounts service" {

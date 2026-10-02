@@ -20,7 +20,7 @@ The wheel zooms around the pointer, dragging pans, and a double click fits the d
 
 ## Sharing and exporting
 
-Copy link puts the whole document in the address, so the link opens exactly what you see. Copy SVG and the SVG menu export the drawing: plain by default, with no background, or the current background as a still image. The Mermaid tab holds the same diagram as Mermaid source, ready for a `mermaid` code block on GitHub.
+Copy link puts the whole document in the address, so the link opens exactly what you see. Copy SVG and the SVG menu export the drawing: plain by default, with no background, or the current background as a still image.
 
 ## Keyboard
 

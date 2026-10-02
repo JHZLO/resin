@@ -2,8 +2,7 @@
 
 resin is a small language for entity-relationship diagrams. It records the facts a schema carries
 (nullability, keys, physical and logical references, indexes, encryption, audit tables) **as syntax
-rather than as comment conventions**, checks them, and draws them: as Mermaid `erDiagram` source
-and as resin's own SVG.
+rather than as comment conventions**, checks them, and draws them as SVG.
 
 This document is the definition of the language. When the implementation (`src/`) disagrees with
 it, the implementation is wrong.
@@ -44,7 +43,7 @@ table order_items "Order lines" {
 | Backtick identifier | `` `...` `` | Any characters except a backtick or a newline. For hyphens, spaces, Hangul. Never a keyword |
 | Number | `[0-9]+` | Only in type arguments and enum values |
 | String | `"..."` | Two escapes: `\"` and `\\`. Must end on the same line |
-| Comment | `%%` to the end of the line | As in Mermaid |
+| Comment | `%%` to the end of the line | |
 | Punctuation | `{ } ( ) , . ?` | |
 | Reference arrows | `->` `~>` | Physical FK / logical reference |
 | Newline | `\n` | **Ends a statement.** Ignored inside parentheses |
@@ -155,46 +154,7 @@ Declares audit tables in one line. `audit` is followed by a **method**; the only
   Declaring `revinfo` or `<table>_aud` yourself is therefore an error.
 - Not allowed on tables without a primary key, nor on external tables.
 
-## 5. Mermaid mapping
-
-| resin | Mermaid `erDiagram` |
-|---|---|
-| `table t "description"` | `t["t (description)"] { ... }`; without a description `t { ... }` |
-| `external table u` | `:::external` on the block line and `classDef external stroke-dasharray:4 3` at the end |
-| `a_id bigint -> a.id` (in `b`) | `a \|\|--o{ b : "a_id"` and the attribute `bigint a_id FK "-> a.id"` |
-| `~>` | Dotted line `..` |
-| One-to-one reference | Right end `o\|` |
-| Nullable referencing column | Left end `\|o` |
-| Type | As written: `varchar(32)?` |
-| `pk`, `uk`, reference | Key markers `PK`, `UK`, `FK` (in the order PK, FK, UK) |
-| Description, `enc`, `enum` | Attribute comment: `"description (enc) A/B"` |
-| Reference target | Then `; -> a.id` |
-| `index` / `index as n`, `uk as n` | `(ix)` / `(n)` at the end of the comment |
-| `unique(a, b)` / `unique(a, b) as n` | `uk(a,b)` / `n(a,b)` in the comment of the first column |
-| `index(a, b)` / `index(a, b) as n` | `ix(a,b)` / `n(a,b)` in the comment of the first column |
-| `audit envers` | A `revinfo` block, `<table>_aud` blocks and `revinfo \|\|..o{ <table>_aud : "Envers rev"` |
-
-### 5.1 Names
-
-Mermaid cannot read some names as they are (measured with Mermaid 11.16).
-
-- A **table name** that is not a plain ASCII identifier, or is a Mermaid keyword (`class`
-  `classDef` `style` `erDiagram` `direction` `accTitle` `accDescr` `title` `to` `one` `many`,
-  case-insensitive), is written in double quotes.
-- A **column name** cannot be quoted in Mermaid. Characters other than letters, digits, `_` and `-`
-  become `_`; a leading digit or `-` gets a `_` prefix; `pk`, `fk` and `uk` (case-insensitive) get
-  a `_` suffix. When a name had to change, its original is written in backticks at the start of
-  its comment.
-- A `"` inside a string becomes `#quot;`, because Mermaid has no `\"` escape.
-
-### 5.2 Output order
-
-`erDiagram` → a legend comment (when there are references) → domain relations (in document order
-of the child table and column) → a blank line → audit relations → entity blocks (document order,
-external tables included) → `revinfo` → `*_aud` → `classDef`. The same input always yields
-byte-identical output.
-
-## 6. SVG rendering
+## 5. SVG rendering
 
 `toSvg(model, elk, options)` draws the model itself. Layout uses [ELK](https://eclipse.dev/elk/)'s
 layered algorithm with a port on every column row, so each connector runs from a foreign key row to
@@ -238,14 +198,14 @@ the primary key row it points at.
   cell; proportional: 0.57em per Latin letter, 1em per CJK character), so the same input yields the
   same SVG in a browser and on the command line.
 
-## 7. Diagnostics
+## 6. Diagnostics
 
 Every error and warning has a `line:column` position, and most have a hint. The parser skips the
 line an error is on and keeps going, **so one run reports several errors**. When there are syntax
 errors, semantic checks do not run (they would report bogus follow-up errors). When there is any
 error, no model and no output are produced.
 
-## 8. Migrating from v0.1
+## 7. Migrating from v0.1
 
 The parser recognizes v0.1 syntax and says how to write it in v0.2.
 

@@ -6,9 +6,8 @@
 **A small language for entity-relationship diagrams.**
 
 resin describes a database schema the way you read DDL: columns, keys, nullability, physical and
-logical references, indexes, encrypted columns, audit tables. It checks what you wrote and draws it,
-either as Mermaid `erDiagram` source or as its own SVG, where every foreign key row is wired to the
-primary key it points at.
+logical references, indexes, encrypted columns, audit tables. It checks what you wrote and draws it
+as an SVG where every foreign key row is wired to the primary key it points at.
 
 **[Try it in the playground](https://jhzlo.github.io/resin/playground/)** | [Docs](https://jhzlo.github.io/resin/docs/) | [Language reference](docs/SPEC.md) | [Contributing](CONTRIBUTING.md)
 
@@ -45,15 +44,13 @@ table order_items "Order lines" {
 
 ## Why
 
-Mermaid's `erDiagram` has no place for many of the facts a schema carries. It does not model
-nullability. It cannot say whether a reference is a real `FOREIGN KEY` or only an
-application-level one, or which column points where; relationship lines join tables, not columns.
-Indexes, enum values and encrypted columns end up in comment strings, written by convention and
-checked by nobody.
+A schema carries facts that its diagram usually loses: which columns may be empty, whether a
+reference is a real `FOREIGN KEY` or one only the application keeps, which column points where,
+which columns are indexed, unique or encrypted. They end up in notes and comment strings, written by
+convention and checked by nobody.
 
-resin turns those conventions into syntax. Because the facts are structured, they can be checked
-(a reference to a missing table is an error, not a typo in a comment), and they can be drawn
-precisely.
+resin makes them syntax. Because the facts are structured, they can be checked (a reference to a
+missing table is an error, not a typo in a note), and they can be drawn precisely.
 
 ## What it does
 
@@ -65,9 +62,8 @@ mismatches come back with a line, a column and a hint on how to fix them. `exter
 a table owned by another service, so references to it are checked too, and the diagram shows where
 the boundary is. `audit envers(...)` generates the Hibernate Envers `*_aud` and `revinfo` tables.
 
-There are two outputs. Mermaid works anywhere Mermaid renders, such as GitHub and most docs sites.
-The SVG is drawn by resin, with each connector running from a foreign key row to the primary key row
-it points at. Its default look is plain ink that reads on light and dark pages; the glass looks set
+resin draws the SVG itself, with each connector running from a foreign key row to the primary key
+row it points at. Its default look is plain ink that reads on light and dark pages; the glass looks set
 the tables on frosted glass over a background of their own, in three themes (aurora, silk and
 caustic), each dark or light. The same input always gives byte-identical output, and the renderer
 has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
@@ -89,13 +85,12 @@ cd resin
 pnpm install
 ```
 
-Compile a file to Mermaid, or draw it as SVG:
+Draw a file as SVG:
 
 ```bash
-pnpm resin examples/order.erd
-pnpm resin examples/order.erd --svg > order.svg
-pnpm resin examples/order.erd --svg --look aurora-dark > order.aurora-dark.svg
-pnpm resin examples/shop.erd --svg --keys --curved > shop.svg
+pnpm resin examples/order.erd > order.svg
+pnpm resin examples/order.erd --look aurora-dark > order.aurora-dark.svg
+pnpm resin examples/shop.erd --keys --curved > shop.svg
 ```
 
 Errors come out in compiler format:
@@ -118,13 +113,12 @@ const result = compile(source);
 for (const d of result.diagnostics) console.error(formatDiagnostic(d, source, "schema.erd"));
 
 if (result.model) {
-  console.log(result.mermaid); // Mermaid erDiagram source
   const { svg } = await toSvg(result.model, new ELK(), { standalone: true });
 }
 ```
 
 `compile` returns the syntax tree, the diagnostics, and, when there are no errors, the resolved
-model and its Mermaid source. `toSvg` draws a model; options choose the look (`graphite`, the
+model. `toSvg` draws a model; options choose the look (`graphite`, the
 default, or a glass theme such as `aurora-dark`), all columns or key columns only, and folded or
 expanded audit tables.
 
@@ -143,7 +137,7 @@ expanded audit tables.
 | `` `order-items` `` | A name with characters outside `[A-Za-z0-9_]` |
 
 The [docs](https://jhzlo.github.io/resin/docs/) walk through each construct with a diagram for every
-example. The full grammar, the rules for cardinality and the Mermaid mapping are in the
+example. The full grammar and the rules for cardinality are in the
 [language reference](docs/SPEC.md).
 
 ## Status

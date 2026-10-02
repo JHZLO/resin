@@ -14,7 +14,7 @@ table orders {
 }
 ```
 
-Write only values the schema or its comments support: an enum in resin is a statement about the data. The values show in the playground's side panel, in the column card and in the Mermaid output, and the diagram tags the column `ENUM`.
+Write only values the schema or its comments support: an enum in resin is a statement about the data. The values show in the playground's side panel and in the column card, and the diagram tags the column `ENUM`.
 
 ## Encryption
 

@@ -37,7 +37,7 @@ const NAV = [
       ["names", "Names and comments"],
     ],
   ],
-  ["Outputs", [["mermaid", "Mermaid"], ["svg", "SVG"], ["cli", "Command line"], ["library", "Library"]]],
+  ["Outputs", [["svg", "SVG"], ["cli", "Command line"], ["library", "Library"]]],
   ["Reference", [["grammar", "Grammar"], ["diagnostics", "Diagnostics"], ["migrating", "Migrating from v0.1"]]],
 ];
 const PAGES = NAV.flatMap(([group, pages]) => pages.map(([slug, title]) => ({ group, slug, title })));
@@ -129,7 +129,7 @@ async function drawExample(code, where) {
     figures++;
   }
   const share = await encode({ code, columns: "all", audit: "collapse", edges: "angular" });
-  return { hash, mermaid: result.mermaid ?? "", share };
+  return { hash, share };
 }
 
 /** `erd example file=orders.erd "A caption"`: the file name and the caption, both optional */
@@ -155,24 +155,20 @@ async function renderPage(page, index) {
     for (const t of list) {
       if (t.type === "code" && /^erd\b/.test(t.lang ?? "")) {
         const info = t.lang;
-        if (/\bexample\b/.test(info) || /\boutput=mermaid\b/.test(info)) {
+        if (/\bexample\b/.test(info)) {
           const drawn = await drawExample(t.text, where);
-          if (/\bexample\b/.test(info)) {
-            const id = `ex-${++n}`;
-            const { file, caption } = parseInfo(info);
-            examples[id] = {
-              file,
-              code: t.text,
-              html: highlightResin(t.text),
-              mermaid: drawn.mermaid,
-              dark: `${root}docs/figures/${drawn.hash}.dark.svg`,
-              light: `${root}docs/figures/${drawn.hash}.light.svg`,
-              href: `${root}playground/${drawn.share}`,
-              caption,
-            };
-            t.example = id;
-          }
-          t.mermaid = drawn.mermaid;
+          const id = `ex-${++n}`;
+          const { file, caption } = parseInfo(info);
+          examples[id] = {
+            file,
+            code: t.text,
+            html: highlightResin(t.text),
+            dark: `${root}docs/figures/${drawn.hash}.dark.svg`,
+            light: `${root}docs/figures/${drawn.hash}.light.svg`,
+            href: `${root}playground/${drawn.share}`,
+            caption,
+          };
+          t.example = id;
         } else if (!/\binvalid\b/.test(info)) {
           // A plain snippet may show a warning, but not an error, unless it is marked `invalid`
           const errors = compile(t.text).diagnostics.filter((d) => d.severity === "error");
@@ -194,10 +190,7 @@ async function renderPage(page, index) {
           const alt = esc(ex.caption || `The diagram resin draws for ${ex.file}`);
           return `<div class="block glass ex"><div class="block-bar"><span>${esc(ex.file)}</span><span class="sp"></span><button type="button" class="mini-btn" data-copy="${token.example}">${ICON.copy}<span>Copy</span></button><a class="mini-btn" href="${ex.href}">${ICON.play}Open in playground</a></div><pre class="code">${ex.html}</pre><div class="block-fig"><img class="fig on-dark" src="${ex.dark}" alt="${alt}" loading="lazy"><img class="fig on-light" src="${ex.light}" alt="${alt}" loading="lazy"></div></div>\n`;
         }
-        if (/^erd\b/.test(info)) {
-          const out = token.mermaid ? `<div class="out-label">Mermaid output</div><pre class="code">${esc(token.mermaid)}</pre>` : "";
-          return `<div class="block glass"><pre class="code">${highlightResin(token.text)}</pre>${out}</div>\n`;
-        }
+        if (/^erd\b/.test(info)) return `<div class="block glass"><pre class="code">${highlightResin(token.text)}</pre></div>\n`;
         return `<div class="block glass"><pre class="code">${esc(token.text)}</pre></div>\n`;
       },
       heading(token) {
@@ -274,9 +267,8 @@ async function renderPage(page, index) {
   const panel = first
     ? `<aside class="example glass" aria-label="Example" data-id="${firstExample}">
 <div class="block-bar"><span class="ex-file">${esc(first.file)}</span><span class="sp"></span>
-<button type="button" class="tab" data-tab="diagram" aria-selected="true">Diagram</button><button type="button" class="tab" data-tab="mermaid" aria-selected="false">Mermaid</button>
 <button type="button" class="mini-btn ex-copy" data-copy="${firstExample}" aria-label="Copy">${ICON.copy}<span>Copy</span></button><a class="mini-btn ex-open" href="${first.href}">${ICON.play}Open</a></div>
-<div class="example-body"><pre class="code ex-code">${first.html}</pre><div class="block-fig ex-diagram"><img class="fig on-dark" src="${first.dark}" alt="The diagram resin draws for this example"><img class="fig on-light" src="${first.light}" alt="The diagram resin draws for this example"></div><pre class="code mermaid-out ex-mermaid" hidden>${esc(first.mermaid)}</pre><p class="example-cap">${esc(first.caption)}</p></div>
+<div class="example-body"><pre class="code ex-code">${first.html}</pre><div class="block-fig ex-diagram"><img class="fig on-dark" src="${first.dark}" alt="The diagram resin draws for this example"><img class="fig on-light" src="${first.light}" alt="The diagram resin draws for this example"></div><p class="example-cap">${esc(first.caption)}</p></div>
 </aside>`
     : "";
 

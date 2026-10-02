@@ -20,7 +20,7 @@
 <style>
 /* Layout: a slim top bar over two panes (source | diagram) split by a draggable divider; one column on
    phones. Controls that only affect the drawing float over the canvas. State is shown with neutral
-   fills; the accent is kept for focus, the active tab and the focused row.
+   fills; the accent is kept for focus and the focused row.
    The canvas is a WebGL stage (playground/glass.ts) painted under the SVG: the chosen background
    theme (aurora, silk or caustic), dark or light with the page. --stage matches the aurora base so
    the first paint does not flash.
@@ -273,12 +273,12 @@ button { cursor: pointer; }
 .status-pos { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 
 /* scrollbars: thin and quiet, darker on hover */
-.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar { width: 10px; height: 10px; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-thumb { background: var(--scroll); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-track,
-:is(.editor .cm-scroller, .problems, #mermaid-out, .ins-body, .t-wrap)::-webkit-scrollbar-corner { background: transparent; }
+.editor .cm-scroller, .problems, .ins-body, .t-wrap { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+:is(.editor .cm-scroller, .problems, .ins-body, .t-wrap)::-webkit-scrollbar { width: 10px; height: 10px; }
+:is(.editor .cm-scroller, .problems, .ins-body, .t-wrap)::-webkit-scrollbar-thumb { background: var(--scroll); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
+:is(.editor .cm-scroller, .problems, .ins-body, .t-wrap)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
+:is(.editor .cm-scroller, .problems, .ins-body, .t-wrap)::-webkit-scrollbar-track,
+:is(.editor .cm-scroller, .problems, .ins-body, .t-wrap)::-webkit-scrollbar-corner { background: transparent; }
 .problem {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
@@ -301,18 +301,7 @@ button { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .splitter:hover { background: var(--accent); } }
 
 /* diagram pane */
-.tabs { display: inline-flex; gap: 4px; align-self: stretch; margin-left: -4px; }
-.tabs button {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 0 8px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  font-size: 13px;
-}
-@media (hover: hover) and (pointer: fine) { .tabs button:hover { color: var(--ink); } }
-.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.pane-title { color: var(--ink); font-size: 13px; font-weight: 600; }
 .stats { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .head-actions { margin-left: auto; display: inline-flex; gap: 4px; }
 .btn .chev { width: 12px; height: 12px; margin: 0 -2px 0 -1px; color: var(--muted); }
@@ -598,30 +587,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 }
 .stale { top: 56px; background: var(--panel); border: 1px solid var(--danger); color: var(--danger); box-shadow: var(--shadow); }
 .empty { top: 45%; color: var(--muted); }
-.empty code, .code-actions code { font-family: var(--font-mono); font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+.empty code { font-family: var(--font-mono); font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
 
-/* mermaid tab */
-.code-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 8px 8px 14px;
-  border-bottom: 1px solid var(--rule);
-  font-size: 13px;
-  color: var(--muted);
-}
-.code-actions p { margin: 0; }
-.code-actions .btn { margin-left: auto; }
-#mermaid-out {
-  flex: 1;
-  margin: 0;
-  overflow: auto;
-  padding: 14px 16px;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-  background: var(--canvas);
-}
 
 .toast {
   position: fixed;
@@ -725,10 +692,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   <section class="pane" aria-label="Diagram">
     <div class="pane-head">
       <button type="button" class="btn ghost icon" id="editor-show" aria-label="Show the editor" title="Show the editor (Ctrl or Cmd + \)" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13.5 10l2 2-2 2"/></svg></button>
-      <div class="tabs" role="tablist">
-        <button type="button" role="tab" id="tab-diagram" aria-selected="true" aria-controls="panel-diagram">Diagram</button>
-        <button type="button" role="tab" id="tab-mermaid" aria-selected="false" aria-controls="panel-mermaid">Mermaid</button>
-      </div>
+      <span class="pane-title">Diagram</span>
       <span class="stats" id="stats"></span>
       <span class="head-actions">
         <button type="button" class="btn ghost" id="copy-svg">Copy SVG</button>
@@ -746,7 +710,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
         </span>
       </span>
     </div>
-    <div class="panel" id="panel-diagram" role="tabpanel" aria-labelledby="tab-diagram">
+    <div class="panel" id="panel-diagram">
       <div class="viewport grid" id="viewport">
         <div class="content" id="content"></div>
         <p class="notice empty" id="empty" hidden>Add a <code>table</code> to see it here.</p>
@@ -784,10 +748,6 @@ body.is-resizing { cursor: col-resize; user-select: none; }
         </div>
         <div class="ins-body" id="inspector-body"></div>
       </aside>
-    </div>
-    <div class="panel" id="panel-mermaid" role="tabpanel" aria-labelledby="tab-mermaid" hidden>
-      <div class="code-actions"><p>Paste into any Mermaid renderer, such as a <code>```mermaid</code> block on GitHub.</p><button type="button" class="btn" id="copy-mermaid">Copy</button></div>
-      <pre id="mermaid-out"></pre>
     </div>
   </section>
 </main>

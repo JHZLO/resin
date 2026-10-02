@@ -10,7 +10,7 @@ The grammar of resin v0.2. The [specification](https://github.com/JHZLO/resin/bl
 | Backtick identifier | `` `...` `` | Any characters except a backtick or a newline. Never a keyword |
 | Number | `[0-9]+` | Only in type arguments and enum values |
 | String | `"..."` | Two escapes, `\"` and `\\`. Must end on the same line |
-| Comment | `%%` to the end of the line | As in Mermaid |
+| Comment | `%%` to the end of the line | |
 | Punctuation | `{ } ( ) , . ?` | |
 | Reference arrows | `->` `~>` | Foreign key, logical reference |
 | Newline | `\n` | Ends a statement. Ignored inside parentheses |

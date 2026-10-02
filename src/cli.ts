@@ -1,14 +1,13 @@
-// Command-line entry: `pnpm resin <file.erd> [--ast | --model | --svg [--look <look>] [--curved] [--keys] [--expand-audit]]`
-// Diagnostics go to stderr in compiler format; the result (Mermaid, syntax tree JSON, model JSON
-// or SVG) goes to stdout. Exits with 1 when there are errors.
+// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys] [--expand-audit] | --model | --ast`
+// Diagnostics go to stderr in compiler format; the result (the SVG, model JSON or syntax tree JSON)
+// goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync } from "node:fs";
 import { type SvgLook, compile, formatDiagnostic, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
 
-  (no option)      print Mermaid erDiagram
-  --svg            print SVG (needs elkjs)
+  (no option)      print the diagram as SVG (needs elkjs)
     --look <look>  graphite (default, no background), or a glass theme:
                    aurora-dark, aurora-light, silk-dark, silk-light,
                    caustic-dark, caustic-light
@@ -39,19 +38,17 @@ for (const d of result.diagnostics) console.error(formatDiagnostic(d, source, fi
 
 if (args.includes("--ast")) console.log(JSON.stringify(result.doc, null, 2));
 else if (args.includes("--model")) console.log(JSON.stringify(result.model, null, 2));
-else if (args.includes("--svg")) {
-  if (result.model) {
-    // Layout needs elkjs. The core does not depend on it; only this entry point loads it.
-    const { default: ELK } = await import("elkjs");
-    const { svg } = await toSvg(result.model, new ELK(), {
-      look: look as SvgLook,
-      edges: args.includes("--curved") ? "curved" : "angular",
-      standalone: true,
-      columns: args.includes("--keys") ? "keys" : "all",
-      audit: args.includes("--expand-audit") ? "expand" : "collapse",
-    });
-    process.stdout.write(svg + "\n");
-  }
-} else if (result.mermaid) process.stdout.write(result.mermaid);
+else if (result.model) {
+  // Layout needs elkjs. The core does not depend on it; only this entry point loads it.
+  const { default: ELK } = await import("elkjs");
+  const { svg } = await toSvg(result.model, new ELK(), {
+    look: look as SvgLook,
+    edges: args.includes("--curved") ? "curved" : "angular",
+    standalone: true,
+    columns: args.includes("--keys") ? "keys" : "all",
+    audit: args.includes("--expand-audit") ? "expand" : "collapse",
+  });
+  process.stdout.write(svg + "\n");
+}
 
-process.exit(result.mermaid === null ? 1 : 0);
+process.exit(result.model === null ? 1 : 0);

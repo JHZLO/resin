@@ -1,6 +1,6 @@
 # Introduction
 
-resin is a small language for entity-relationship diagrams. You describe a schema the way you would read its DDL, and resin checks what you wrote and draws it: as Mermaid `erDiagram` source, or as its own SVG where every reference runs from the column that holds it to the column it points at.
+resin is a small language for entity-relationship diagrams. You describe a schema the way you would read its DDL, and resin checks what you wrote and draws it as an SVG where every reference runs from the column that holds it to the column it points at.
 
 ## A first diagram
 
@@ -21,7 +21,7 @@ Each line inside a table is a column: its name, then its type, then what is true
 
 ## Facts, not comments
 
-Mermaid's `erDiagram` has no place for nullability, for the difference between a foreign key and a reference only the application keeps, or for indexes, so teams write them into comments that nobody checks.
+A schema diagram usually has no place for nullability, for the difference between a foreign key and a reference only the application keeps, or for indexes, so teams write them into notes that nobody checks.
 
 In resin they are syntax. `varchar?` is nullable, `~>` is a logical reference, `index as idx_user_id` names an index. A reference to a table that does not exist is an error with a line, a column and a hint, not a typo that ships.
 

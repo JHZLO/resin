@@ -99,7 +99,6 @@ interface Example {
   file: string;
   code: string;
   html: string;
-  mermaid: string;
   dark: string;
   light: string;
   href: string;
@@ -137,7 +136,6 @@ if (panel) {
       panel.dataset.id = id;
       $(".ex-file", panel)!.textContent = ex.file;
       $(".ex-code", panel)!.innerHTML = ex.html;
-      $(".ex-mermaid", panel)!.textContent = ex.mermaid;
       $<HTMLImageElement>(".fig.on-dark", panel)!.src = ex.dark;
       $<HTMLImageElement>(".fig.on-light", panel)!.src = ex.light;
       $<HTMLAnchorElement>(".ex-open", panel)!.href = ex.href;
@@ -165,13 +163,6 @@ if (panel) {
   addEventListener("scroll", pick, { passive: true });
   addEventListener("resize", pick, { passive: true });
   pick();
-
-  for (const tab of $$<HTMLButtonElement>(".tab", panel))
-    tab.addEventListener("click", () => {
-      for (const t of $$(".tab", panel)) t.setAttribute("aria-selected", String(t === tab));
-      $(".ex-diagram", panel)!.hidden = tab.dataset.tab !== "diagram";
-      $(".ex-mermaid", panel)!.hidden = tab.dataset.tab !== "mermaid";
-    });
 }
 
 // Search: page titles and section headings, loaded the first time the box is used

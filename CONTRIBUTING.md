@@ -11,9 +11,8 @@ Node runs the TypeScript sources directly.
 pnpm install
 pnpm check                      # typecheck and all tests; must pass before a commit
 pnpm test                       # tests only
-pnpm test -u                    # update golden files (examples/*.mmd, *.svg) after reviewing the diff
-pnpm resin examples/order.erd   # Mermaid on stdout, diagnostics on stderr
-pnpm resin examples/order.erd --svg > order.svg
+pnpm test -u                    # update golden files (examples/*.svg) after reviewing the diff
+pnpm resin examples/order.erd   # SVG on stdout, diagnostics on stderr
 pnpm build:site                 # build the landing page, the docs and the playground into site/
 ```
 
@@ -21,17 +20,16 @@ pnpm build:site                 # build the landing page, the docs and the playg
 
 ```
 source ──lex──> tokens ──parse──> syntax tree ──check──> diagnostics
-                                        └──lower──> model ──> Mermaid / SVG
+                                        └──lower──> model ──> SVG
 ```
 
 | File | Role |
 |---|---|
-| `docs/SPEC.md` | **The definition of the language**: lexical structure, grammar, semantics, Mermaid mapping, SVG rules |
+| `docs/SPEC.md` | **The definition of the language**: lexical structure, grammar, semantics, SVG rules |
 | `src/lexer.ts` | Tokens. Keywords are plain idents; the parser decides from context |
 | `src/parser.ts` | Hand-written recursive descent parser. Drops a broken line and keeps reading |
 | `src/checker.ts` | Semantic checks: missing references, duplicates, nullable keys, audit rules |
 | `src/model.ts` | Resolves references, cardinality and audit tables once, for every output |
-| `src/mermaid.ts` | Mermaid `erDiagram` output |
 | `src/svg.ts` | SVG output, laid out with ELK: `graphite`, or glass in three themes (`aurora`, `silk`, `caustic`), dark or light |
 | `src/index.ts` | The public API (`compile`, `toSvg`, ...) |
 | `src/cli.ts` | Command-line entry |
@@ -45,10 +43,10 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 
 A grammar change goes **spec, then tests, then implementation**, in that order.
 
-1. Update `docs/SPEC.md`: every section it touches (lexical structure, grammar, semantics, Mermaid
-   mapping, diagnostics).
+1. Update `docs/SPEC.md`: every section it touches (lexical structure, grammar, semantics,
+   drawing, diagnostics).
 2. Write tests for **valid and invalid input**. For invalid input, pin the message and the span.
-3. Implement it: `lexer.ts` → `parser.ts` → `checker.ts` → `model.ts` → `mermaid.ts` / `svg.ts`,
+3. Implement it: `lexer.ts` → `parser.ts` → `checker.ts` → `model.ts` → `svg.ts`,
    as far as the change reaches.
 4. Use the new syntax in an example under `examples/`. Review the golden diff, then `pnpm test -u`.
 5. Update the page under `docs/guide/` that covers the construct.
@@ -56,7 +54,7 @@ A grammar change goes **spec, then tests, then implementation**, in that order.
    docs and stops on any that does not compile cleanly.
 
 If a change would break existing files, let the parser recognize the old form and answer it with a
-hint (see SPEC §8).
+hint (see SPEC §7).
 
 ## Design principles
 
@@ -74,7 +72,8 @@ Check new syntax against these. If a change bends one of them, open an issue to 
   The parser reports several errors per run. Semantic checks do not run on broken syntax.
 - **Deterministic output.** The same input gives byte-identical output. Orders come from the
   document, never from locale-aware sorting or map iteration. Text is never measured.
-- **Mermaid is one backend.** Do not shrink the language to what Mermaid can draw.
+- **The language leads.** Outputs follow the language, not the other way round: do not shrink the
+  language to what one renderer can draw.
 
 ## Code style
 
