@@ -118,11 +118,10 @@ code { font-family: var(--font-mono); font-size: 0.88em; }
   box-shadow: var(--shadow);
 }
 
-/* the wordmark: resin, its i dotted with an aurora diamond */
-.logo { display: inline-flex; align-items: baseline; gap: 8px; font: 600 17px var(--font-mono); letter-spacing: -0.02em; }
-.logo small { font: 400 14px var(--font-body); letter-spacing: 0; color: var(--muted); }
-.wm-i { position: relative; }
-.wm-i::before { content: ""; position: absolute; left: 50%; top: 0.17em; width: 0.26em; height: 0.26em; border-radius: 0.05em; background: linear-gradient(135deg, #22C7A9, #5A5FF0); transform: translateX(-50%) rotate(45deg); }
+/* the logo: the gem (website/brand/mark.svg) and the name */
+.logo { display: inline-flex; align-items: center; gap: 9px; font: 600 18px var(--font-body); letter-spacing: -0.025em; }
+.logo svg { width: 24px; height: 24px; flex: none; }
+.logo small { margin-left: -1px; font: 400 15px var(--font-body); letter-spacing: 0; color: var(--muted); }
 
 /* the header: clear over the aurora at the top, glass once the page scrolls */
 .site-head { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 6px; height: var(--head); padding: 0 24px; border-bottom: 1px solid transparent; transition: background-color 200ms ease, border-color 200ms ease; }

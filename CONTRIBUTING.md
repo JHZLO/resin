@@ -37,7 +37,7 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 | `src/cli.ts` | Command-line entry |
 | `playground/` | The web playground. `glass.ts` paints the live glass canvas with WebGL |
 | `docs/guide/` | The docs, one Markdown page each. `` ```erd example `` blocks are drawn by resin when the site is built |
-| `website/` | The landing page's and the docs' style and script, and the code highlighter |
+| `website/` | The landing page's and the docs' style and script, the code highlighter, and the logo (`brand/mark.svg`) |
 | `scripts/build-site.mjs` | Builds `site/`: the landing page, the docs and the playground, for GitHub Pages |
 | `examples/` | Example schemas and their golden output (`order.aurora-dark.svg` and `order.aurora-light.svg` cover the glass). A new `.erd` file gets golden tests automatically |
 

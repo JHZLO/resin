@@ -72,14 +72,14 @@ const THEME_BUTTON = `<button type="button" class="nav-link icon" id="theme" dat
 <svg class="i i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
 <svg class="i i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
 </button>`;
-/** The wordmark: resin, its i dotted with an aurora diamond */
-const WORDMARK = 'res<span class="wm-i">\u0131</span>n';
-/** The same diamond, as the tab icon */
-export const FAVICON =
-  "data:image/svg+xml," +
-  encodeURIComponent(
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#22C7A9'/><stop offset='1' stop-color='#5A5FF0'/></linearGradient></defs><rect x='8' y='8' width='16' height='16' rx='3' transform='rotate(45 16 16)' fill='url(#g)'/></svg>",
-  );
+/** The logo: one SVG file, website/brand/mark.svg. Pages link it as their icon and inline it in the header */
+const MARK_FILE = await readFile("website/brand/mark.svg", "utf8");
+const MARK = MARK_FILE.replace(/<title>[^<]*<\/title>\s*/, "")
+  .replace(/<!--[\s\S]*?-->\s*/g, "")
+  .replace(/ width="64" height="64"/, "")
+  .replace("<svg ", '<svg aria-hidden="true" focusable="false" ')
+  .replace(/>\s+</g, "><")
+  .trim();
 
 function head(root, title, description) {
   return `<!doctype html>
@@ -90,7 +90,7 @@ function head(root, title, description) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
 <meta name="color-scheme" content="dark light">
-<link rel="icon" type="image/svg+xml" href="${FAVICON}">
+<link rel="icon" type="image/svg+xml" href="${root}assets/mark.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
@@ -103,7 +103,7 @@ function siteHead(root, current, docs) {
     `<a class="nav-link" href="${href}"${here ? ' aria-current="page"' : ""}>${icon}<span class="label">${label}</span></a>`;
   return `<header class="site-head">
 ${docs ? `<button type="button" class="nav-link icon menu-btn" aria-label="Menu">${ICON.menu}</button>` : ""}
-<a class="logo" href="${root}" aria-label="resin home">${WORDMARK}${docs ? " <small>docs</small>" : ""}</a>
+<a class="logo" href="${root}" aria-label="resin home">${MARK}<span>resin</span>${docs ? "<small>docs</small>" : ""}</a>
 <nav class="nav-links">
 ${link(`${root}docs/`, "Docs", ICON.book, current === "docs")}
 ${link(`${root}playground/`, "Playground", ICON.play, false)}
@@ -375,7 +375,11 @@ async function renderPlayground() {
   const script = result.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
   const template = await readFile("playground/index.html", "utf8");
   if (!template.includes("<!--APP-->")) throw new Error("playground/index.html has no <!--APP--> placeholder");
-  const html = template.replace("<!--APP-->", () => `<script>${script}</script>`).replace("%FAVICON%", FAVICON);
+  // The playground stays one self-contained page: its icon is the mark as a data URL
+  const html = template
+    .replace("<!--APP-->", () => `<script>${script}</script>`)
+    .replace("%FAVICON%", "data:image/svg+xml," + encodeURIComponent(MARK_FILE))
+    .replace("%MARK%", () => MARK);
   await mkdir("site/playground", { recursive: true });
   await writeFile("site/playground/index.html", html);
   return html.length;
@@ -395,6 +399,7 @@ async function renderAssets() {
   });
   await writeFile("site/assets/site.js", result.outputFiles[0].text);
   await writeFile("site/assets/site.css", await readFile("website/site.css", "utf8"));
+  await writeFile("site/assets/mark.svg", MARK_FILE);
 }
 
 await rm("site/docs", { recursive: true, force: true });

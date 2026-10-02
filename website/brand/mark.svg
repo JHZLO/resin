@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>resin</title>
+  <!-- resin hardens into a gem: a rounded square on its corner, cut in four faces of the aurora -->
+  <defs>
+    <clipPath id="resin-mark-cut">
+      <rect x="13" y="13" width="38" height="38" rx="8" transform="rotate(45 32 32)"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#resin-mark-cut)">
+    <path d="M32 32H4L32 4Z" fill="#2FD8BA"/>
+    <path d="M32 32V4L60 32Z" fill="#6E79F7"/>
+    <path d="M32 32H60L32 60Z" fill="#473CC4"/>
+    <path d="M32 32V60L4 32Z" fill="#169A88"/>
+  </g>
+</svg>
