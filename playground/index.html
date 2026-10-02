@@ -6,7 +6,7 @@
 <title>resin playground</title>
 <meta name="description" content="Write resin, a small language for entity-relationship diagrams, and watch the ERD as you type.">
 <meta name="color-scheme" content="light dark">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='5' width='12' height='14' rx='2' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3Crect x='18' y='13' width='12' height='14' rx='2' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3Cpath d='M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18' fill='none' stroke='%239A5A0C' stroke-width='2.4'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="%FAVICON%">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
@@ -158,9 +158,11 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
 }
-.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
-.brand svg { width: 20px; height: 20px; color: var(--accent); }
-.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+.brand { display: inline-flex; align-items: baseline; gap: 8px; color: inherit; text-decoration: none; }
+/* the wordmark, as on the site: resin, its i dotted with an aurora diamond */
+.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 16px; letter-spacing: -0.02em; }
+.wm-i { position: relative; }
+.wm-i::before { content: ""; position: absolute; left: 50%; top: 0.17em; width: 0.26em; height: 0.26em; border-radius: 0.05em; background: linear-gradient(135deg, #22C7A9, #5A5FF0); transform: translateX(-50%) rotate(45deg); }
 .brand-sub { color: var(--muted); font-size: 13px; }
 .bar-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 
@@ -673,9 +675,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="./" aria-label="resin playground">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="5" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><rect x="18" y="13" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M14 10h2.5a1.5 1.5 0 0 1 1.5 1.5V18" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>
-    <span class="brand-name">resin</span><span class="brand-sub">playground</span>
+  <a class="brand" href="../" aria-label="resin home">
+    <span class="brand-name">res<span class="wm-i">ı</span>n</span><span class="brand-sub">playground</span>
   </a>
   <div class="bar-actions">
     <button type="button" class="btn" id="share">
@@ -687,7 +688,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
       <svg class="i i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
       <svg class="i i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
     </button>
-    <a class="btn ghost link-docs" href="https://github.com/JHZLO/resin/blob/main/docs/SPEC.md" target="_blank" rel="noopener">Docs</a>
+    <a class="btn ghost link-docs" href="../docs/">Docs</a>
     <a class="btn link-source" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener" title="Source code on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
       <span class="link-label">GitHub</span>

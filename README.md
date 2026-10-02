@@ -10,7 +10,7 @@ logical references, indexes, encrypted columns, audit tables. It checks what you
 either as Mermaid `erDiagram` source or as its own SVG, where every foreign key row is wired to the
 primary key it points at.
 
-**[Try it in the playground](https://jhzlo.github.io/resin/)** | [Language reference](docs/SPEC.md) | [Contributing](CONTRIBUTING.md)
+**[Try it in the playground](https://jhzlo.github.io/resin/playground/)** | [Docs](https://jhzlo.github.io/resin/docs/) | [Language reference](docs/SPEC.md) | [Contributing](CONTRIBUTING.md)
 
 <p align="center">
   <picture>
@@ -73,7 +73,7 @@ caustic), each dark or light. The same input always gives byte-identical output,
 has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
 pass in.
 
-In the [playground](https://jhzlo.github.io/resin/) the glass is live: the background drifts, the
+In the [playground](https://jhzlo.github.io/resin/playground/) the glass is live: the background drifts, the
 stars twinkle and the glass catches the light under your pointer. Click a table name to see its
 columns, indexes and relations as tables, or a column to see its details. Connectors can be angular
 or curved.
@@ -142,7 +142,8 @@ expanded audit tables.
 | `} audit envers(a, b)` | Hibernate Envers audit tables for the listed columns |
 | `` `order-items` `` | A name with characters outside `[A-Za-z0-9_]` |
 
-The full grammar, the rules for cardinality and the Mermaid mapping are in the
+The [docs](https://jhzlo.github.io/resin/docs/) walk through each construct with a diagram for every
+example. The full grammar, the rules for cardinality and the Mermaid mapping are in the
 [language reference](docs/SPEC.md).
 
 ## Status

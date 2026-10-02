@@ -14,7 +14,7 @@ pnpm test                       # tests only
 pnpm test -u                    # update golden files (examples/*.mmd, *.svg) after reviewing the diff
 pnpm resin examples/order.erd   # Mermaid on stdout, diagnostics on stderr
 pnpm resin examples/order.erd --svg > order.svg
-pnpm build:playground           # build the playground into site/
+pnpm build:site                 # build the landing page, the docs and the playground into site/
 ```
 
 ## How the code is laid out
@@ -36,6 +36,9 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 | `src/index.ts` | The public API (`compile`, `toSvg`, ...) |
 | `src/cli.ts` | Command-line entry |
 | `playground/` | The web playground. `glass.ts` paints the live glass canvas with WebGL |
+| `docs/guide/` | The docs, one Markdown page each. `` ```erd example `` blocks are drawn by resin when the site is built |
+| `website/` | The landing page's and the docs' style and script, and the code highlighter |
+| `scripts/build-site.mjs` | Builds `site/`: the landing page, the docs and the playground, for GitHub Pages |
 | `examples/` | Example schemas and their golden output (`order.aurora-dark.svg` and `order.aurora-light.svg` cover the glass). A new `.erd` file gets golden tests automatically |
 
 ## Changing the grammar
@@ -48,7 +51,9 @@ A grammar change goes **spec, then tests, then implementation**, in that order.
 3. Implement it: `lexer.ts` → `parser.ts` → `checker.ts` → `model.ts` → `mermaid.ts` / `svg.ts`,
    as far as the change reaches.
 4. Use the new syntax in an example under `examples/`. Review the golden diff, then `pnpm test -u`.
-5. Make sure `pnpm check` passes.
+5. Update the page under `docs/guide/` that covers the construct.
+6. Make sure `pnpm check` and `pnpm build:site` pass. The site build compiles every example in the
+   docs and stops on any that does not compile cleanly.
 
 If a change would break existing files, let the parser recognize the old form and answer it with a
 hint (see SPEC §8).

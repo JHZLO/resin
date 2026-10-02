@@ -18,6 +18,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - name: Build the site (every docs example must compile)
+        run: pnpm build:site
       - name: Run the CLI on the examples
         run: |
           for f in examples/*.erd; do

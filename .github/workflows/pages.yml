@@ -1,4 +1,4 @@
-name: Playground
+name: Site
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:playground
+      - run: pnpm build:site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
