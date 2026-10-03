@@ -1,4 +1,4 @@
-// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys] [--expand-audit] | --model | --ast | --lint`,
+// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys | --names] [--expand-audit] | --model | --ast | --lint`,
 // or `pnpm resin <file.sql> --from-sql [--infer-refs]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
 // from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
@@ -15,6 +15,7 @@ const USAGE = `usage: resin <file.erd> [options]
                    caustic-dark, caustic-light
     --curved       curved connectors instead of right-angled ones
     --keys         show key and reference columns only
+    --names        show table names only
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
@@ -72,7 +73,7 @@ else if (result.model) {
     look: look as SvgLook,
     edges: args.includes("--curved") ? "curved" : "angular",
     standalone: true,
-    columns: args.includes("--keys") ? "keys" : "all",
+    columns: args.includes("--names") ? "none" : args.includes("--keys") ? "keys" : "all",
     audit: args.includes("--expand-audit") ? "expand" : "collapse",
   });
   process.stdout.write(svg + "\n");

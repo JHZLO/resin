@@ -18,11 +18,21 @@ Click a table's name for a side panel that lists its columns, indexes and refere
 
 The wheel zooms around the pointer, dragging pans, and a double click fits the drawing to the screen.
 
+## Finding a table
+
+Find a table, in the diagram's header, or Ctrl or Cmd + K opens a search over the tables. It matches table names first, then descriptions, then column names; a table found by a column shows which one. Up and Down move through the results, Enter goes to the table and opens its side panel, and Shift Enter shows the table with only its related tables. Esc closes the search.
+
+## Related tables only
+
+Related only, in a table's side panel, draws just that table and the tables its references join it to, laid out again to fit. A pill at the top of the canvas names the table, says how many tables are with it and switches between 1 step (the tables it references and the ones referencing it) and 2 steps (their neighbors too). Show all, or Esc once the panel is closed, brings every table back.
+
+Following a reference in the side panel to a table the view leaves out moves the view to that table, so you can walk a large schema one table at a time. The header counts what is shown, as in `7 of 13 tables`.
+
 ## View options
 
 | Option | What it does |
 |---|---|
-| Keys only | Shows only key and reference columns, and folds the rest into `+N columns` |
+| All, Keys, Names | Every column; only key and reference columns, folding the rest into `+N columns`; or the table names alone, with the connectors between them |
 | Audit tables | Draws `revinfo` and the `*_aud` tables instead of folding them into a tag |
 | Angular, Curved | Right-angled connectors, or S-bends |
 | Aurora, Silk, Caustic | The background behind the glass |
@@ -30,13 +40,15 @@ The wheel zooms around the pointer, dragging pans, and a double click fits the d
 
 ## Sharing and exporting
 
-Copy link puts the whole document in the address, so the link opens exactly what you see. Copy SVG and the SVG menu export the drawing: plain by default, with no background, or the current background as a still image.
+Copy link puts the whole document in the address, with the view options and the related view, so the link opens exactly what you see. Copy SVG and the SVG menu export the drawing as it is shown, related view included: plain by default, with no background, or the current background as a still image.
 
 ## Keyboard
 
 | Keys | Action |
 |---|---|
 | Ctrl or Cmd + `\` | Hide or show the editor |
-| Esc | Close the column card, then the side panel |
+| Ctrl or Cmd + K | Find a table |
+| Up, Down, Enter, Shift Enter | In the search: move, go to the table, show it with its related tables only |
+| Esc | Close the search, the column card, the side panel, then the related view |
 | Ctrl or Cmd + Z, right after pasting SQL | Undo the conversion, keeping the SQL as pasted |
 | Arrow keys on the divider | Resize the editor |

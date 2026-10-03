@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
-import type { Model } from "./model.ts";
+import { type Model, neighbors } from "./model.ts";
 
 const EXAMPLES = join(import.meta.dirname, "../examples");
 
@@ -99,4 +99,28 @@ describe("examples", () => {
     it(`${file} compiles without a diagnostic`, () => {
       expect(compile(readFileSync(join(EXAMPLES, file), "utf8")).diagnostics).toEqual([]);
     });
+});
+
+describe("neighbors", () => {
+  const shop = compile(readFileSync(join(EXAMPLES, "shop.erd"), "utf8")).model!;
+  const names = (m: Model) => m.tables.map((t) => t.name);
+
+  it("keeps a table, its parents and its children, one hop per step", () => {
+    expect(names(neighbors(shop, "orders", 1))).toEqual(["users", "coupons", "orders", "order_items", "payments", "coupon_usages", "shipments"]);
+    expect(names(neighbors(shop, "refunds", 1))).toEqual(["payments", "refunds"]);
+    expect(names(neighbors(shop, "refunds", 2))).toEqual(["orders", "payments", "refunds"]);
+  });
+
+  it("keeps every relation among the tables it keeps, and the references to the rest", () => {
+    const part = neighbors(shop, "orders", 1);
+    expect(part.relations.some((r) => r.child === "coupon_usages" && r.parent === "coupons")).toBe(true);
+    expect(part.relations.every((r) => names(part).includes(r.parent) && names(part).includes(r.child))).toBe(true);
+    const items = part.tables.find((t) => t.name === "order_items")!;
+    expect(items.columns.find((c) => c.name === "option_id")?.ref?.table).toBe("product_options");
+  });
+
+  it("leaves a table alone when nothing joins it", () => {
+    const m = compile("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n}").model!;
+    expect(names(neighbors(m, "a", 2))).toEqual(["a"]);
+  });
 });

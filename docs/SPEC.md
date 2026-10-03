@@ -176,6 +176,8 @@ the primary key row it points at.
 - **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
   an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
+  `columns: "none"` draws the headers alone, sized to the name, with each connector between the
+  middles of two headers; a header shared by several connectors gathers them there.
 - **Looks** (`look`), one layout and one card anatomy in different finishes:
   - `graphite` (the default) paints no background. Ink is `currentColor` with a fixed ramp of
     opacities, so the drawing reads on any page. `standalone: true` adds a `<style>` that picks the

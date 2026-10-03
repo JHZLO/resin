@@ -61,6 +61,15 @@ Converts SQL DDL to resin source, as the playground does on paste; [Importing SQ
 
 `looksLikeSql(text)` tells whether a text is SQL that creates a table, for deciding when to convert.
 
+## neighbors(model, table, steps)
+
+The part of a model within `steps` references of one table: that table, the tables it references and the ones referencing it (one step), their neighbors too (two steps), and every relation among them. Columns keep their references to the tables left out, so `toSvg` still marks them as foreign keys. The playground's related view draws this.
+
+```ts
+const part = neighbors(result.model, "orders", 1);
+const { svg } = await toSvg(part, new ELK());
+```
+
 ## Lower-level steps
 
 `parse`, `check` and `lower` are the steps `compile` runs, exported for tools that need one of them on its own: an editor that wants the syntax tree, say, or a linter that only checks.

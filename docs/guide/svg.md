@@ -46,7 +46,7 @@ With a glass look the cards are frosted glass over the background, which the SVG
 | Option | Values | Default |
 |---|---|---|
 | `look` | One of the looks above | `graphite` |
-| `columns` | `all`, or `keys` for key and reference columns only | `all` |
+| `columns` | `all`; `keys` for key and reference columns only; `none` for the table names alone, with the connectors between the headers | `all` |
 | `audit` | `collapse`, or `expand` to draw `revinfo` and `*_aud` | `collapse` |
 | `edges` | `angular` or `curved` | `angular` |
 | `standalone` | Adds a style that picks the ink color from the reader's theme, for files embedded with `<img>` | `false` |

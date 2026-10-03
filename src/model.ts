@@ -167,3 +167,23 @@ function envers(t: Table): ModelTable {
     audit: null,
   };
 }
+
+/** The part of a model within `steps` references of one table: the tables that many hops away and
+ *  every relation among them. One step is one hop: a table's parents and children. Columns keep
+ *  their references to tables left out, so they still read as foreign keys. Audit relations do not
+ *  count as hops */
+export function neighbors(model: Model, table: string, steps: number): Model {
+  const keep = new Set([table]);
+  for (let s = 0; s < steps; s++) {
+    const from = new Set(keep);
+    for (const r of model.relations)
+      if (r.origin === "table" && (from.has(r.parent) || from.has(r.child))) {
+        keep.add(r.parent);
+        keep.add(r.child);
+      }
+  }
+  return {
+    tables: model.tables.filter((t) => keep.has(t.name)),
+    relations: model.relations.filter((r) => keep.has(r.parent) && keep.has(r.child)),
+  };
+}

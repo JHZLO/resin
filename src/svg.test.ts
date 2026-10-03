@@ -151,6 +151,34 @@ describe("toSvg", () => {
 // Golden files: examples/<name>.erd → examples/<name>.svg (graphite, standalone), plus the order example
 // in aurora, dark and light, which the README shows. Changing the drawing breaks these; open the SVG, check
 // it by eye and update with `pnpm test -u` only when the change is intended.
+describe("table names only", () => {
+  it("draws headers alone, with every connector between them", async () => {
+    const { svg, boxes } = await toSvg(modelOf(ORDER), elk, { columns: "none" });
+    expect(count(svg, 'class="rz-t"')).toBe(4);
+    expect(count(svg, 'class="rz-c"')).toBe(0);
+    expect(count(svg, 'class="rz-r"')).toBe(4);
+    expect(boxes.every((b) => b.h === 44)).toBe(true);
+    // Nothing under the header: no column count, no constraints
+    expect(svg).not.toContain("columns</text>");
+    expect(svg).not.toContain("uk_order_product");
+  });
+
+  it("is narrower than the full drawing", async () => {
+    const all = await toSvg(modelOf(ORDER), elk);
+    const names = await toSvg(modelOf(ORDER), elk, { columns: "none" });
+    expect(names.width * names.height).toBeLessThan((all.width * all.height) / 2);
+  });
+});
+
+describe("a part of a model", () => {
+  it("keeps a column a foreign key when the table it points at is left out", async () => {
+    const m = modelOf("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n a_id bigint -> a index\n}");
+    const part = { tables: m.tables.filter((t) => t.name === "b"), relations: [] };
+    const { svg } = await toSvg(part, elk);
+    expect(svg).toMatch(/>FK<\/text><text[^>]*>a_id</);
+  });
+});
+
 describe("golden svg", () => {
   for (const file of readdirSync(EXAMPLES).filter((f) => f.endsWith(".erd")).sort()) {
     it(file, async () => {

@@ -5,9 +5,11 @@ const PREFIX = "#erd:";
 
 export interface SharedState {
   code: string;
-  columns: "all" | "keys";
+  columns: "all" | "keys" | "none";
   audit: "collapse" | "expand";
   edges: "angular" | "curved";
+  /** Only this table and the tables within `steps` references of it, or null for every table */
+  related: { table: string; steps: 1 | 2 } | null;
 }
 
 export async function encode(state: SharedState): Promise<string> {
@@ -28,11 +30,13 @@ export async function decode(hash: string): Promise<SharedState | null> {
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
     const value = JSON.parse(await new Response(stream).text()) as Partial<SharedState>;
     if (typeof value.code !== "string") return null;
+    const related = value.related;
     return {
       code: value.code,
-      columns: value.columns === "keys" ? "keys" : "all",
+      columns: value.columns === "keys" || value.columns === "none" ? value.columns : "all",
       audit: value.audit === "expand" ? "expand" : "collapse",
       edges: value.edges === "curved" ? "curved" : "angular",
+      related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
     };
   } catch {
     return null;

@@ -23,8 +23,9 @@ import type { Model, ModelColumn, ModelTable, Relation } from "./model.ts";
 export type SvgLook = "graphite" | "aurora-dark" | "aurora-light" | "silk-dark" | "silk-light" | "caustic-dark" | "caustic-light";
 
 export interface SvgOptions {
-  /** all = every column, keys = key and reference columns only (the rest become "+N columns") */
-  columns?: "all" | "keys";
+  /** all = every column, keys = key and reference columns only (the rest become "+N columns"),
+   *  none = table names only, with the connectors between the headers */
+  columns?: "all" | "keys" | "none";
   /** collapse = fold audit tables into a tag on the audited table, expand = draw revinfo and *_aud */
   audit?: "collapse" | "expand";
   /** graphite (default) or a glass look */
@@ -470,6 +471,9 @@ function rowTitle(c: ModelColumn, t: ModelTable): string {
   return parts.join("\n");
 }
 
+/** A card with nothing under its header: the table names only view */
+const bare = (v: Pick<View, "shown" | "foot">): boolean => v.shown.length === 0 && v.foot.length === 0;
+
 function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "nameW"> {
   const t = v.table;
   const nameW = maxOf(v.shown.map((c) => sansW(c.name, 12.5) * (c.pk ? 1.04 : 1)), 48);
@@ -480,6 +484,8 @@ function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "na
   const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW + nullW;
   const headW = PAD * 2 + sansW(t.name, 13.5) * 1.04 + 10 + (t.description ? sansW(t.description, 12) : 0) + (v.tag ? 14 + chipW(v.tag) : 0);
   const footW = PAD * 2 + maxOf(v.foot.map((s) => monoW(s, 9.5)));
+  // A header alone is as wide as its name needs: names only is for seeing many tables at once
+  if (bare(v)) return { w: up8(Math.max(headW, 120)), h: HEAD, nameW };
   return {
     w: up8(Math.max(rowW, headW, footW, 200)),
     h: up8(HEAD + v.shown.length * ROW + (v.foot.length ? v.foot.length * FOOT + 8 : 0) + 8),
@@ -488,6 +494,10 @@ function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "na
 }
 
 const rowY = (i: number): number => HEAD + 4 + i * ROW + ROW / 2;
+/** Where a connector meets a card: the column's row, or the middle of a bare header */
+const anchorY = (v: View, column: string): number => (bare(v) ? HEAD / 2 : rowY(v.shown.findIndex((c) => c.name === column)));
+/** The port a connector leaves or enters by. A bare card has one per side, shared by its connectors */
+const portOf = (v: View, column: string): string => (bare(v) ? "" : column);
 /** The header band: rounded top corners, square bottom */
 const capPath = (w: number): string => `M0,${RX} A${RX},${RX} 0 0 1 ${RX},0 H${w - RX} A${RX},${RX} 0 0 1 ${w},${RX} V${HEAD} H0 Z`;
 
@@ -519,7 +529,7 @@ function panel(v: View, L: Look, id: (name: string) => string, painted: boolean)
   } else {
     s.push(`<rect width="${w}" height="${h}" rx="${RX}" fill="url(#${id("wash")})"/>`);
   }
-  s.push(`<path d="${capPath(w)}" ${fill(L.ink.head)}/>`);
+  s.push(bare(v) ? `<rect width="${w}" height="${h}" rx="${RX}" ${fill(L.ink.head)}/>` : `<path d="${capPath(w)}" ${fill(L.ink.head)}/>`);
   s.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${stroke(L.glass ? L.glass.rim : [C, 0.25])}${dash}/>`);
   return s.join("");
 }
@@ -531,7 +541,8 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   const s: string[] = [panel(v, L, id, painted)];
 
   // header: one group with its own hit area, so a click anywhere on it (name, description, tag) reaches it
-  s.push(`<g class="rz-head"><path class="rz-hit" d="${capPath(w)}" fill="currentColor" fill-opacity="0"/>`);
+  const hit = bare(v) ? `<rect class="rz-hit" width="${w}" height="${HEAD}" rx="${RX}" fill="currentColor" fill-opacity="0"/>` : `<path class="rz-hit" d="${capPath(w)}" fill="currentColor" fill-opacity="0"/>`;
+  s.push(`<g class="rz-head">${hit}`);
   s.push(
     `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${fill(I.text)}>${esc(t.name)}` +
       (t.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(I.muted)}>${esc(t.description)}</tspan>` : "") +
@@ -539,7 +550,7 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   );
   if (v.tag) s.push(chip(v.tag, w - PAD - chipW(v.tag), 15, I));
   s.push("</g>");
-  s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
+  if (!bare(v)) s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
   // rows. Types line up at the right edge, or just left of the NULL column when the card has one
   const nullW = v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
@@ -638,16 +649,18 @@ function clean(pts: Point[]): Point[] {
 
 // ---- assembly ----
 
-function views(model: Model, opts: { columns: "all" | "keys"; audit: "collapse" | "expand" }): { views: View[]; relations: Relation[] } {
+function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand" }): { views: View[]; relations: Relation[] } {
   const expand = opts.audit === "expand";
   const tables = model.tables.filter((t) => expand || t.origin !== "audit");
   const names = new Set(tables.map((t) => t.name));
   const relations = model.relations.filter((r) => names.has(r.parent) && names.has(r.child));
   const referenced = new Set(relations.map((r) => `${r.parent}.${r.parentColumn}`));
   const out = tables.map((table) => {
-    const refCols = new Set(relations.filter((r) => r.child === table.name).map((r) => r.childColumn));
+    // A column that holds a reference is a foreign key even when its target is not drawn (a part of the
+    // model, as the playground's related tables view draws)
+    const refCols = new Set([...relations.filter((r) => r.child === table.name).map((r) => r.childColumn), ...table.columns.filter((c) => c.ref).map((c) => c.name)]);
     const isKey = (c: ModelColumn) => c.pk || c.uk || refCols.has(c.name) || referenced.has(`${table.name}.${c.name}`);
-    const shown = opts.columns === "keys" ? table.columns.filter(isKey) : table.columns;
+    const shown = opts.columns === "none" ? [] : opts.columns === "keys" ? table.columns.filter(isKey) : table.columns;
     const hidden = table.columns.length - shown.length;
     const tag =
       table.origin === "external"
@@ -655,8 +668,9 @@ function views(model: Model, opts: { columns: "all" | "keys"; audit: "collapse" 
         : table.origin === "audit" || (table.audit && !expand)
           ? (table.audit?.method ?? "envers").toUpperCase()
           : null;
-    const foot = table.constraints.map((k) => `${k.name ?? (k.kind === "unique" ? "unique" : "index")} (${k.columns.join(", ")})`);
-    if (hidden) foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
+    // Names only leaves out everything under the header, the constraints and the count of columns too
+    const foot = opts.columns === "none" ? [] : table.constraints.map((k) => `${k.name ?? (k.kind === "unique" ? "unique" : "index")} (${k.columns.join(", ")})`);
+    if (hidden && opts.columns !== "none") foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
     const base = { table, shown, hidden, refCols, tag, foot };
     return { ...base, ...measure(base) };
   });
@@ -809,7 +823,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const { views: vs, relations } = views(model, opts);
   const byName = new Map(vs.map((v) => [v.table.name, v]));
   const portId = (table: string, column: string, side: "E" | "W") => `${table}::${column}::${side}`;
-  const used = new Set(relations.flatMap((r) => [portId(r.parent, r.parentColumn, "E"), portId(r.child, r.childColumn, "W")]));
+  const portFor = (table: string, column: string, side: "E" | "W") => portId(table, portOf(byName.get(table)!, column), side);
+  const used = new Set(relations.flatMap((r) => [portFor(r.parent, r.parentColumn, "E"), portFor(r.child, r.childColumn, "W")]));
 
   const graph: ElkGraphIn = {
     id: "root",
@@ -832,18 +847,18 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
       width: v.w,
       height: v.h,
       layoutOptions: { "elk.portConstraints": "FIXED_POS" },
-      ports: v.shown.flatMap((c, i) =>
+      ports: (bare(v) ? [{ name: "", y: HEAD / 2 }] : v.shown.map((c, i) => ({ name: c.name, y: rowY(i) }))).flatMap((row) =>
         (
           [
             ["W", 0, "WEST"],
             ["E", v.w, "EAST"],
           ] as const
         )
-          .filter(([side]) => used.has(portId(v.table.name, c.name, side)))
+          .filter(([side]) => used.has(portId(v.table.name, row.name, side)))
           .map(([side, x, elkSide]) => ({
-            id: portId(v.table.name, c.name, side),
+            id: portId(v.table.name, row.name, side),
             x,
-            y: rowY(i),
+            y: row.y,
             width: 0,
             height: 0,
             layoutOptions: { "elk.port.side": elkSide },
@@ -852,8 +867,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     })),
     edges: relations.map((r, i) => ({
       id: `e${i}`,
-      sources: [portId(r.parent, r.parentColumn, "E")],
-      targets: [portId(r.child, r.childColumn, "W")],
+      sources: [portFor(r.parent, r.parentColumn, "E")],
+      targets: [portFor(r.child, r.childColumn, "W")],
     })),
   };
 
@@ -898,8 +913,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const pp = pos.get(r.parent)!;
     const cp = pos.get(r.child)!;
     // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor
-    const start = { x: pp.x + pv.w, y: pp.y + rowY(pv.shown.findIndex((c) => c.name === r.parentColumn)) };
-    const end = { x: cp.x, y: cp.y + rowY(cv.shown.findIndex((c) => c.name === r.childColumn)) };
+    const start = { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) };
+    const end = { x: cp.x, y: cp.y + anchorY(cv, r.childColumn) };
     const route = clean([start, ...(sec?.bendPoints ?? []), end]);
     const d = edges === "curved" ? curved(route, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(route, 3);
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";

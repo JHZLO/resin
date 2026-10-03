@@ -15,7 +15,7 @@ export { typeText } from "./ast.ts";
 export { formatDiagnostic, hasErrors } from "./diagnostics.ts";
 export { parse } from "./parser.ts";
 export { check } from "./checker.ts";
-export { lower } from "./model.ts";
+export { lower, neighbors } from "./model.ts";
 export { toSvg } from "./svg.ts";
 export type { ElkLike, SvgLook, SvgOptions, SvgResult } from "./svg.ts";
 export { fromSql, looksLikeSql } from "./sql.ts";

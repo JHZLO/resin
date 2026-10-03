@@ -30,6 +30,10 @@ The first public version of the language, grammar v0.2.
   status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
   default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
+- Exploring a large schema in the playground: All, Keys and Names (table names only, also
+  `columns: "none"` and `--names`), Find a table (Ctrl or Cmd + K, over names, descriptions and
+  columns), and Related only, which draws a table with its neighbors one or two steps away
+  (`neighbors(model, table, steps)`). Links carry the view.
 - Lint rules for schema design: a reference column without an index (`ref-index`), a table without a
   primary key (`no-pk`), a table no reference joins (`unrelated`), a column name typed two ways
   (`type-drift`) and an index another one covers (`dup-index`). `lint(doc)`, `resin --lint` (exits

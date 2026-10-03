@@ -5,7 +5,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, compile, fromSql, lint, looksLikeSql, parse, toSvg } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, compile, fromSql, lint, looksLikeSql, neighbors, parse, toSvg } from "../src/index.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
@@ -29,10 +29,13 @@ type StageName = keyof typeof STAGES;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", grid: true };
+const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", related: null, grid: true };
 const elk = new ELK();
 
+/** The whole model, which the side panel and the column card describe */
 let lastModel: Model | null = null;
+/** What the canvas draws: the whole model, or a table and its neighbors */
+let drawnModel: Model | null = null;
 let focus: Focus | null = null;
 let renderSeq = 0;
 let fitNext = true;
@@ -70,7 +73,7 @@ function scheduleHash(): void {
   hashTimer = window.setTimeout(writeHash, 400);
 }
 async function writeHash(): Promise<void> {
-  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges });
+  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related });
   if (location.hash !== hash) history.replaceState(null, "", hash);
 }
 
@@ -262,6 +265,11 @@ function reveal(name: string, onlyIfCovered = false): void {
 
 /** Open a table in the side panel, focus it, and bring it into view */
 function openTable(name: string): void {
+  // A table the related view leaves out: the view moves to it, so following references walks the schema
+  if (state.related && drawnModel && !drawnModel.tables.some((t) => t.name === name)) {
+    void setRelated({ table: name, steps: state.related.steps }).then(() => openTable(name));
+    return;
+  }
   closePop();
   showInspector(name);
   focus?.table(name);
@@ -305,6 +313,7 @@ function showInspector(name: string): void {
   inspected = name;
   inspectorBody.replaceChildren(view);
   byId("inspector-title").textContent = name;
+  byId("inspector-related").setAttribute("aria-pressed", String(state.related?.table === name));
   inspector.hidden = false;
   diagramPanel.classList.add("has-inspector");
   markPicked();
@@ -397,6 +406,9 @@ function fitFloats(): void {
   const free = viewport.clientWidth - (inspector.hidden ? 0 : inspector.offsetWidth);
   const room = free < 350 ? "tight" : free < 520 ? "snug" : "";
   if ((diagramPanel.dataset.room ?? "") !== room) diagramPanel.dataset.room = room;
+  // The related pill sits in the middle of the top edge, unless the view options would run into it
+  const pill = !inspector.hidden || free < 860 ? "below" : "";
+  if ((diagramPanel.dataset.pill ?? "") !== pill) diagramPanel.dataset.pill = pill;
 }
 
 // The panel's left edge: drag it, or use the arrow keys when it has focus
@@ -488,7 +500,14 @@ async function render(): Promise<void> {
   try {
     // With the live canvas the SVG carries only what sits on the glass; the canvas paints the rest
     const look = canvasLook();
-    const { svg, width, height, background, boxes } = await toSvg(result.model, elk, {
+    // The related view needs its table; when the table is renamed or removed, every table comes back
+    if (state.related && !result.model.tables.some((t) => t.name === state.related!.table)) {
+      state.related = null;
+      save();
+      scheduleHash();
+    }
+    const shown = state.related ? neighbors(result.model, state.related.table, state.related.steps) : result.model;
+    const { svg, width, height, background, boxes } = await toSvg(shown, elk, {
       columns: state.columns,
       audit: state.audit,
       look,
@@ -500,6 +519,7 @@ async function render(): Promise<void> {
     viewport.style.backgroundColor = background ?? "";
     glass?.setLook(stageOf(look), glassOf(look));
     lastModel = result.model;
+    drawnModel = shown;
     const empty = result.model.tables.length === 0;
     byId("empty").hidden = !empty;
     content.innerHTML = empty ? "" : svg;
@@ -519,9 +539,12 @@ async function render(): Promise<void> {
     if (popped) focus?.row(popped.table, popped.column);
     else if (inspected) focus?.table(inspected);
     glass?.setBoxes(lastBoxes, drawn);
-    const tables = result.model.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
-    const relations = result.model.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
-    byId("stats").textContent = empty ? "" : `${tables} ${tables === 1 ? "table" : "tables"}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
+    const counted = (m: Model) => m.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
+    const tables = counted(result.model);
+    const relations = shown.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
+    const tablesText = state.related ? `${counted(shown)} of ${tables} tables` : `${tables} ${tables === 1 ? "table" : "tables"}`;
+    byId("stats").textContent = empty ? "" : `${tablesText}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
+    showRelated(counted(shown) - 1);
     setStale(false);
   } catch (e) {
     console.error(e);
@@ -538,7 +561,9 @@ function scheduleRender(): void {
 // ---- controls ----
 
 function syncControls(): void {
-  byId("toggle-keys").setAttribute("aria-pressed", String(state.columns === "keys"));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-columns]")) b.setAttribute("aria-pressed", String(b.dataset.columns === state.columns));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-steps]")) b.setAttribute("aria-pressed", String(Number(b.dataset.steps) === state.related?.steps));
+  byId("inspector-related").setAttribute("aria-pressed", String(state.related !== null && state.related.table === inspected));
   byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]")) b.setAttribute("aria-pressed", String(b.dataset.edges === state.edges));
@@ -557,7 +582,193 @@ function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): void
   scheduleHash();
   render();
 }
-byId("toggle-keys").addEventListener("click", () => setView({ columns: state.columns === "keys" ? "all" : "keys" }));
+for (const b of document.querySelectorAll<HTMLButtonElement>("[data-columns]"))
+  b.addEventListener("click", () => setView({ columns: b.dataset.columns === "keys" || b.dataset.columns === "none" ? b.dataset.columns : "all" }));
+
+// ---- related tables only ----
+
+/** Draw only a table and its neighbors, or every table again. The layout changes, so the view fits */
+function setRelated(related: SharedState["related"]): Promise<void> {
+  state.related = related;
+  fitNext = true;
+  syncControls();
+  save();
+  scheduleHash();
+  return render();
+}
+
+/** The pill at the top of the canvas: what is shown, and the way back */
+function showRelated(others: number): void {
+  const pill = byId("related-pill");
+  pill.hidden = state.related === null;
+  if (!state.related) return;
+  const name = document.createElement("b");
+  name.textContent = state.related.table;
+  const long = document.createElement("span");
+  long.className = "label-long";
+  long.textContent = others === 0 ? " joins no other table" : ` and ${others} related ${others === 1 ? "table" : "tables"}`;
+  const short = document.createElement("span");
+  short.className = "label-short";
+  short.textContent = ` +${others}`;
+  byId("related-text").replaceChildren(name, long, short);
+  fitFloats();
+}
+
+byId("inspector-related").addEventListener("click", () => {
+  if (!inspected) return;
+  void setRelated(state.related?.table === inspected ? null : { table: inspected, steps: state.related?.steps ?? 1 });
+});
+for (const b of document.querySelectorAll<HTMLButtonElement>("[data-steps]"))
+  b.addEventListener("click", () => {
+    if (state.related) void setRelated({ table: state.related.table, steps: b.dataset.steps === "2" ? 2 : 1 });
+  });
+byId("related-all").addEventListener("click", () => void setRelated(null));
+
+// ---- find a table ----
+
+// The palette searches table names first, then descriptions, then column names, and lists at most
+// eight tables. Enter goes to the table as a click on its name does; Shift Enter shows it with its
+// neighbors. Opened from the keyboard (Ctrl or Cmd + K) it lands at once; from the button it grows
+const palette = byId("palette");
+const paletteInput = byId<HTMLInputElement>("palette-input");
+const paletteList = byId("palette-list");
+const findButton = byId("find");
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+byId("find-key").textContent = MAC ? "Cmd K" : "Ctrl K";
+
+interface Hit {
+  table: string;
+  description: string | null;
+  /** Where the query matched, for the accent: in the name, or in a column named in `meta` */
+  name: [number, number] | null;
+  meta: string;
+  column: [number, number] | null;
+}
+let hits: Hit[] = [];
+let active = 0;
+let paletteReturn: HTMLElement | null = null;
+
+function search(query: string): Hit[] {
+  if (!lastModel) return [];
+  const q = query.trim().toLowerCase();
+  const tables = lastModel.tables.filter((t) => state.audit === "expand" || t.origin !== "audit");
+  const scored: { hit: Hit; score: number; order: number }[] = [];
+  tables.forEach((t, order) => {
+    const columns = `${t.columns.length} ${t.columns.length === 1 ? "column" : "columns"}`;
+    if (!q) return scored.push({ hit: { table: t.name, description: t.description, name: null, meta: columns, column: null }, score: 0, order });
+    const at = t.name.toLowerCase().indexOf(q);
+    if (at >= 0) return scored.push({ hit: { table: t.name, description: t.description, name: [at, q.length], meta: columns, column: null }, score: at === 0 ? 0 : 1, order });
+    if (t.description?.toLowerCase().includes(q)) return scored.push({ hit: { table: t.name, description: t.description, name: null, meta: columns, column: null }, score: 2, order });
+    const c = t.columns.find((x) => x.name.toLowerCase().includes(q));
+    if (c) {
+      const meta = `column ${c.name}`;
+      scored.push({ hit: { table: t.name, description: t.description, name: null, meta, column: [7 + c.name.toLowerCase().indexOf(q), q.length] }, score: 3, order });
+    }
+  });
+  return scored.sort((a, b) => a.score - b.score || a.order - b.order).slice(0, 8).map((s) => s.hit);
+}
+
+/** Text with one stretch set in the accent */
+function marked(text: string, at: [number, number] | null): Node[] {
+  if (!at) return [document.createTextNode(text)];
+  const b = document.createElement("b");
+  b.textContent = text.slice(at[0], at[0] + at[1]);
+  return [document.createTextNode(text.slice(0, at[0])), b, document.createTextNode(text.slice(at[0] + at[1]))];
+}
+
+function showHits(): void {
+  hits = search(paletteInput.value);
+  active = Math.min(active, Math.max(0, hits.length - 1));
+  paletteList.replaceChildren(
+    ...hits.map((h, i) => {
+      const li = document.createElement("li");
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "pal-row";
+      row.id = `pal-${i}`;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", String(i === active));
+      row.tabIndex = -1;
+      const name = document.createElement("span");
+      name.className = "pal-name";
+      name.append(...marked(h.table, h.name));
+      const desc = document.createElement("span");
+      desc.className = "pal-desc";
+      desc.textContent = h.description ?? "";
+      const meta = document.createElement("span");
+      meta.className = "pal-meta";
+      meta.append(...marked(h.meta, h.column));
+      row.append(name, desc, meta);
+      // A press, not the hover, picks: the hover only lights the row
+      row.addEventListener("click", (e) => choose(h.table, e.shiftKey));
+      li.append(row);
+      return li;
+    }),
+  );
+  byId("palette-empty").hidden = hits.length > 0;
+  paletteInput.setAttribute("aria-activedescendant", hits.length ? `pal-${active}` : "");
+}
+
+function openPalette(animate: boolean): void {
+  if (!palette.hidden) return paletteInput.focus();
+  paletteReturn = document.activeElement as HTMLElement | null;
+  palette.classList.toggle("is-instant", !animate);
+  palette.hidden = false;
+  findButton.setAttribute("aria-expanded", "true");
+  paletteInput.value = "";
+  active = 0;
+  showHits();
+  paletteInput.focus();
+}
+
+function closePalette(returnFocus: boolean): void {
+  if (palette.hidden) return;
+  palette.hidden = true;
+  findButton.setAttribute("aria-expanded", "false");
+  if (returnFocus) paletteReturn?.focus();
+}
+
+async function choose(table: string, related: boolean): Promise<void> {
+  closePalette(false);
+  if (related) {
+    await setRelated({ table, steps: state.related?.steps ?? 1 });
+    showInspector(table);
+    focus?.table(table);
+    glass?.refresh();
+  } else openTable(table);
+}
+
+findButton.addEventListener("click", () => (palette.hidden ? openPalette(true) : closePalette(true)));
+paletteInput.addEventListener("input", () => {
+  active = 0;
+  showHits();
+});
+paletteInput.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (!hits.length) return;
+    active = (active + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+    for (const row of paletteList.querySelectorAll(".pal-row")) row.setAttribute("aria-selected", String(row.id === `pal-${active}`));
+    paletteInput.setAttribute("aria-activedescendant", `pal-${active}`);
+    byId(`pal-${active}`).scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (hits[active]) void choose(hits[active].table, e.shiftKey);
+  } else if (e.key === "Escape") {
+    // The palette is the innermost thing open: only it closes
+    e.stopPropagation();
+    closePalette(true);
+  } else if (e.key === "Tab") closePalette(false);
+});
+// Like the download menu: nothing to lose, so a press anywhere else closes it
+document.addEventListener("pointerdown", (e) => {
+  if (!palette.hidden && !palette.contains(e.target as Node) && !findButton.contains(e.target as Node)) closePalette(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() !== "k" || !(MAC ? e.metaKey : e.ctrlKey) || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  openPalette(false);
+});
 byId("toggle-audit").addEventListener("click", () => setView({ audit: state.audit === "expand" ? "collapse" : "expand" }));
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]"))
   b.addEventListener("click", () => {
@@ -617,6 +828,7 @@ document.addEventListener("keydown", (e) => {
   instantly(() => {
     if (!pop.hidden) closePop();
     else if (!inspector.hidden) closeInspector();
+    else if (state.related) void setRelated(null);
     settleFocus();
   });
 });
@@ -629,8 +841,8 @@ byId("share").addEventListener("click", async () => {
 /** Files are plain (graphite) by default: no background, so they sit on any page. A glass look carries
  *  its background with it, as a still picture */
 async function exportSvg(look: SvgLook): Promise<string | null> {
-  if (!lastModel) return null;
-  const { svg } = await toSvg(lastModel, elk, { columns: state.columns, audit: state.audit, edges: state.edges, look, standalone: true });
+  if (!drawnModel) return null;
+  const { svg } = await toSvg(drawnModel, elk, { columns: state.columns, audit: state.audit, edges: state.edges, look, standalone: true });
   return svg + "\n";
 }
 

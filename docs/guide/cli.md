@@ -12,6 +12,7 @@ usage: resin <file.erd> [options]
                    caustic-dark, caustic-light
     --curved       curved connectors instead of right-angled ones
     --keys         show key and reference columns only
+    --names        show table names only
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
