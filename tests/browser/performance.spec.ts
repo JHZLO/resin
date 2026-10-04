@@ -4,6 +4,7 @@ import { encode, type SharedState } from "../../playground/share.ts";
 // Repeated snapshots of roughly 80,000 DOM nodes dominate the measured interactions on CI.
 // Keep action traces and failure screenshots without copying the entire drawing at every step.
 test.use({ trace: { mode: "retain-on-failure", snapshots: false, screenshots: false, sources: true } });
+test.describe.configure({ mode: "default" });
 
 function schema(n: number, hub = false): string {
   return Array.from({ length: n }, (_, i) => `table t${i} {\n id bigint pk\n${Array.from({ length: Math.min(i, hub ? 1 : 3) }, (_, r) => ` ref_${r} bigint -> t${hub ? 0 : i - r - 1}.id index`).join("\n")}\n${Array.from({ length: 23 - Math.min(i, hub ? 1 : 3) }, (_, c) => ` value_${c} varchar(100)`).join("\n")}\n}`).join("\n");
@@ -72,7 +73,8 @@ test("reuses earlier All and related layouts after switching views", async ({ pa
 
 test("lays out a 500-table hub with all columns within the load budget", async ({ page, browserName }, info) => {
   test.skip(browserName !== "chromium", "Load budgets run on Chromium");
-  test.setTimeout(30_000);
+  // The 15-second load assertion below is independent of later software-rendered CI interactions.
+  test.setTimeout(60_000);
   const start = Date.now();
   await page.goto(`/playground/${await encode(shared(schema(500, true)))}`);
   await ready(page, 500);
