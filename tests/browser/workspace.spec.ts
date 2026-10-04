@@ -56,7 +56,7 @@ test("reviews skipped SQL, adds a logical relation, and preserves its service on
 });
 
 test("reports storage failure and keeps source export available", async ({ page }) => {
-  await page.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException("full", "QuotaExceededError"); }; });
+  await page.addInitScript(() => { IDBFactory.prototype.open = () => { throw new DOMException("blocked", "SecurityError"); }; Storage.prototype.setItem = () => { throw new DOMException("full", "QuotaExceededError"); }; });
   await open(page);
   await expect(page.locator("#save-error")).toContainText("Download the .erd file");
   const downloaded = page.waitForEvent("download");
@@ -101,4 +101,103 @@ test("saves and restores a relationship view without replacing source", async ({
   await page.getByRole("button", { name: "Load view", exact: true }).click();
   await expect(page.locator("#view-summary")).toContainText("outgoing");
   await expect(page.locator(".cm-content")).toContainText("~> users.id");
+});
+
+async function records(page: Page, keys: string[]): Promise<unknown[]> {
+  return page.evaluate(keys => new Promise<unknown[]>((resolve, reject) => {
+    const request = indexedDB.open("resin.documents", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction("records", "readonly");
+      const requests = keys.map(key => transaction.objectStore("records").get(key));
+      transaction.oncomplete = () => { db.close(); resolve(requests.map(request => request.result)); };
+      transaction.onabort = () => { db.close(); reject(transaction.error); };
+    };
+  }), keys);
+}
+async function appendComment(page: Page, text: string): Promise<void> {
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.insertText(`\n%% ${text}`);
+}
+
+test("migrates recovery history and writes only changed records while typing", async ({ page }) => {
+  const backup = JSON.stringify({ version: 1, active: "migrated", documents: [{ id: "migrated", title: "Migrated schema", state,
+    updated: 1, revisions: [{ at: Date.now(), code: "table before { id bigint pk }", reason: "Before edit" }], views: [], imported: null }] });
+  await page.addInitScript(raw => {
+    localStorage.setItem("resin.documents.v1", raw);
+    const writes: string[] = [];
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value: unknown, key?: IDBValidKey) { writes.push(String(key)); return put.call(this, value, key!); };
+    Object.assign(window, { recordWrites: writes });
+  }, backup);
+  await page.goto("/playground/");
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  await expect(page.locator("#document-name")).toHaveText("Migrated schema");
+  expect(await page.evaluate(() => localStorage.getItem("resin.documents.v1"))).toBe(backup);
+  await page.evaluate(() => { (window as unknown as { recordWrites: string[] }).recordWrites.length = 0; });
+  await appendComment(page, "current edit");
+  await expect.poll(async () => ((await records(page, ["document:migrated"]))[0] as { state: SharedState }).state.code).toContain("current edit");
+  const writes = await page.evaluate(() => (window as unknown as { recordWrites: string[] }).recordWrites);
+  expect(writes).toContain("document:migrated");
+  expect(writes).not.toContain("history:migrated");
+  expect(writes).not.toContain("import:migrated");
+  await page.reload();
+  await expect(page.locator(".cm-content")).toContainText("current edit");
+  await workspace(page, "Documents");
+  await page.getByRole("button", { name: "Restore", exact: true }).first().click();
+  await expect(page.locator(".cm-content")).toContainText("table before");
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  await page.reload();
+  await expect(page.locator(".cm-content")).toContainText("table before");
+});
+
+test("rejects a stale tab without overwriting the committed document", async ({ page, context }) => {
+  await open(page);
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  const other = await context.newPage();
+  await other.goto("/playground/");
+  await expect(other.locator(".cm-content")).toContainText("user_id");
+  await expect(other.locator("#save-status")).toHaveText("Saved locally");
+  await appendComment(page, "first tab");
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  await appendComment(other, "stale tab");
+  await expect(other.locator("#save-error")).toContainText("Another tab changed");
+  await expect(other.locator(".cm-content")).toContainText("stale tab");
+  await other.reload();
+  await expect(other.locator(".cm-content")).toContainText("first tab");
+  await expect(other.locator(".cm-content")).not.toContainText("stale tab");
+  await other.close();
+});
+
+test("rolls back an interrupted IndexedDB write and preserves the last saved revision", async ({ page }) => {
+  await open(page);
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value: unknown, key?: IDBValidKey) {
+      if (String(key).startsWith("document:")) { this.transaction.abort(); throw new DOMException("full", "QuotaExceededError"); }
+      return put.call(this, value, key!);
+    };
+  });
+  await appendComment(page, "unsaved edit");
+  await expect(page.locator("#save-error")).toContainText("Download the .erd file");
+  await expect(page.locator(".cm-content")).toContainText("unsaved edit");
+  await page.reload();
+  await expect(page.locator(".cm-content")).toContainText("user_id bigint");
+  await expect(page.locator(".cm-content")).not.toContainText("unsaved edit");
+});
+
+test("does not silently reopen a stale backup when migrated storage is blocked", async ({ page, context }) => {
+  await open(page);
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  await page.addInitScript(() => { IDBFactory.prototype.open = () => { throw new DOMException("blocked", "SecurityError"); }; });
+  await page.reload();
+  await expect(page.locator("#save-error")).toContainText("Saved documents are unavailable");
+  const recovered = await context.newPage();
+  await recovered.goto("/playground/");
+  await expect(recovered.locator(".cm-content")).toContainText("user_id bigint");
+  await expect(recovered.locator("#save-status")).toHaveText("Saved locally");
+  await recovered.close();
 });

@@ -1,6 +1,12 @@
 # Playground
 
-The [playground](https://jhzlo.github.io/resin/playground/) is an editor on the left and the diagram on the right. Every change recompiles. Problems show up in the editor and in a list under it, and the diagram keeps the last valid drawing until the source compiles again.
+The [playground](https://jhzlo.github.io/resin/playground/) is an editor on the left and the diagram on the right. Source changes are compiled and checked in a background worker. Problems show up in the editor and in a list under it, and the diagram keeps the last valid drawing until the source compiles again.
+
+## Large diagrams
+
+Comment-only edits keep the current drawing while updating diagnostic positions. Changing a live background preserves the SVG; changing between light and dark updates its ink. Recent layouts and diagram views are cached with memory limits, so returning from Names or a related view can reuse the previous drawing.
+
+Source analysis and layout run outside the editor thread. Cancel stops pending work, and Retry starts it again. Very large diagrams still take time to mount in the browser. Use Keys, Names, or a related view to reduce the amount on screen. Diagrams with heavily referenced tables use ELK's high-degree layout handling. Search, composite-key focus, and exported files keep the full schema information.
 
 ## Pasting SQL
 
@@ -12,7 +18,7 @@ After a paste the same line says how many tables were converted. Review import o
 
 Documents opens your local workspace. Give a document a name, open a recent document, create a new one, or open an `.erd` or `.sql` file. Download .erd saves the editable source to a file. Loading an example or a shared link preserves the previous document in the recent list.
 
-Edits are saved in this browser. Recovery history keeps up to 20 source snapshots, at most one automatic snapshot per 30 seconds of editing, plus checkpoints before imports, relation edits and document switches. Restoring a snapshot also keeps the version it replaces. Opening a document starts a fresh Undo history.
+Edits are saved asynchronously in this browser. The status shows Saving while a write is pending and Saved locally after it commits. Wait for Saved locally before closing or reloading. IndexedDB stores changed documents and recovery records separately; older local documents migrate automatically and the original localStorage data is retained. Browsers that block IndexedDB on first use fall back to localStorage. After migration, blocked storage shows an error so an older backup cannot silently replace newer work. Recovery history keeps up to 20 source snapshots, at most one automatic snapshot per 30 seconds of editing, plus checkpoints before imports, relation edits and document switches. Restoring a snapshot also keeps the version it replaces. Opening a document starts a fresh Undo history.
 
 If browser storage is full, unavailable, corrupt, or changed in another tab, an on-screen message explains the problem. Unsaved work stays in the current session and can be downloaded. Download it before closing, then reload to read the latest stored documents. Browser storage is not a backup: keep `.erd` files for work you need to retain.
 

@@ -1,3 +1,4 @@
+import { LayoutCache } from "./layout-cache.ts";
 import ELK from "elkjs/lib/elk-api.js";
 import { toSvg, type ElkLike, type Model, type SvgOptions, type SvgResult } from "../src/index.ts";
 declare const __RESIN_WORKER__: string;
@@ -11,8 +12,7 @@ export class RenderClient {
   private workerReady = false;
   private job: { reject: (reason: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
   private sequence = 0;
-  private lastKey = "";
-  private lastLayout: unknown = null;
+  private layouts = new LayoutCache<unknown>();
   cancel(): void {
     if (!this.job) return;
     clearTimeout(this.job.timer);
@@ -46,11 +46,12 @@ export class RenderClient {
     const worker = this.worker!;
     const cached: ElkLike = { layout: async graph => {
       const key = JSON.stringify(graph);
-      if (key === this.lastKey && this.lastLayout) return structuredClone(this.lastLayout) as typeof graph;
+      const hit = this.layouts.get(key);
+      if (hit) return hit as typeof graph;
       await this.ready;
       if (id !== this.sequence) throw new DOMException("Layout cancelled", "AbortError");
       const result = await elk.layout(graph);
-      if (id === this.sequence) { this.lastKey = key; this.lastLayout = structuredClone(result); }
+      if (id === this.sequence) this.layouts.set(key, result);
       return result;
     } };
     return new Promise((resolve, reject) => {

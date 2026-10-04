@@ -205,62 +205,57 @@ export interface Focus {
 /** Focus keeps the chosen table or relation and fades everything else, so it is shown by dimming
  *  rather than by color */
 export function createFocus(svg: SVGSVGElement): Focus {
-  const rels = [...svg.querySelectorAll<SVGGElement>(".rz-r")];
-  const tables = [...svg.querySelectorAll<SVGGElement>(".rz-t")];
-  // A table is its card plus, in a still glass drawing, its shadow
-  const parts = [...svg.querySelectorAll<SVGElement>("[data-t]")];
-
-  const clear = () => {
-    svg.classList.remove("is-focus");
-    svg.querySelectorAll(".is-on").forEach((el) => el.classList.remove("is-on"));
+  const tables = new Map<string, SVGElement[]>();
+  const rows = new Map<string, SVGElement>();
+  const byTable = new Map<string, Set<SVGGElement>>();
+  const byRow = new Map<string, Set<SVGGElement>>();
+  const endpoints = new Map<SVGGElement, [string, string][]>();
+  const key = (table: string, column: string) => JSON.stringify([table, column]);
+  for (const part of svg.querySelectorAll<SVGElement>("[data-t]")) {
+    const name = part.dataset.t!;
+    const parts = tables.get(name) ?? [];
+    parts.push(part); tables.set(name, parts);
+  }
+  for (const table of svg.querySelectorAll<SVGGElement>(".rz-t"))
+    for (const row of table.querySelectorAll<SVGElement>(".rz-c")) rows.set(key(table.dataset.t!, row.dataset.c!), row);
+  const add = (index: Map<string, Set<SVGGElement>>, name: string, relation: SVGGElement) => {
+    const matches = index.get(name) ?? new Set<SVGGElement>();
+    matches.add(relation); index.set(name, matches);
   };
-  const tableEl = (name: string) => tables.find((t) => t.dataset.t === name);
-  const markTable = (name: string) => {
-    for (const p of parts) if (p.dataset.t === name) p.classList.add("is-on");
-  };
-  const markRow = (table: string, column: string) => {
-    const t = tableEl(table);
-    if (!t) return;
-    markTable(table);
-    [...t.querySelectorAll<SVGGElement>(".rz-c")].find((r) => r.dataset.c === column)?.classList.add("is-on");
-  };
-  const focusTable = (name: string) => {
-    if (!tableEl(name)) return;
-    svg.classList.add("is-focus");
-    const on = new Set([name]);
-    for (const r of rels)
-      if (r.dataset.a === name || r.dataset.b === name) {
-        r.classList.add("is-on");
-        on.add(r.dataset.a!);
-        on.add(r.dataset.b!);
-      }
-    on.forEach(markTable);
-  };
-  const focusRow = (table: string, column: string): boolean => {
-    const columns = (r: SVGElement, side: "a" | "b"): string[] => r.dataset[`${side}cs`] ? JSON.parse(r.dataset[`${side}cs`]!) : [r.dataset[`${side}c`]!];
-    const has = (r: SVGElement, side: "a" | "b") => r.dataset[side] === table && columns(r, side).includes(column);
-    const hits = rels.filter((r) => has(r, "a") || has(r, "b"));
-    if (!hits.length) return false;
-    svg.classList.add("is-focus");
-    for (const r of hits) {
-      r.classList.add("is-on");
-      for (const c of columns(r, "a")) markRow(r.dataset.a!, c);
-      for (const c of columns(r, "b")) markRow(r.dataset.b!, c);
+  for (const relation of svg.querySelectorAll<SVGGElement>(".rz-r")) {
+    const points: [string, string][] = [];
+    for (const side of ["a", "b"] as const) {
+      const table = relation.dataset[side]!;
+      const columns: string[] = relation.dataset[`${side}cs`] ? JSON.parse(relation.dataset[`${side}cs`]!) : [relation.dataset[`${side}c`]!];
+      add(byTable, table, relation);
+      for (const column of columns) { points.push([table, column]); add(byRow, key(table, column), relation); }
     }
-    return true;
+    endpoints.set(relation, points);
+  }
+  let active = new Set<SVGElement>();
+  const apply = (next: Set<SVGElement>, focused: boolean) => {
+    if (focused) svg.classList.add("is-focus"); else svg.classList.remove("is-focus");
+    for (const el of active) if (!next.has(el)) el.classList.remove("is-on");
+    for (const el of next) if (!active.has(el)) el.classList.add("is-on");
+    active = next;
   };
-
-  return {
-    clear,
-    table(name) {
-      clear();
-      focusTable(name);
-    },
-    row(table, column) {
-      clear();
-      if (!tableEl(table)) return;
-      if (!focusRow(table, column)) focusTable(table);
-      markRow(table, column);
-    },
+  const markTable = (next: Set<SVGElement>, table: string) => { for (const el of tables.get(table) ?? []) next.add(el); };
+  const select = (table: string, column?: string) => {
+    if (!tables.has(table)) return apply(new Set(), false);
+    const next = new Set<SVGElement>();
+    const hits = column === undefined ? undefined : byRow.get(key(table, column));
+    for (const relation of hits ?? byTable.get(table) ?? []) {
+      next.add(relation);
+      for (const [name, col] of endpoints.get(relation)!) {
+        markTable(next, name);
+        const row = hits && rows.get(key(name, col));
+        if (row) next.add(row);
+      }
+    }
+    markTable(next, table);
+    const row = column === undefined ? undefined : rows.get(key(table, column));
+    if (row) next.add(row);
+    apply(next, true);
   };
+  return { clear: () => apply(new Set(), false), table: name => select(name), row: select };
 }

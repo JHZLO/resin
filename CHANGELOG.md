@@ -8,6 +8,14 @@ the grammar; the parser then points old syntax at its new form.
 
 The first public version of the language, grammar v0.2.
 
+### Performance
+
+- Index table and column resolution, and run source analysis in a background worker.
+- Preserve diagrams for comment-only edits and live background changes, with bounded caches for recent views.
+- Save changed documents and recovery records asynchronously with transactional conflict detection.
+- Index relation focus and use high-degree layout handling for heavily referenced tables.
+- Cover full-column load, view reuse, storage migration, rollback, and animation-enabled navigation.
+
 ### Fixed
 
 - Preserve qualified SQL targets and quoted names; report ambiguous or unsupported imports.

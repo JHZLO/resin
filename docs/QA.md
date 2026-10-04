@@ -21,11 +21,11 @@ Failures save a screenshot and trace under `test-results/`; CI uploads that dire
 | Language and SQL | Valid and invalid schemas, diagnostic positions, five DDL dialect fixtures, qualified and quoted identifiers, composite references, deterministic output |
 | Comparison and CLI | Reference changes, missing files, invalid arguments, help, stdout and stderr boundaries |
 | PR Action | Divergent base branches, merge-base lookup, added, removed and renamed paths, unusual filenames, identical reruns, concurrent branch updates, paginated comments, restricted token fallback |
-| Playground state | Malformed saved values, share decoding, same-document view changes, empty comparison bases, reload recovery |
+| Playground state | IndexedDB migration, recovery records, transaction rollback, stale-tab conflicts, bounded view caches, comment-only analysis, malformed saved values, share decoding, same-document view changes, empty comparison bases, reload recovery |
 | Browser workflows | DDL paste conversion and undo, import review and reimport, named documents and reload, storage failure and source download, reading links, saved views, relation focus, folded-column navigation, narrow layouts, keyboard focus |
 | Rendering | Fit and gesture calculations, context restoration, reduced-motion refresh, static fallback, escaped descriptions, large schemas, layout cancellation and document switching |
 
-Browser tests run on Chromium, Firefox and WebKit. Load cases run on Chromium only and record elapsed render time for 10, 100 and 500-table schemas. They verify fit and navigation, not a universal performance guarantee.
+Browser tests run on Chromium, Firefox and WebKit. Load cases run on Chromium only and record elapsed render time for 10, 100 and 500-table schemas. Full-column cases use 24 columns per table and cover a 500-table chain and a 500-table hub. The hub case has a 15-second end-to-end test budget, including page startup. Tests also assert that comment edits preserve mounted SVG, background changes avoid layout work, and returning to All reuses its layout and DOM. An animation-enabled smoke test covers composite-key focus and zoom. These synthetic budgets detect regressions; they are not a universal performance guarantee.
 
 DDL paste tests dispatch clipboard events with fixture text. They test the editor conversion path; they do not test DataGrip or operating-system clipboard integration. WebGL lifecycle unit tests use a controlled stub.
 

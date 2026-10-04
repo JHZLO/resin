@@ -366,9 +366,10 @@ ${siteHead("", "home", false)}
 
 async function renderPlayground() {
   const worker = await readFile("node_modules/elkjs/lib/elk-worker.min.js", "utf8");
+  const analysis = await build({ entryPoints: ["playground/analysis-worker.ts"], bundle: true, format: "iife", minify: true, target: "es2022", write: false });
   const result = await build({
     entryPoints: ["playground/main.ts"],
-    define: { __RESIN_WORKER__: JSON.stringify(worker) },
+    define: { __RESIN_WORKER__: JSON.stringify(worker), __RESIN_ANALYSIS_WORKER__: JSON.stringify(analysis.outputFiles[0].text) },
     bundle: true,
     format: "iife",
     minify: true,

@@ -4,8 +4,9 @@
 
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, compile, diff, fromSql, lint, looksLikeSql, parse } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, type SvgResult, compile, diff, fromSql, looksLikeSql, parse } from "../src/index.ts";
 import { Documents, type LocalDocument } from "./documents.ts";
+import { AnalysisClient } from "./analysis-client.ts";
 import { RenderClient } from "./render-client.ts";
 import { createWorkspace, saveFile, fileName } from "./workspace.ts";
 import { relatedModel, relationPath, subset } from "./schema-tools.ts";
@@ -35,7 +36,22 @@ const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: 
 let storage: Pick<Storage, "getItem" | "setItem">;
 try { storage = localStorage; } catch { storage = { getItem: () => null, setItem: () => { throw new Error("Storage unavailable"); } }; }
 const documents = new Documents(storage, state);
+const analyzer = new AnalysisClient();
 const renderer = new RenderClient();
+let mountedKey = "";
+type MountedDiagram = Pick<SvgResult, "width" | "height" | "background" | "boxes"> & { element: SVGSVGElement | null; nodes: number };
+let currentDiagram: MountedDiagram | null = null;
+let mountedModelKey = 0;
+const mountedViews = new Map<string, MountedDiagram>();
+function rememberView(key: string, value: MountedDiagram): void {
+  if (value.nodes > 100_000) return;
+  mountedViews.delete(key); mountedViews.set(key, value);
+  let nodes = [...mountedViews.values()].reduce((sum, entry) => sum + entry.nodes, 0);
+  while (nodes > 100_000 || mountedViews.size > 4) {
+    const first = mountedViews.keys().next().value!;
+    nodes -= mountedViews.get(first)!.nodes; mountedViews.delete(first);
+  }
+}
 const exporter = new RenderClient();
 
 /** The whole model, which the side panel and the column card describe */
@@ -43,6 +59,8 @@ let lastModel: Model | null = null;
 /** What the canvas draws: the whole model, or a table and its neighbors */
 let drawnModel: Model | null = null;
 let focus: Focus | null = null;
+let tableElements = new Map<string, SVGGElement>();
+let popFrame = 0;
 let renderSeq = 0;
 let fitNext = true;
 let lastBoxes: { table: string; x: number; y: number; w: number; h: number }[] = [];
@@ -58,14 +76,19 @@ try {
 
 function save(): void {
   documents.update(state);
-  const active = documents.active;
+  const active = documents.activeInfo;
   // A reload must not reopen an older hash while compression is still debounced.
   if (history.state?.resinDocument !== active.id) history.replaceState({ resinDocument: active.id }, "");
   byId("document-name").textContent = active.title;
-  byId("save-status").textContent = documents.error ? "Not saved" : "Saved locally";
+  showSaveStatus();
+}
+function showSaveStatus(): void {
+  byId("save-status").textContent = documents.error ? "Not saved" : documents.pending ? "Saving…" : "Saved locally";
   byId("save-error").textContent = documents.error ?? "";
   byId("save-error").hidden = documents.error === null;
 }
+
+documents.onChange = showSaveStatus;
 
 let hashTimer = 0;
 let hashGeneration = 0;
@@ -80,7 +103,7 @@ async function writeHash(): Promise<boolean> {
   try {
     const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null, view: state.view, reading: state.reading });
     if (generation !== hashGeneration) return false;
-    if (location.hash !== hash) history.replaceState({ resinDocument: documents.active.id }, "", hash);
+    if (location.hash !== hash) history.replaceState({ resinDocument: documents.activeInfo.id }, "", hash);
     return true;
   } catch {
     return false;
@@ -222,7 +245,7 @@ const panzoom = new PanZoom(
     zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
     glass?.setView(panzoom.scale, panzoom.x, panzoom.y, animate);
     // The popover rides along with its row; after an animated move, place it again once settled
-    placePop();
+    if (!popFrame) popFrame = requestAnimationFrame(() => { popFrame = 0; placePop(); });
     if (animate) window.setTimeout(placePop, MOVE_MS + 20);
   },
   (target, x, y) => {
@@ -255,9 +278,7 @@ let inspectorReturn: HTMLElement | null = null;
 let navigationSeq = 0;
 
 const rowEl = (table: string, column: string): SVGGElement | null =>
-  [...content.querySelectorAll<SVGGElement>(".rz-t")]
-    .find((t) => t.dataset.t === table)
-    ?.querySelector<SVGGElement>(`.rz-c[data-c="${CSS.escape(column)}"]`) ?? null;
+  tableElements.get(table)?.querySelector<SVGGElement>(`.rz-c[data-c="${CSS.escape(column)}"]`) ?? null;
 
 /** With nothing picked, the table in the side panel keeps the focus; otherwise the focus clears */
 function settleFocus(): void {
@@ -523,7 +544,7 @@ function layoutStatus(message: string, busy = false): void {
   byId("layout-retry").hidden = busy;
   viewport.setAttribute("aria-busy", String(busy));
 }
-byId("layout-cancel").addEventListener("click", () => { renderSeq++; renderer.cancel(); layoutStatus("Layout cancelled. Retry when ready."); setStale(true); });
+byId("layout-cancel").addEventListener("click", () => { renderSeq++; analyzer.cancel(); renderer.cancel(); layoutStatus("Layout cancelled. Retry when ready."); setStale(true); });
 byId("layout-retry").addEventListener("click", () => void render());
 function modelForView(model: Model, current: SharedState): Model {
   let shown = model;
@@ -547,25 +568,18 @@ async function render(): Promise<void> {
   const seq = ++renderSeq;
   renderer.cancel();
   layoutStatus("");
-  const result = compile(state.code);
-  // The lint rules need resolved references, so they run only on a document that compiled
-  const findings = result.model ? lint(result.doc) : [];
-  editor.showDiagnostics([...result.diagnostics, ...findings]);
-  showProblems(result.diagnostics, findings);
-  if (!result.model) {
-    setStale(true);
-    return;
-  }
   try {
-    layoutStatus("Laying out the diagram…", true);
-    // With the live canvas the SVG carries only what sits on the glass; the canvas paints the rest
+    layoutStatus("Reading the schema…", true);
+    const result = await analyzer.analyze(state.code, state.base ?? null);
+    if (seq !== renderSeq) return;
+    editor.showDiagnostics([...result.diagnostics, ...result.findings]);
+    showProblems(result.diagnostics, result.findings);
+    if (!result.model) { layoutStatus(""); setStale(true); return; }
     const look = canvasLook();
-    // Comparing with a base version (from a link): draw what changed since it. A base that does not
-    // compile cannot be compared, and the document is drawn alone
-    const base = state.base !== null && state.base !== undefined ? compile(state.base).model : null;
-    const compared = base ? diff(base, result.model) : null;
-    const full = compared ? compared.model : result.model;
-    showCompare(compared?.changes ?? null);
+    // All live backgrounds use the same SVG ink for a given light/dark mode.
+    const svgLook = glass ? `aurora-${look.endsWith("dark") ? "dark" : "light"}` as SvgLook : look;
+    const full = result.model;
+    showCompare(result.changes);
     // The related view needs its table; when the table is renamed or removed, every table comes back
     if (state.related && !full.tables.some(t => t.name === state.related!.table)) {
       const legacy = full.tables.filter(t => t.label === state.related!.table);
@@ -576,17 +590,28 @@ async function render(): Promise<void> {
       save();
       scheduleHash();
     }
+    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.related, state.view, svgLook, glass === null]);
+    glass?.setLook(stageOf(look), glassOf(look));
+    if (key === mountedKey) {
+      layoutStatus(""); setStale(false);
+      if (fitNext) { panzoom.fit(); fitNext = false; }
+      return;
+    }
+    layoutStatus("Laying out the diagram…", true);
     const shown = modelForView(full, state);
-    const { svg, width, height, background, boxes } = await renderer.render(shown, {
+    if (mountedModelKey !== result.modelKey) mountedViews.clear();
+    const restored = mountedViews.get(key);
+    const rendered = restored ?? await renderer.render(shown, {
       columns: state.columns,
       audit: state.audit,
-      look,
+      look: svgLook,
       stage: glass === null,
       edges: state.edges,
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
     layoutStatus("");
+    const { width, height, background, boxes } = rendered;
     viewport.style.backgroundColor = background ?? "";
     glass?.setLook(stageOf(look), glassOf(look));
     lastModel = full;
@@ -594,7 +619,14 @@ async function render(): Promise<void> {
     const empty = shown.tables.length === 0;
     byId("empty").hidden = !empty;
     byId("empty").textContent = full.tables.length ? "No tables match this view. Use Reset view to see all tables." : "Add a table, or paste SQL, to see it here.";
-    content.innerHTML = empty ? "" : svg;
+    focus?.clear();
+    mountedViews.delete(key);
+    if (currentDiagram && mountedModelKey === result.modelKey) rememberView(mountedKey, currentDiagram);
+    if (restored) content.replaceChildren(...(restored.element ? [restored.element] : []));
+    else content.innerHTML = empty ? "" : (rendered as SvgResult).svg;
+    mountedKey = key;
+    mountedModelKey = result.modelKey;
+    tableElements = new Map([...content.querySelectorAll<SVGGElement>(".rz-t")].map(table => [table.dataset.t!, table]));
     panzoom.setSize(width, height);
     if (fitNext) {
       panzoom.fit();
@@ -602,7 +634,8 @@ async function render(): Promise<void> {
     }
     const drawn = content.querySelector("svg");
     // Rows open a popover on click; their native tooltips would only get in its way
-    for (const title of content.querySelectorAll(".rz-c > title")) title.remove();
+    if (!restored) for (const title of content.querySelectorAll(".rz-c > title")) title.remove();
+    currentDiagram = restored ?? { width, height, background, boxes, element: drawn, nodes: content.querySelectorAll("*").length };
     focus = drawn ? createFocus(drawn) : null;
     lastBoxes = empty ? [] : boxes;
     // Keep what was open, as long as it still exists
@@ -631,7 +664,8 @@ async function render(): Promise<void> {
 
 let renderTimer = 0;
 function scheduleRender(): void {
-  renderSeq++; // Invalidate a pending layout as soon as the document changes.
+  renderSeq++; // Invalidate pending work as soon as the document changes.
+  analyzer.cancel();
   renderer.cancel();
   clearTimeout(renderTimer);
   renderTimer = window.setTimeout(render, 120);
@@ -1275,10 +1309,10 @@ byId("workspace-open").addEventListener("click", () => workspace.show("Documents
 byId("view-reset").addEventListener("click", () => { state.view = {}; state.related = null; fitNext = true; save(); scheduleHash(); syncControls(); void render(); });
 byId("explore-open").addEventListener("click", () => workspace.show("Explore"));
 byId("edit-copy").addEventListener("click", () => {
-  openDocument(documents.create(`${documents.active.title} copy`, { ...state, reading: false }));
+  openDocument(documents.create(`${documents.activeInfo.title} copy`, { ...state, reading: false }));
   fold(false, false);
 });
-byId("download-source").addEventListener("click", () => saveFile(state.code, `${fileName(documents.active.title)}.erd`));
+byId("download-source").addEventListener("click", () => saveFile(state.code, `${fileName(documents.activeInfo.title)}.erd`));
 byId("download-png").addEventListener("click", async () => {
   const svg = await exportSvg(canvasLook());
   if (!svg) return;
@@ -1290,7 +1324,7 @@ byId("download-png").addEventListener("click", async () => {
     const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("PNG export is unavailable");
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error("PNG export failed")), "image/png"));
-    saveFile(blob, `${fileName(documents.active.title)}.png`, "image/png");
+    saveFile(blob, `${fileName(documents.activeInfo.title)}.png`, "image/png");
   } catch { toast("Could not create the PNG. Try SVG instead."); }
   finally { URL.revokeObjectURL(url); }
 });
@@ -1323,9 +1357,14 @@ window.addEventListener("hashchange", async () => {
   if (generation === hashGeneration && shared) await adopt(shared);
 });
 (async () => {
+  document.body.inert = true;
+  try {
+  try { await documents.connect(indexedDB); } catch { /* Local storage remains available when IndexedDB is blocked. */ }
   Object.assign(state, upgraded(documents.active.state));
-  const localVisit = history.state?.resinDocument === documents.active.id;
+  const localVisit = history.state?.resinDocument === documents.activeInfo.id;
   const shared = localVisit ? null : upgraded(await decode(location.hash));
+  document.body.inert = false;
   if (shared) await adopt(shared);
   else { editor.resetText(state.code); syncControls(); syncReading(); save(); await render(); }
+  } finally { document.body.inert = false; }
 })();
