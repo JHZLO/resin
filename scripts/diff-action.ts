@@ -1,149 +1,259 @@
-// Run by action.yml on a pull request: compare every resin file the pull request changes with its
-// version on the base branch, and keep one comment on the pull request that lists the changes, shows
-// them drawn, and links to both versions in the playground.
-//
-// The drawings have to live somewhere a comment can show them from, so they are committed to a
-// branch of their own (`resin-diff` by default) under pr-<number>/<head commit>/. Without write
-// access (a pull request from a fork) the comment keeps the list and the link and leaves the
-// drawings out. RESIN_DRY_RUN=<dir> writes the comment and the drawings to <dir> instead of GitHub.
+// Compare a pull request's resin files, publish drawings, and maintain its comparison comment.
+// RESIN_DRY_RUN=<dir> writes the same output locally without fetching or contacting GitHub.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import ELK from "elkjs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { encode } from "../playground/share.ts";
 import { type SvgLook, compile, diff, diffMarkdown, toSvg } from "../src/index.ts";
 
-const MARKER = "<!-- resin-diff -->";
-const env = process.env;
-const input = (name: string, fallback: string): string => env[`INPUT_${name.toUpperCase()}`] || fallback;
+export const MARKER = "<!-- resin-diff -->";
+const LOOKS: readonly string[] = ["graphite", "aurora-dark", "aurora-light", "silk-dark", "silk-light", "caustic-dark", "caustic-light"];
+export type Git = (...args: string[]) => string;
+export type GitFactory = (cwd: string, token?: string) => Git;
+export type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
-const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH ?? "", "utf8"));
-const pr = event.pull_request;
-if (!pr) {
-  console.log("resin diff: not a pull request event, nothing to compare");
-  process.exit(0);
-}
-const repo = env.GITHUB_REPOSITORY ?? "";
-const token = input("token", "");
-const branch = input("branch", "resin-diff");
-const playground = input("playground", "https://jhzlo.github.io/resin/playground/");
-const look = input("look", "graphite") as SvgLook;
-const pathspecs = input("files", "*.erd").split(/\s+/).filter(Boolean);
-const dryRun = env.RESIN_DRY_RUN;
-
-const git = (...args: string[]): string => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-/** A file at a commit, or "" when it does not exist there (added or deleted by the pull request) */
-const show = (commit: string, path: string): string => {
-  try {
-    return git("show", `${commit}:${path}`);
-  } catch {
-    return "";
-  }
+export const gitAt: GitFactory = (cwd, token) => (...args) => {
+  // Keep credentials out of remote URLs, git config files and command errors.
+  const auth = token ? {
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
+  } : {};
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...auth, GIT_TERMINAL_PROMPT: "0" } });
 };
 
-const base: string = pr.base.sha;
-const head: string = pr.head.sha;
-if (!dryRun) for (const commit of [base, head]) git("fetch", "--no-tags", "--depth=1", "origin", commit);
-const files = git("diff", "--name-only", base, head, "--", ...pathspecs).split("\n").filter(Boolean);
-if (files.length === 0) {
-  console.log("resin diff: the pull request changes no resin file");
-  process.exit(0);
+export interface ChangedFile {
+  before: string | null;
+  after: string | null;
 }
 
-interface Result {
+/** NUL delimiters preserve every Git path, including spaces, Unicode and newlines. */
+export function changedFiles(git: Git, base: string, head: string, pathspecs: string[]): ChangedFile[] {
+  const fields = git("diff", "--name-status", "-z", "--find-renames", base, head, "--", ...pathspecs).split("\0");
+  const files: ChangedFile[] = [];
+  for (let i = 0; i < fields.length - 1;) {
+    const status = fields[i++];
+    const path = fields[i++];
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const after = fields[i++];
+      files.push({ before: status.startsWith("R") ? path : null, after });
+    } else files.push({ before: status === "A" ? null : path, after: status === "D" ? null : path });
+  }
+  return files;
+}
+
+export interface Result {
   file: string;
+  previous: string | null;
   markdown: string;
   svg: string | null;
   link: string;
 }
-const elk = new ELK();
-const results: Result[] = [];
-for (const file of files) {
-  const before = show(base, file);
-  const after = show(head, file);
-  const a = compile(before);
-  const b = compile(after);
-  const link = playground + (await encode({ code: after, base: before, columns: "all", audit: "collapse", edges: "angular", related: null }));
-  if (!a.model || !b.model) {
-    const which = !b.model ? "the head version" : "the base version";
-    results.push({ file, markdown: `Not compared: ${which} has errors. Run \`resin ${file}\` to see them.\n`, svg: null, link });
-    continue;
+
+export async function compareFiles(git: Git, base: string, head: string, files: ChangedFile[], playground: string, look: SvgLook): Promise<Result[]> {
+  // The composite action installs its renderer in runner.temp, without replacing the caller's dependencies.
+  const module = process.env.RESIN_ELK_MODULE ? pathToFileURL(process.env.RESIN_ELK_MODULE).href : "elkjs";
+  const { default: ELK } = await import(module);
+  const elk = new ELK();
+  const results: Result[] = [];
+  for (const paths of files) {
+    // Only an added or deleted path is an empty schema. A failed read must not look like a deletion.
+    const before = paths.before === null ? "" : git("show", `${base}:${paths.before}`);
+    const after = paths.after === null ? "" : git("show", `${head}:${paths.after}`);
+    const file = paths.after ?? paths.before!;
+    const a = compile(before);
+    const b = compile(after);
+    const url = new URL(playground);
+    url.hash = await encode({ code: after, base: before, columns: "all", audit: "collapse", edges: "angular", related: null });
+    const shared = { file, previous: paths.before !== file ? paths.before : null, link: url.href };
+    if (!a.model || !b.model) {
+      const which = !b.model ? "the head version" : "the base version";
+      results.push({ ...shared, markdown: `Not compared: ${which} has errors. Run resin on this file to see them.\n`, svg: null });
+      continue;
+    }
+    const changed = diff(a.model, b.model);
+    const svg = changed.changes.length ? (await toSvg(changed.model, elk, { look, standalone: true })).svg + "\n" : null;
+    results.push({ ...shared, markdown: diffMarkdown(changed.changes), svg });
   }
-  const changed = diff(a.model, b.model);
-  const svg = changed.changes.length ? (await toSvg(changed.model, elk, { look, standalone: true })).svg + "\n" : null;
-  results.push({ file, markdown: diffMarkdown(changed.changes), svg, link });
+  return results;
 }
 
-/** Commit the drawings to the drawings branch; returns the address of each, or null without write access */
-function publish(): Map<string, string> | null {
-  const drawings = results.filter((r) => r.svg);
-  if (!drawings.length) return new Map();
-  const dir = `pr-${pr.number}/${head.slice(0, 7)}`;
-  const urls = new Map(drawings.map((r) => [r.file, `https://github.com/${repo}/raw/${branch}/${dir}/${encodeURI(r.file)}.svg`]));
-  if (dryRun) {
-    for (const r of drawings) {
-      const path = join(dryRun, dir, `${r.file}.svg`);
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, r.svg!);
-    }
-    return urls;
-  }
+export interface Drawing {
+  path: string;
+  svg: string;
+}
+
+/** Replay our files on the newest branch after a concurrent writer wins a push. */
+export function publishDrawings(remote: string, branch: string, drawings: Drawing[], message: string, token?: string, makeGit: GitFactory = gitAt): void {
+  if (!drawings.length) return;
+  const work = mkdtempSync(join(tmpdir(), "resin-diff-"));
   try {
-    const work = mkdtempSync(join(tmpdir(), "resin-diff-"));
-    const remote = `https://x-access-token:${token}@github.com/${repo}.git`;
-    const at = (...args: string[]) => execFileSync("git", args, { cwd: work, stdio: "pipe" });
-    at("init", "-q");
-    at("remote", "add", "origin", remote);
-    try {
-      at("fetch", "-q", "--depth=1", "origin", branch);
-      at("checkout", "-q", "-b", branch, "FETCH_HEAD");
-    } catch {
-      at("checkout", "-q", "--orphan", branch);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const dir = join(work, String(attempt));
+      mkdirSync(dir);
+      const git = makeGit(dir, token);
+      git("init", "-q");
+      git("remote", "add", "origin", remote);
+      const ref = `refs/heads/${branch}`;
+      const remoteHead = () => git("ls-remote", "--heads", "origin", ref).split(/\s/)[0];
+      const start = remoteHead();
+      if (start) {
+        git("fetch", "-q", "--depth=1", "origin", ref);
+        git("checkout", "-q", "-b", "drawings", "FETCH_HEAD");
+      } else git("checkout", "-q", "--orphan", "drawings");
+      for (const drawing of drawings) {
+        const path = join(dir, drawing.path);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, drawing.svg);
+      }
+      git("add", "-A");
+      // An identical rerun already has usable drawings; do not attempt an empty commit.
+      if (!git("diff", "--cached", "--name-only", "-z")) return;
+      git("-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com", "commit", "-q", "-m", message);
+      try {
+        git("push", "-q", "origin", `HEAD:${ref}`);
+        return;
+      } catch (error) {
+        if (attempt === 2 || remoteHead() === start) throw error;
+      }
     }
-    for (const r of drawings) {
-      const path = join(work, dir, `${r.file}.svg`);
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, r.svg!);
-    }
-    at("add", "-A");
-    at("-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com", "commit", "-q", "-m", `Drawings for pull request #${pr.number}`);
-    at("push", "-q", "origin", branch);
-    return urls;
-  } catch (e) {
-    console.log(`::warning::resin diff: could not commit the drawings to ${branch} (${(e as Error).message.split("\n")[0]}); the comment leaves them out`);
-    return null;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
   }
 }
 
-const urls = publish();
-const sections = results.map((r) => {
-  const parts = [`### \`${r.file}\``, "", r.markdown.trim()];
-  const url = urls?.get(r.file);
-  if (url) parts.push("", `![Schema changes in ${r.file}](${url})`);
-  parts.push("", `[Open both versions in the playground](${r.link})`);
-  return parts.join("\n");
-});
-const body = [MARKER, "## Schema changes", "", ...sections.flatMap((s) => [s, ""]), "<sub>Drawn by resin from the base and head versions of each file.</sub>", ""].join("\n");
+const escapeHtml = (value: string): string => value.replace(/[&<>"'\r\n]/g, (c) => `&#${c.charCodeAt(0)};`);
+const urlPath = (value: string): string => value.split("/").map((part) => encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join("/");
 
-if (dryRun) {
-  mkdirSync(dryRun, { recursive: true });
-  writeFileSync(join(dryRun, "comment.md"), body);
-  console.log(`resin diff: wrote the comment and ${results.filter((r) => r.svg).length} drawings to ${dryRun}`);
-  process.exit(0);
+export function drawingUrl(repo: string, branch: string, path: string): string {
+  return `https://github.com/${urlPath(repo)}/raw/refs/heads/${urlPath(branch)}/${urlPath(path)}`;
 }
 
-// One comment per pull request: find the one with the marker and rewrite it, or start it
-const api = async (path: string, init: RequestInit = {}): Promise<Response> =>
-  fetch(`https://api.github.com/repos/${repo}${path}`, {
+export function commentBody(results: Result[], urls: Map<string, string>): string {
+  const sections = results.map((r) => {
+    const parts = [`### <code>${escapeHtml(r.file)}</code>`, ""];
+    if (r.previous) parts.push(`Renamed from <code>${escapeHtml(r.previous)}</code>.`, "");
+    parts.push(r.markdown.trim());
+    const url = urls.get(r.file);
+    if (url) parts.push("", `![Schema changes](<${url}>)`);
+    parts.push("", `[Open both versions in the playground](<${r.link}>)`);
+    return parts.join("\n");
+  });
+  if (!sections.length) sections.push("No changes to the selected schema files.");
+  return [MARKER, "## Schema changes", "", ...sections.flatMap((s) => [s, ""]), "<sub>Drawn by resin from the base and head versions of each file.</sub>", ""].join("\n");
+}
+
+interface Comment {
+  id: number;
+  body?: string;
+  user?: { login?: string };
+}
+
+/** List every page and only edit a comment written by this token's user or the Actions bot. */
+export async function updateComment(api: Api, repo: string, number: number, body: string, hasFiles: boolean): Promise<"created" | "updated" | "skipped"> {
+  const identity = await api("/user");
+  // The workflow's installation token cannot call /user; its comments belong to this bot.
+  let author = "github-actions[bot]";
+  if (identity.ok) {
+    const user = await identity.json() as { login?: string };
+    if (!user.login) throw new Error("the token did not identify a comment author");
+    author = user.login;
+  } else if (identity.status !== 403 && identity.status !== 404) throw new Error(`cannot identify the comment author (${identity.status})`);
+  const root = `/repos/${repo}`;
+  let mine: Comment | undefined;
+  for (let page = 1; ; page++) {
+    const response = await api(`${root}/issues/${number}/comments?per_page=100&page=${page}`);
+    if (!response.ok) throw new Error(`cannot read PR comments (${response.status}); check pull-requests: read`);
+    const comments = await response.json() as Comment[];
+    if (!Array.isArray(comments)) throw new Error("the comments response is not a list");
+    mine = comments.find((c) => c.user?.login?.toLowerCase() === author.toLowerCase() && c.body?.startsWith(MARKER));
+    if (mine || comments.length < 100) break;
+  }
+  if (!mine && !hasFiles) return "skipped";
+  if (mine?.body === body) return "skipped";
+  const path = mine ? `${root}/issues/comments/${mine.id}` : `${root}/issues/${number}/comments`;
+  const sent = await api(path, { method: mine ? "PATCH" : "POST", body: JSON.stringify({ body }) });
+  if (!sent.ok) {
+    const hint = sent.status === 401 || sent.status === 403
+      ? "grant pull-requests: write. Fork workflows may not receive write permissions"
+      : "check the comment size and GitHub API availability";
+    throw new Error(`cannot write the PR comment (${sent.status}); ${hint}`);
+  }
+  return mine ? "updated" : "created";
+}
+
+async function main(): Promise<void> {
+  const env = process.env;
+  const input = (name: string, fallback: string): string => env[`INPUT_${name.toUpperCase()}`] || fallback;
+  const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH ?? "", "utf8"));
+  const pr = event.pull_request;
+  if (!pr) {
+    console.log("resin diff: not a pull request event, nothing to compare");
+    return;
+  }
+  const repo = env.GITHUB_REPOSITORY ?? "";
+  const token = input("token", "");
+  const branch = input("branch", "resin-diff");
+  const playground = input("playground", "https://jhzlo.github.io/resin/playground/");
+  const look = input("look", "graphite");
+  if (!LOOKS.includes(look)) throw new Error(`unknown look ${look}`);
+  if (!["https:", "http:"].includes(new URL(playground).protocol)) throw new Error("playground must be an HTTP or HTTPS URL");
+  const selection = input("files", "*.erd");
+  const pathspecs = (selection.includes("\n") ? selection.split(/\r?\n/).map((s) => s.trim()) : selection.split(/\s+/)).filter(Boolean);
+  const dryRun = env.RESIN_DRY_RUN;
+  const git = gitAt(process.cwd());
+  git("check-ref-format", "--branch", branch);
+  const base: string = pr.base.sha;
+  const head: string = pr.head.sha;
+  if (!dryRun) for (const commit of [base, head]) git("fetch", "--no-tags", "--depth=1", "origin", commit);
+  const files = changedFiles(git, base, head, pathspecs);
+  const results = await compareFiles(git, base, head, files, playground, look as SvgLook);
+  const dir = `pr-${pr.number}/${head}`;
+  const drawings = results.filter((r) => r.svg).map((r) => ({ path: `${dir}/${r.file}.svg`, svg: r.svg! }));
+  let urls = new Map(results.filter((r) => r.svg).map((r) => [r.file, drawingUrl(repo, branch, `${dir}/${r.file}.svg`)]));
+  if (dryRun) {
+    for (const drawing of drawings) {
+      const path = join(dryRun, drawing.path);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, drawing.svg);
+    }
+  } else {
+    try {
+      publishDrawings(`https://github.com/${repo}.git`, branch, drawings, `Drawings for pull request #${pr.number}`, token);
+    } catch {
+      console.log("::warning::resin diff: could not publish drawings; grant contents: write or check the drawings branch. The comparison keeps the list and playground links");
+      urls = new Map();
+    }
+  }
+  const body = commentBody(results, urls);
+  if (dryRun) {
+    mkdirSync(dryRun, { recursive: true });
+    writeFileSync(join(dryRun, "comment.md"), body);
+    console.log(`resin diff: wrote the comment and ${drawings.length} drawings to ${dryRun}`);
+    return;
+  }
+  // Fork tokens can lack both permissions. The job summary still provides the complete comparison.
+  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, body + "\n");
+  const api: Api = (path, init = {}) => fetch(`https://api.github.com${path}`, {
     ...init,
     headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" },
   });
-const comments = (await (await api(`/issues/${pr.number}/comments?per_page=100`)).json()) as { id: number; body?: string }[];
-const mine = Array.isArray(comments) ? comments.find((c) => c.body?.startsWith(MARKER)) : undefined;
-const sent = mine
-  ? await api(`/issues/comments/${mine.id}`, { method: "PATCH", body: JSON.stringify({ body }) })
-  : await api(`/issues/${pr.number}/comments`, { method: "POST", body: JSON.stringify({ body }) });
-if (!sent.ok) console.log(`::warning::resin diff: could not write the comment (${sent.status} ${sent.statusText})`);
-else console.log(`resin diff: ${mine ? "updated" : "wrote"} the comment on pull request #${pr.number}`);
+  try {
+    const result = await updateComment(api, repo, pr.number, body, files.length > 0);
+    console.log(`resin diff: ${result} the comparison comment on pull request #${pr.number}`);
+  } catch (error) {
+    console.log(`::warning::resin diff: ${(error as Error).message}. Read the comparison in the job summary`);
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`::error::resin diff: ${(error as Error).message.split("\n")[0]}`);
+    process.exitCode = 1;
+  }
+}

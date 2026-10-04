@@ -8,6 +8,20 @@ the grammar; the parser then points old syntax at its new form.
 
 The first public version of the language, grammar v0.2.
 
+### Fixed
+
+- Preserve qualified SQL targets and quoted names; report ambiguous or unsupported imports.
+- Include reference cardinality and optionality changes in schema comparisons.
+- Restore shared view options and empty comparison bases, validate saved state, and export the current source.
+- Keep table panels open on repeated clicks, reveal folded columns, and restore focus after search.
+- Fit large diagrams, handle interrupted touch gestures, and restore the glass canvas after context loss.
+- Handle CLI usage errors and make PR comparisons safe to rerun, including renamed files and restricted tokens.
+
+### Quality checks
+
+- Browser regression tests for Chromium, Firefox and WebKit, plus 10, 100 and 500-table load cases.
+- CI checks on Node 22.18 and 24. Browser workflows and source checks must pass before Pages deployment.
+
 ### Added
 
 - The resin language: tables with `name type[?] modifiers` columns, `pk`, `uk`, `enc`, `enum(...)`,

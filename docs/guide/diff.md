@@ -78,7 +78,9 @@ resin is also a GitHub Action. On a pull request that changes `.erd` files, it c
 name: Schema diff
 on:
   pull_request:
-    paths: ["**/*.erd"]
+concurrency:
+  group: resin-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 permissions:
   contents: write        # to commit the drawings
   pull-requests: write   # to comment
@@ -90,11 +92,17 @@ jobs:
       - uses: JHZLO/resin@main
 ```
 
-A comment can only show a picture from an address, so the action commits the drawings to a branch of their own, `resin-diff`, under the pull request's number and head commit. Without permission to write it, as on a pull request from a fork, the comment keeps the list and the link and leaves the drawings out.
+A comment can only show a picture from an address, so the action commits the drawings to a branch of their own, `resin-diff`, under the pull request's number and full head commit. An identical rerun keeps the existing drawings. If another pull request pushes first, the action retries on the updated branch without replacing its drawings.
+
+Run the workflow on every pull request update, including one that reverts all schema changes. The action then clears the old comparison in its existing comment; it does not create a comment for a pull request with no matching files. It searches every page of comments and only updates one written by the workflow bot or the authenticated personal access token's user. The concurrency group prevents an older run for the same pull request from posting after a newer one.
+
+Files may be added, deleted or renamed. A rename compares the original path with its new path, so a name change alone does not report every table as new. Paths containing spaces, Unicode or punctuation are supported. A failed file read fails the action instead of being treated as an empty schema.
+
+The comparison is also written to the workflow's job summary. If the token cannot write the drawings branch, the comment keeps the list and the playground links. If it cannot write the comment either, the action reports the missing permission and the job summary remains available. Fork pull requests commonly lack both write permissions; they do not receive a comment with the default read-only token.
 
 | Input | What it does | Default |
 |---|---|---|
-| `files` | Git pathspecs of the files to compare | `*.erd` |
+| `files` | Git pathspecs separated by spaces, or one per line in a YAML block for paths containing spaces | `*.erd` |
 | `look` | The look of the drawings | `graphite` |
 | `branch` | The branch the drawings are committed to | `resin-diff` |
 | `playground` | The playground the link opens | resin's own |

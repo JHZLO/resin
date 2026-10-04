@@ -1,10 +1,12 @@
 name: Schema diff
 
-# On a pull request that changes a resin file, comment with what changed, drawn. This repository
-# runs its own action (action.yml); another repository uses `JHZLO/resin@main` the same way.
+# Also run after changes are reverted, so an existing comment cannot show an obsolete comparison.
 on:
   pull_request:
-    paths: ["**/*.erd"]
+
+concurrency:
+  group: resin-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: write

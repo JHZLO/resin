@@ -7,7 +7,7 @@ branding:
 
 inputs:
   files:
-    description: Git pathspecs of the files to compare, separated by spaces
+    description: Git pathspecs separated by spaces, or one per line for paths containing spaces
     default: "*.erd"
   look:
     description: The look of the drawings (graphite, aurora-dark, aurora-light, ...)
@@ -28,15 +28,14 @@ runs:
     - uses: actions/setup-node@v7
       with:
         node-version: 24
-    # The drawing needs elkjs and nothing else; install it beside the action instead of every
-    # development dependency
+    # Keep the renderer isolated from the caller's node_modules and development dependencies.
     - shell: bash
       run: |
         npm install --silent --no-audit --no-fund --prefix "$RUNNER_TEMP/resin-deps" elkjs@0.12.0
-        ln -sfn "$RUNNER_TEMP/resin-deps/node_modules" "$GITHUB_ACTION_PATH/node_modules"
     - shell: bash
       run: node "$GITHUB_ACTION_PATH/scripts/diff-action.ts"
       env:
+        RESIN_ELK_MODULE: ${{ runner.temp }}/resin-deps/node_modules/elkjs/lib/elk.bundled.js
         INPUT_FILES: ${{ inputs.files }}
         INPUT_LOOK: ${{ inputs.look }}
         INPUT_BRANCH: ${{ inputs.branch }}

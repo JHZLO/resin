@@ -25,6 +25,9 @@ usage: resin <file.erd> [options]
   diff             draw <after.erd> with what changed since <before.erd>
                    marked: added, removed, changed. The drawing options apply
     --markdown     print the list of changes as Markdown instead
+
+  --help           print this help and exit
+  --               treat the remaining arguments as file names
 ```
 
 ## Output
@@ -38,6 +41,10 @@ pnpm resin schema.erd --model > schema.json
 ```
 
 The SVG is ready to embed with `<img>`: with the default look it picks its ink color from the reader's light or dark theme.
+
+An error leaves standard output empty, including with `--model` and `--ast`. `--help` prints the usage to standard output and exits successfully without a file. Use `--` before a file name that starts with `-`.
+
+Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint` or `--from-sql`, or omit them for SVG. Drawing options require SVG output; `--keys` and `--names` cannot be combined. `--markdown` requires `diff`, and `--infer-refs` requires `--from-sql`.
 
 ## Lint
 
@@ -76,6 +83,6 @@ examples/sql/postgres.sql:68:5: note: table `order_items`: not converted: compos
 
 | Status | When |
 |---|---|
-| `0` | The file compiled, possibly with warnings |
-| `1` | There was at least one error; nothing was printed but the problems. With `--lint`: also a lint finding. With `--from-sql`: the file creates no table |
-| `2` | The command was wrong: no file, or an unknown look |
+| `0` | The file compiled, possibly with warnings, or help was requested |
+| `1` | A file could not be read, an error occurred, or rendering failed; standard output is empty. With `--lint`: also a lint finding. With `--from-sql`: the file creates no table |
+| `2` | Invalid arguments: missing or extra files, unknown options or looks, or conflicting modes |
