@@ -15,6 +15,21 @@ export type Git = (...args: string[]) => string;
 export type GitFactory = (cwd: string, token?: string) => Git;
 export type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
+/** Use the PR's common ancestor so newer base-branch changes do not appear as removals. */
+export async function comparisonBase(git: Git, base: string, head: string, remote?: { api: Api; repo: string }): Promise<string> {
+  const sha = /^[a-f0-9]{40}$/i;
+  if (!sha.test(base) || !sha.test(head)) throw new Error("the pull request has invalid commit IDs");
+  let ancestor: unknown;
+  if (remote) {
+    // GitHub has the full graph even when checkout only fetched the PR's latest commit.
+    const response = await remote.api(`/repos/${remote.repo}/compare/${base}...${head}`);
+    if (!response.ok) throw new Error(`cannot resolve the PR merge base (${response.status})`);
+    ancestor = (await response.json() as { merge_base_commit?: { sha?: string } }).merge_base_commit?.sha;
+  } else ancestor = git("merge-base", base, head).trim();
+  if (typeof ancestor !== "string" || !sha.test(ancestor)) throw new Error("the PR merge base is missing or invalid");
+  return ancestor;
+}
+
 export const gitAt: GitFactory = (cwd, token) => (...args) => {
   // Keep credentials out of remote URLs, git config files and command errors.
   const auth = token ? {
@@ -206,8 +221,12 @@ async function main(): Promise<void> {
   const dryRun = env.RESIN_DRY_RUN;
   const git = gitAt(process.cwd());
   git("check-ref-format", "--branch", branch);
-  const base: string = pr.base.sha;
   const head: string = pr.head.sha;
+  const api: Api = (path, init = {}) => fetch(`https://api.github.com${path}`, {
+    ...init,
+    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" },
+  });
+  const base = await comparisonBase(git, pr.base.sha, head, dryRun ? undefined : { api, repo });
   if (!dryRun) for (const commit of [base, head]) git("fetch", "--no-tags", "--depth=1", "origin", commit);
   const files = changedFiles(git, base, head, pathspecs);
   const results = await compareFiles(git, base, head, files, playground, look as SvgLook);
@@ -237,10 +256,6 @@ async function main(): Promise<void> {
   }
   // Fork tokens can lack both permissions. The job summary still provides the complete comparison.
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, body + "\n");
-  const api: Api = (path, init = {}) => fetch(`https://api.github.com${path}`, {
-    ...init,
-    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" },
-  });
   try {
     const result = await updateComment(api, repo, pr.number, body, files.length > 0);
     console.log(`resin diff: ${result} the comparison comment on pull request #${pr.number}`);

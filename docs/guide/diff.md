@@ -72,7 +72,9 @@ A column changes when its type, nullability, keys, encryption, enum values, inde
 
 ## On pull requests
 
-resin is also a GitHub Action. On a pull request that changes `.erd` files, it compares each one with its version on the base branch and keeps one comment on the pull request up to date: the list of changes, the drawing, and a link that opens both versions in the playground.
+resin is also a GitHub Action. On a pull request that changes `.erd` files, it compares the common ancestor of the base and head commits with the head commit. Later changes on the base branch do not appear as removals in the pull request. It keeps one comment up to date: the list of changes, the drawing, and a link that opens both versions in the playground.
+
+The action resolves the common ancestor through GitHub's Compare API, so a shallow checkout works. If it cannot resolve that commit, it fails instead of comparing against a different baseline. Offline runs with `RESIN_DRY_RUN` use `git merge-base` and need the local commit history.
 
 ```yaml
 name: Schema diff

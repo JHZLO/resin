@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { MARKER, type Api, type Git, type GitFactory, changedFiles, commentBody, compareFiles, drawingUrl, gitAt, publishDrawings, updateComment } from "../scripts/diff-action.ts";
+import { MARKER, type Api, type Git, type GitFactory, changedFiles, commentBody, compareFiles, comparisonBase, drawingUrl, gitAt, publishDrawings, updateComment } from "../scripts/diff-action.ts";
 import { decode } from "../playground/share.ts";
 
 const dirs: string[] = [];
@@ -33,6 +33,43 @@ const remote = () => {
 };
 
 describe("pull request file comparison", () => {
+  it("excludes newer base-branch schema changes from a divergent pull request", async () => {
+    const { dir, git } = repo();
+    writeFileSync(join(dir, "schema.erd"), SCHEMA);
+    const ancestor = commit(git, "shared ancestor");
+    writeFileSync(join(dir, "base-only.erd"), SCHEMA);
+    const base = commit(git, "base branch advances");
+    git("checkout", "-q", "-b", "pull-request", ancestor);
+    writeFileSync(join(dir, "schema.erd"), SCHEMA.replace("id bigint pk", "id bigint pk\n  name text"));
+    const head = commit(git, "PR changes");
+    const resolved = await comparisonBase(git, base, head);
+    expect(resolved).toBe(ancestor);
+    const files = changedFiles(git, resolved, head, ["*.erd"]);
+    expect(files).toEqual([{ before: "schema.erd", after: "schema.erd" }]);
+    const [result] = await compareFiles(git, resolved, head, files, "https://example.invalid/", "graphite");
+    expect(result.markdown).toContain("column `name` added");
+    expect(result.markdown).not.toContain("removed");
+  });
+
+  it("uses GitHub's full commit graph when the checkout is shallow", async () => {
+    const base = "a".repeat(40), head = "b".repeat(40), ancestor = "c".repeat(40);
+    const git: Git = () => { throw new Error("local graph is shallow"); };
+    const api: Api = async path => {
+      expect(path).toBe(`/repos/owner/repo/compare/${base}...${head}`);
+      return response({ merge_base_commit: { sha: ancestor } });
+    };
+    expect(await comparisonBase(git, base, head, { api, repo: "owner/repo" })).toBe(ancestor);
+  });
+
+  it("fails without silently substituting the base tip when the common ancestor is unavailable", async () => {
+    const git: Git = () => { throw new Error("must not use the local shallow graph"); };
+    for (const value of [{}, { merge_base_commit: { sha: "invalid" } }]) {
+      await expect(comparisonBase(git, "a".repeat(40), "b".repeat(40), { api: async () => response(value), repo: "owner/repo" })).rejects.toThrow("the PR merge base is missing or invalid");
+    }
+    await expect(comparisonBase(git, "a".repeat(40), "b".repeat(40), { api: async () => response({}, 403), repo: "owner/repo" })).rejects.toThrow("cannot resolve the PR merge base (403)");
+    await expect(comparisonBase(git, "invalid", "b".repeat(40))).rejects.toThrow("the pull request has invalid commit IDs");
+  });
+
   it("runs the real action offline with a multiline path selection", () => {
     const { dir, git } = repo();
     writeFileSync(join(dir, "schema with spaces.erd"), SCHEMA);
