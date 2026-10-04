@@ -22,10 +22,13 @@ test("keeps named documents across examples and reloads without undoing into an 
   await page.getByRole("dialog", { name: "Schema workspace" }).getByRole("button", { name: "Close", exact: true }).click();
   await page.locator("#example").selectOption("shop");
   await expect(page.locator("#document-name")).toHaveText("shop.erd");
+  await expect(page.locator("#layout-status")).toBeHidden();
+  await expect(page.locator("#content .rz-t")).toHaveCount(13);
   await workspace(page, "Documents");
   await page.locator(".workspace-list .workspace-actions").filter({ hasText: "Billing" }).getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.locator("#content .rz-t")).toHaveCount(2);
   await expect(page.locator("#document-name")).toHaveText("Billing");
+  await expect(page.locator("#save-status")).toHaveText("Saved locally");
   await page.reload();
   await expect(page.locator("#content .rz-t")).toHaveCount(2);
   await page.locator(".cm-content").click(); await page.keyboard.press("ControlOrMeta+z");
