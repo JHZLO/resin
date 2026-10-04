@@ -138,6 +138,39 @@ test("follows key references and switches the related neighborhood", async ({ pa
   await expect(page.locator('#content .rz-t[data-t="users"]')).toHaveClass(/is-on/);
 });
 
+for (const table of ["users", "customer_accounts_with_a_very_long_service_qualified_table_name".repeat(3)]) {
+  test(`keeps related controls separate and reachable with ${table === "users" ? "short" : "long"} names`, async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 850 });
+    const code = schema.replaceAll("users", table);
+    await page.goto(`/playground/${await encode(shared(code, { related: { table, steps: 1 }, reading: true }))}`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#content .rz-t")).toHaveCount(2);
+
+    for (const width of [1000, 1440, 375]) {
+      await page.setViewportSize({ width, height: 850 });
+      await expect.poll(() => page.evaluate(() => {
+        const view = document.querySelector(".float.view")!.getBoundingClientRect();
+        const related = document.querySelector("#related-pill")!.getBoundingClientRect();
+        const viewport = document.querySelector("#viewport")!.getBoundingClientRect();
+        const separate = related.top >= view.bottom + 4 || related.left >= view.right + 8;
+        const contained = related.left >= viewport.left + 12 && related.right <= viewport.right - 12;
+        const reachable = [...document.querySelectorAll("#related-pill button")].every(button => {
+          const box = button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        });
+        return separate && contained && reachable;
+      })).toBe(true);
+      await page.locator('[data-steps="2"]').click();
+      await expect(page.locator("#content .rz-t")).toHaveCount(3);
+      await page.locator('[data-steps="1"]').click();
+      await expect(page.locator("#content .rz-t")).toHaveCount(2);
+    }
+
+    await page.locator("#related-all").click();
+    await expect(page.locator("#related-pill")).toBeHidden();
+    await expect(page.locator("#content .rz-t")).toHaveCount(4);
+  });
+}
+
 test("reveals a folded column selected from the table panel", async ({ page }) => {
   await open(page);
   await page.locator('.rz-t[data-t="users"] .rz-head').click();

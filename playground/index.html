@@ -390,12 +390,14 @@ button { cursor: pointer; }
 .pal-empty { margin: 0; padding: 14px 14px 12px; font-size: 12.5px; color: var(--muted); }
 .pal-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 7px 12px; border-top: 1px solid var(--rule); font-size: 11.5px; color: var(--faint); }
 /* related tables only: a pill says what is shown, how far it reaches and how to go back */
-.float.related { left: 50%; top: 12px; translate: -50% 0; gap: 6px; padding: 3px 3px 3px 10px; }
+.float.related { left: 50%; top: 12px; translate: -50% 0; width: max-content; max-width: calc(100% - 24px); gap: 6px; padding: 3px 3px 3px 10px; }
 .panel[data-pill="below"] .float.related { left: 12px; top: 52px; translate: none; }
-.related-text { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.related-text { display: inline-flex; align-items: center; min-width: 0; gap: 7px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+#related-text { overflow: hidden; text-overflow: ellipsis; }
 .related-text svg { width: 15px; height: 15px; flex: none; }
 .related-text b { color: var(--ink); font-family: var(--font-mono); font-weight: 500; }
 .float.related button { white-space: nowrap; }
+.float.related > :not(.related-text) { flex-shrink: 0; }
 /* where the floating controls drop their labels, the pill says "orders +6" */
 .float.related .label-short { display: none; }
 .panel:is([data-room="snug"], [data-room="tight"]) .float.related .label-short { display: inline; }

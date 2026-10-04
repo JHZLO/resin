@@ -416,6 +416,8 @@ function revealRow(table: string, column: string, animate = true): void {
 // ---- the side panel's width, and the canvas it leaves ----
 
 const zoomFloat = viewport.querySelector<HTMLElement>(".float.zoom")!;
+const viewFloat = viewport.querySelector<HTMLElement>(".float.view")!;
+const relatedFloat = byId("related-pill");
 const resizer = byId("inspector-resize");
 const PANEL_MIN = 360;
 let panelWidth = 560;
@@ -457,8 +459,10 @@ function fitFloats(): void {
   const free = viewport.clientWidth - (inspector.hidden ? 0 : inspector.offsetWidth);
   const room = free < 350 ? "tight" : free < 520 ? "snug" : "";
   if ((diagramPanel.dataset.room ?? "") !== room) diagramPanel.dataset.room = room;
-  // The related pill sits in the middle of the top edge, unless the view options would run into it
-  const pill = !inspector.hidden || free < 860 ? "below" : "";
+  // Names and loaded fonts change control widths even when the canvas stays the same size.
+  const centeredLeft = (viewport.clientWidth - relatedFloat.offsetWidth) / 2;
+  const viewRight = viewFloat.offsetLeft + viewFloat.offsetWidth;
+  const pill = !inspector.hidden || centeredLeft < viewRight + 8 ? "below" : "";
   if ((diagramPanel.dataset.pill ?? "") !== pill) diagramPanel.dataset.pill = pill;
 }
 
@@ -496,6 +500,9 @@ new ResizeObserver(() => {
   fitFloats();
   placePop();
 }).observe(viewport);
+const controlResize = new ResizeObserver(fitFloats);
+controlResize.observe(viewFloat);
+controlResize.observe(relatedFloat);
 applyPanelWidth();
 
 /** Under its row, or above it when there is no room below; hidden while the row is out of view.

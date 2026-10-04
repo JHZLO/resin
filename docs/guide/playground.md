@@ -48,6 +48,8 @@ Find a table, in the diagram's header, or Ctrl or Cmd + K opens a search over th
 
 Related only, in a table's side panel, draws just that table and the tables its references join it to, laid out again to fit. A pill at the top of the canvas names the table, says how many tables are with it and switches between 1 step (the tables it references and the ones referencing it) and 2 steps (their neighbors too). Show all, or Esc once the panel is closed, brings every table back.
 
+The related controls move below the view options when both groups cannot fit on one row. Long table names shorten with an ellipsis so the step controls and Show all remain visible on narrow screens.
+
 Following a reference in the side panel to a table the view leaves out moves the view to that table, so you can walk a large schema one table at a time. The header counts what is shown, as in `7 of 13 tables`.
 
 ## Exploration tools

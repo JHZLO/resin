@@ -18,6 +18,7 @@ The first public version of the language, grammar v0.2.
 
 ### Fixed
 
+- Keep related-table controls clear of view options and long table names on narrow canvases.
 - Preserve qualified SQL targets and quoted names; report ambiguous or unsupported imports.
 - Include reference cardinality and optionality changes in schema comparisons.
 - Restore shared view options and empty comparison bases, validate saved state, and export the current source.
