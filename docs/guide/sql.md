@@ -94,6 +94,8 @@ Statements are read one at a time, so one that cannot be read costs only itself.
 | `COMMENT '...'`, `COMMENT='...'`, `COMMENT ON TABLE` and `COLUMN`, SQL Server's `MS_Description` | The description |
 | `revinfo` and `<table>_aud` (Hibernate Envers) | `audit envers(...)` on `<table>` |
 
+When the tables come from two or more schemas, each schema's tables are written in a [group](groups.md) named after it, so the diagram shows the schemas as areas. One schema, such as `public` alone, makes no group.
+
 Names are matched without regard to case or schema, as most databases do, and written the way the `CREATE TABLE` spells them. A name resin cannot write bare goes in backticks (`` `Order Details` ``). When two schemas have a table of the same name, both keep their schema (`` `sales.items` ``).
 
 ## Types

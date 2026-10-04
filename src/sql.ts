@@ -8,7 +8,8 @@
 //   2. what is said about them, in order: ALTER TABLE, CREATE INDEX, COMMENT ON
 //
 // Dumps put constraints and indexes after every table (pg_dump) or before the table they point at
-// (FKs in MySQL), so references are resolved only once both passes are done. The mapping rules are
+// (FKs in MySQL), so references are resolved only once both passes are done. Tables from two or more
+// schemas are written in a group per schema. The mapping rules are
 // listed in docs/SPEC.md §8.
 //
 // Nothing is dropped silently that a diagram would show: a composite foreign key or an expression
@@ -376,7 +377,19 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
     const pk = stub.columns.length === 1;
     out.push(`external table ${resinName(stub.name)} {`, ...align(stub.columns.map((x) => [resinName(x.name), typeText(x.type), pk ? "pk" : ""])), "}", "");
   }
-  for (const t of drawn) out.push(...writeTable(t, refs), "");
+  // Tables from two or more schemas: each schema's tables in a group of its name, where it first appears
+  const schemas = new Set(drawn.flatMap((t) => (t.schema === null ? [] : [t.schema])));
+  const grouped = schemas.size >= 2;
+  const written = new Set<string>();
+  for (const t of drawn) {
+    if (!grouped || t.schema === null) out.push(...writeTable(t, refs), "");
+    else if (!written.has(t.schema)) {
+      written.add(t.schema);
+      const members = drawn.filter((x) => x.schema === t.schema);
+      const body = members.flatMap((x, k) => [...(k ? [""] : []), ...writeTable(x, refs)]).map((l) => (l ? `  ${l}` : l));
+      out.push(`group ${resinName(schemaName(t.name)!)} {`, ...body, "}", "");
+    }
+  }
   notes.sort((a, b) => a.line - b.line || a.col - b.col);
   return { source: drawn.length ? `${out.join("\n").trimEnd()}\n` : "", notes, tables: drawn.length };
 }

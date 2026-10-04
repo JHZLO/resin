@@ -22,7 +22,18 @@ export interface Ident {
 }
 
 export interface Document {
+  /** Every table in document order, inside a group or not */
   tables: Table[];
+  /** In document order */
+  groups: Group[];
+}
+
+/** `group name "description" { tables }`: a named set of tables, drawn as an area */
+export interface Group {
+  name: Ident;
+  description: string | null;
+  /** The `group` keyword */
+  span: Span;
 }
 
 export interface Table {
@@ -34,6 +45,8 @@ export interface Table {
   columns: Column[];
   constraints: TableConstraint[];
   audit: Audit | null;
+  /** The name of the group the table is written in, or null */
+  group: Ident | null;
   span: Span;
 }
 

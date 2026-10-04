@@ -68,4 +68,16 @@ describe("check", () => {
   it("warns about a composite constraint over a single column", () => {
     expect(run("table a {\n x int\n unique(x) as uk_x\n}")).toEqual(["warning: `unique(...)` over a single column"]);
   });
+
+  it("rejects a group declared twice and warns about an empty one", () => {
+    expect(run("group a {\n table t {\n  id int pk\n }\n}\ngroup a {\n table u {\n  id int pk\n }\n}\ngroup b {\n}")).toEqual([
+      "error: group `a` is declared twice",
+      "warning: group `b` has no tables",
+    ]);
+  });
+
+  it("lets a group share its name with a table", () => {
+    expect(run("group orders {\n table orders {\n  id int pk\n }\n}")).toEqual([]);
+  });
 });
+

@@ -15,6 +15,13 @@ export interface Model {
   tables: ModelTable[];
   /** In document order of the child table and column, followed by audit relations */
   relations: Relation[];
+  /** Named sets of tables, drawn as areas: a service, a domain. In document order */
+  groups: ModelGroup[];
+}
+
+export interface ModelGroup {
+  name: string;
+  description: string | null;
 }
 
 export interface ModelTable {
@@ -26,6 +33,8 @@ export interface ModelTable {
   constraints: ModelConstraint[];
   /** The audit attached to this table, for outputs that fold audit tables away */
   audit: { method: string; columns: string[] } | null;
+  /** The group the table belongs to, or null */
+  group: string | null;
 }
 
 export interface ModelColumn {
@@ -90,6 +99,7 @@ export function lower(doc: Document): Model {
       columns: t.columns.map((c) => column(doc, c)),
       constraints: t.constraints.map((k) => ({ kind: k.kind, name: k.name?.text ?? null, columns: k.columns.map((i) => i.text) })),
       audit: t.audit ? { method: t.audit.method.text, columns: auditedColumns(t).map((c) => c.name.text) } : null,
+      group: t.group?.text ?? null,
     });
     for (const c of t.columns) {
       const target = resolveRef(doc, c);
@@ -116,6 +126,7 @@ export function lower(doc: Document): Model {
       columns: [plain("rev", "int", { pk: true }), plain("revtstmp", "bigint")],
       constraints: [],
       audit: null,
+      group: null,
     });
     for (const t of audited) tables.push(envers(t));
     for (const t of audited)
@@ -130,7 +141,8 @@ export function lower(doc: Document): Model {
         origin: "audit",
       });
   }
-  return { tables, relations };
+  // A group declared twice is an error, so names are unique here
+  return { tables, relations, groups: doc.groups.map((g) => ({ name: g.name.text, description: g.description })) };
 }
 
 function column(doc: Document, c: Column): ModelColumn {
@@ -165,6 +177,8 @@ function envers(t: Table): ModelTable {
     ],
     constraints: [],
     audit: null,
+    // An audit table sits with the table it audits
+    group: t.group?.text ?? null,
   };
 }
 
@@ -182,8 +196,11 @@ export function neighbors(model: Model, table: string, steps: number): Model {
         keep.add(r.child);
       }
   }
+  const tables = model.tables.filter((t) => keep.has(t.name));
   return {
-    tables: model.tables.filter((t) => keep.has(t.name)),
+    tables,
     relations: model.relations.filter((r) => keep.has(r.parent) && keep.has(r.child)),
+    // Every group stays: a group's place among them picks its color, which a part should not change
+    groups: model.groups,
   };
 }

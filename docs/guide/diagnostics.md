@@ -33,6 +33,9 @@ schema.erd:8:27: error: referenced table `customer` is not in this document
 | ``audit` cannot be used on an external table``, ``audit` needs a primary key`` | Audit only tables of your own that have a primary key |
 | ``unknown audit method `x` `` | The only method is `envers` |
 | `` `revinfo` clashes with a table that `audit` generates`` | Remove it and let `audit` generate it, or rename it |
+| `groups cannot be nested` | Close the outer group before opening another |
+| ``expected `table` or `external table` in group `g`, found `x` `` | A group holds tables only |
+| ``group `g` is missing its closing `}` ``, ``group `g` is declared twice`` | Close it; give each group its own name |
 | `names with non-ASCII letters must be wrapped in backticks` | Write the name in backticks |
 | `unterminated string`, `unterminated backtick name` | Close it on the same line |
 
@@ -43,6 +46,7 @@ schema.erd:8:27: error: referenced table `customer` is not in this document
 | ``type mismatch: `c` is int but `t.id` is bigint`` | A reference joins columns of different types. Lengths are not compared |
 | `` `unique(...)` over a single column`` | Use the column modifier `uk`, or `index` for `index(...)` |
 | ``primary key `id` is always part of the audit table`` | Drop it from the `audit envers(...)` list |
+| ``group `g` has no tables`` | Put tables inside it, or remove it |
 
 ## Lint
 

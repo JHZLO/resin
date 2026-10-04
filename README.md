@@ -29,8 +29,10 @@ references.
 </p>
 
 ```erd
-external table users "Accounts service" {
-  id  bigint  pk
+group accounts "Accounts service" {
+  external table users "People who sign in" {
+    id  bigint  pk
+  }
 }
 
 table orders "Customer orders" {
@@ -160,6 +162,7 @@ expanded audit tables.
 | `enum(A, B)`, `enc` | Allowed values; stored encrypted |
 | `unique(a, b) as uk_ab`, `index(a, b)` | Composite constraints |
 | `external table t { ... }` | A table owned elsewhere that you can reference |
+| `group g "Order service" { tables }` | Tables that belong together, drawn as an area |
 | `} audit envers(a, b)` | Hibernate Envers audit tables for the listed columns |
 | `` `order-items` `` | A name with characters outside `[A-Za-z0-9_]` |
 

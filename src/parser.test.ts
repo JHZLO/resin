@@ -173,4 +173,54 @@ describe("parse", () => {
       expect(doc("external users {\n id int\n}").messages).toEqual(["expected `table` after `external`"]);
     });
   });
+
+  it("reads groups: their tables stay in document order and know their group", () => {
+    const { doc: d, diagnostics } = doc(`
+group ordering "Order service" {
+  table orders {
+    id bigint pk
+  }
+
+  external table users {
+    id bigint pk
+  }
+}
+table shipments {
+  id bigint pk
+}`);
+    expect(diagnostics).toEqual([]);
+    expect(d.groups.map((g) => [g.name.text, g.description, g.span])).toEqual([["ordering", "Order service", { line: 2, col: 1, len: 5 }]]);
+    expect(d.tables.map((t) => [t.name.text, t.external, t.group?.text ?? null])).toEqual([
+      ["orders", false, "ordering"],
+      ["users", true, "ordering"],
+      ["shipments", false, null],
+    ]);
+  });
+
+  it("lets a table, a column and a type be called group", () => {
+    const { doc: d, diagnostics } = doc("table group {\n  group group pk\n}");
+    expect(diagnostics).toEqual([]);
+    expect([d.tables[0].name.text, d.tables[0].columns[0].name.text, d.tables[0].columns[0].type.name.text]).toEqual(["group", "group", "group"]);
+  });
+
+  it("rejects a group inside a group, and keeps reading after it", () => {
+    const { diagnostics, messages, hints, doc: d } = doc("group a {\n  group b {\n    table t {\n      id int pk\n    }\n  }\n  table u {\n    id int pk\n  }\n}");
+    expect(messages).toEqual(["groups cannot be nested"]);
+    expect(hints).toEqual(["close `a` before opening another group"]);
+    expect(diagnostics[0].span).toEqual({ line: 2, col: 3, len: 5 });
+    expect(d.tables.map((t) => [t.name.text, t.group?.text])).toEqual([["u", "a"]]);
+  });
+
+  it("accepts only tables inside a group", () => {
+    const { messages, diagnostics } = doc("group a {\n  id int pk\n  table t {\n    id int pk\n  }\n}");
+    expect(messages).toEqual(["expected `table` or `external table` in group `a`, found `id`"]);
+    expect(diagnostics[0].span).toEqual({ line: 2, col: 3, len: 2 });
+  });
+
+  it("reports a group that is never closed", () => {
+    const { messages, diagnostics } = doc("group a {\n  table t {\n    id int pk\n  }\n");
+    expect(messages).toEqual(["group `a` is missing its closing `}`"]);
+    expect(diagnostics[0].span).toEqual({ line: 1, col: 7, len: 1 });
+  });
 });
+

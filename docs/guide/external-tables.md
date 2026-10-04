@@ -20,7 +20,7 @@ List only the columns you point at, usually the primary key. An external table r
 - its columns cannot hold references (`->` or `~>`);
 - it cannot have `audit`.
 
-A reference into another service usually has no database constraint behind it, so it is written `~>`, a [logical reference](references.md).
+A reference into another service usually has no database constraint behind it, so it is written `~>`, a [logical reference](references.md). Put the external table in a [group](groups.md) named after that service, and the diagram shows where the service boundary is.
 
 ## In the diagram
 

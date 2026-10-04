@@ -30,6 +30,10 @@ The first public version of the language, grammar v0.2.
   status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
   default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
+- Groups: `group name "description" { tables }` puts tables in a named group, a service or a
+  domain, drawn as a tinted area with its name around them; hues follow the order of declaration,
+  and graphite draws them in ink. SQL import writes the tables of each schema in a group when there
+  are several schemas. The side panel says which group a table is in.
 - Exploring a large schema in the playground: All, Keys and Names (table names only, also
   `columns: "none"` and `--names`), Find a table (Ctrl or Cmd + K, over names, descriptions and
   columns), and Related only, which draws a table with its neighbors one or two steps away

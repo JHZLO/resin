@@ -8,7 +8,7 @@
 // v0.1 syntax (the `erd` header, `index(name)`, `unique name(a, b)`, `audit` without a method) is
 // recognized and answered with a hint on how to write it now (SPEC §7).
 
-import type { Audit, Column, Document, EnumValue, Ident, Ref, Span, Table, TableConstraint, TypeRef } from "./ast.ts";
+import type { Audit, Column, Document, EnumValue, Group, Ident, Ref, Span, Table, TableConstraint, TypeRef } from "./ast.ts";
 import { type Diagnostic, error } from "./diagnostics.ts";
 import { type Token, type TokenKind, lex } from "./lexer.ts";
 
@@ -79,30 +79,82 @@ class Parser {
 
   document(): Document {
     const tables: Table[] = [];
+    const groups: Group[] = [];
     for (;;) {
       this.skipNewlines();
       if (this.at("eof")) break;
       try {
-        if (this.atWord("table")) tables.push(this.table(null));
-        else if (this.atWord("external")) {
-          const ext = this.next();
-          if (!this.atWord("table")) this.fail("expected `table` after `external`", this.peek().span, "write `external table name { ... }`");
-          tables.push(this.table(ext));
-        } else if (this.atWord("erd")) this.fail("the `erd` header was removed in v0.2", this.peek().span, "delete this line");
-        else this.fail(`unexpected ${describe(this.peek())}`, this.peek().span, "only `table` and `external table` can appear at the top level");
+        if (this.atWord("group")) groups.push(this.group(tables));
+        else if (this.atTable()) tables.push(this.tableOrExternal(null));
+        else if (this.atWord("erd")) this.fail("the `erd` header was removed in v0.2", this.peek().span, "delete this line");
+        else this.fail(`unexpected ${describe(this.peek())}`, this.peek().span, "only `group`, `table` and `external table` can appear at the top level");
       } catch (e) {
         if (!(e instanceof LineError)) throw e;
         this.recoverTopLevel();
       }
     }
-    return { tables };
+    return { tables, groups };
   }
 
-  /** After a top-level error: skip to the next line that starts with `table` or `external` */
+  /** After a top-level error: skip to the next line that starts with `group`, `table` or `external` */
   private recoverTopLevel(): void {
     while (!this.at("eof")) {
-      if (this.at("newline") && (this.atWord("table", 1) || this.atWord("external", 1))) return;
+      if (this.at("newline") && (this.atWord("group", 1) || this.atWord("table", 1) || this.atWord("external", 1))) return;
       this.next();
+    }
+  }
+
+  private atTable(): boolean {
+    return this.atWord("table") || this.atWord("external");
+  }
+
+  private tableOrExternal(group: Ident | null): Table {
+    if (this.atWord("table")) return this.table(null, group);
+    const ext = this.next();
+    if (!this.atWord("table")) this.fail("expected `table` after `external`", this.peek().span, "write `external table name { ... }`");
+    return this.table(ext, group);
+  }
+
+  // ---- groups ----
+
+  /** `group name ["description"] { tables }`. Its tables go into `tables` in document order, each
+   *  knowing its group. A line that is not a table is skipped; a nested group is skipped whole */
+  private group(tables: Table[]): Group {
+    const kw = this.next(); // group
+    const name = this.name("a group name");
+    const description = this.at("string") ? this.next().value : null;
+    this.expect("lbrace", "`{`");
+    for (;;) {
+      this.skipNewlines();
+      if (this.at("rbrace")) break;
+      if (this.at("eof")) {
+        this.diagnostics.push(error(`group \`${name.text}\` is missing its closing \`}\``, name.span));
+        return { name, description, span: kw.span };
+      }
+      try {
+        if (this.atTable()) tables.push(this.tableOrExternal(name));
+        else if (this.atWord("group")) {
+          this.diagnostics.push(error("groups cannot be nested", this.peek().span, `close \`${name.text}\` before opening another group`));
+          this.skipBlock();
+        } else this.fail(`expected \`table\` or \`external table\` in group \`${name.text}\`, found ${describe(this.peek())}`, this.peek().span);
+      } catch (e) {
+        if (!(e instanceof LineError)) throw e;
+        this.skipLine();
+      }
+    }
+    this.next(); // }
+    this.endOfStatement();
+    return { name, description, span: kw.span };
+  }
+
+  /** Skip a line and, when it opens a block, the whole block */
+  private skipBlock(): void {
+    let depth = 0;
+    while (!this.at("eof")) {
+      const t = this.next();
+      if (t.kind === "lbrace") depth++;
+      else if (t.kind === "rbrace" && --depth <= 0) return;
+      else if (t.kind === "newline" && depth === 0) return;
     }
   }
 
@@ -113,7 +165,7 @@ class Parser {
 
   // ---- tables ----
 
-  private table(external: Token | null): Table {
+  private table(external: Token | null, group: Ident | null): Table {
     const kw = this.next(); // table
     const span = external ? external.span : kw.span;
     const name = this.name("a table name");
@@ -129,6 +181,7 @@ class Parser {
       columns,
       constraints,
       audit,
+      group,
       span,
     });
     for (;;) {

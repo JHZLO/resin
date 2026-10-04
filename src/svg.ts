@@ -18,7 +18,7 @@
 //
 // ELK is passed in, so the core does not depend on elkjs (zero runtime dependencies). Callers pass `new ELK()`.
 
-import type { Model, ModelColumn, ModelTable, Relation } from "./model.ts";
+import type { Model, ModelColumn, ModelGroup, ModelTable, Relation } from "./model.ts";
 
 export type SvgLook = "graphite" | "aurora-dark" | "aurora-light" | "silk-dark" | "silk-light" | "caustic-dark" | "caustic-light";
 
@@ -75,10 +75,12 @@ interface ElkPortIn {
 }
 interface ElkNodeIn {
   id: string;
-  width: number;
-  height: number;
-  ports: ElkPortIn[];
+  width?: number;
+  height?: number;
+  ports?: ElkPortIn[];
   layoutOptions: Record<string, string>;
+  /** A group: its tables, laid out inside it */
+  children?: ElkNodeIn[];
 }
 interface ElkGraphIn {
   id: string;
@@ -86,11 +88,26 @@ interface ElkGraphIn {
   children: ElkNodeIn[];
   edges: { id: string; sources: string[]; targets: string[] }[];
 }
+interface ElkEdgeOut {
+  id: string;
+  /** The node whose coordinates the sections are in: the root, or the group both ends are inside */
+  container?: string;
+  sections?: { startPoint: Point; endPoint: Point; bendPoints?: Point[] }[];
+}
+interface ElkNodeOut {
+  id: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  children?: ElkNodeOut[];
+  edges?: ElkEdgeOut[];
+}
 interface ElkGraphOut {
   width?: number;
   height?: number;
-  children?: { id: string; x?: number; y?: number }[];
-  edges?: { id: string; sections?: { startPoint: Point; endPoint: Point; bendPoints?: Point[] }[] }[];
+  children?: ElkNodeOut[];
+  edges?: ElkEdgeOut[];
 }
 export interface ElkLike {
   layout(graph: ElkGraphIn): Promise<ElkGraphOut>;
@@ -813,6 +830,59 @@ function stageSvg(S: Stage, G: Glass, id: (name: string) => string, W: number, H
   return { defs: d.join(""), under, frost };
 }
 
+// ---- groups ----
+
+/** ELK ids of group nodes: a prefix no table name can start with, since names never hold a NUL */
+const GROUP = "\u0000group:";
+/** Room inside a group's edge, and above its tables for the label */
+const GROUP_PAD = 24;
+const GROUP_HEAD = 52;
+const GROUP_RX = 12;
+/** Group hues, in the order groups are declared: the key colors first (teal, violet, amber), then
+ *  rose, sky and lime. Graphite draws groups in ink alone */
+const GROUP_HUES = {
+  dark: ["#5EEAD4", "#C4B5FD", "#FCD34D", "#FDA4AF", "#7DD3FC", "#BEF264"],
+  light: ["#0F766E", "#6D28D9", "#B45309", "#BE123C", "#0369A1", "#4D7C0F"],
+};
+
+interface Area {
+  group: ModelGroup;
+  /** Index into the hues: the group's place among every group of the model, so a part of a model
+   *  draws a group in the same color as the whole */
+  hue: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const groupLabelW = (gr: ModelGroup): number => sansW(gr.name, 13) * 1.04 + (gr.description ? 10 + sansW(gr.description, 12) : 0);
+
+/** Areas under the cards: a faint tint, an even edge and the name at the top left. The tint is masked
+ *  out where the cards are, because on a live canvas the glass is painted below this SVG */
+function groupAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string) => string): string {
+  const s: string[] = [];
+  const holes = boxes.map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="black"/>`).join("");
+  s.push(`<mask id="${id("areas")}" maskUnits="userSpaceOnUse"><rect x="-1e5" y="-1e5" width="2e5" height="2e5" fill="white"/>${holes}</mask>`);
+  s.push('<g class="rz-groups">');
+  for (const a of areas) {
+    const hues = L.stage ? (L.stage.dark ? GROUP_HUES.dark : GROUP_HUES.light) : null;
+    const hue = hues ? hues[a.hue % hues.length] : C;
+    const [fillA, lineA] = hues ? (L.stage!.dark ? [0.07, 0.42] : [0.07, 0.38]) : [0.035, 0.22];
+    s.push(`<g class="rz-g" data-g="${esc(a.group.name)}">`);
+    s.push(`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${GROUP_RX}" fill="${hue}" fill-opacity="${fillA}" mask="url(#${id("areas")})"/>`);
+    s.push(`<rect x="${f(a.x + 0.5)}" y="${f(a.y + 0.5)}" width="${f(a.w - 1)}" height="${f(a.h - 1)}" rx="${GROUP_RX - 0.5}" fill="none" stroke="${hue}" stroke-opacity="${lineA}"/>`);
+    s.push(
+      `<text x="${f(a.x + GROUP_PAD)}" y="${f(a.y + 31)}" font-size="13" font-weight="600" letter-spacing="-0.01em" ${hues ? `fill="${hue}"` : fill(L.ink.text)}>${esc(a.group.name)}` +
+        (a.group.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(L.ink.muted)}>${esc(a.group.description)}</tspan>` : "") +
+        "</text>",
+    );
+    s.push("</g>");
+  }
+  s.push("</g>");
+  return s.join("");
+}
+
 export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}): Promise<SvgResult> {
   const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse" } as const;
   const look = options.look ?? "graphite";
@@ -826,9 +896,53 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const portFor = (table: string, column: string, side: "E" | "W") => portId(table, portOf(byName.get(table)!, column), side);
   const used = new Set(relations.flatMap((r) => [portFor(r.parent, r.parentColumn, "E"), portFor(r.child, r.childColumn, "W")]));
 
+  const tableNode = (v: View): ElkNodeIn => ({
+    id: v.table.name,
+    width: v.w,
+    height: v.h,
+    layoutOptions: { "elk.portConstraints": "FIXED_POS" },
+    ports: (bare(v) ? [{ name: "", y: HEAD / 2 }] : v.shown.map((c, i) => ({ name: c.name, y: rowY(i) }))).flatMap((row) =>
+      (
+        [
+          ["W", 0, "WEST"],
+          ["E", v.w, "EAST"],
+        ] as const
+      )
+        .filter(([side]) => used.has(portId(v.table.name, row.name, side)))
+        .map(([side, x, elkSide]) => ({
+          id: portId(v.table.name, row.name, side),
+          x,
+          y: row.y,
+          width: 0,
+          height: 0,
+          layoutOptions: { "elk.port.side": elkSide },
+        })),
+    ),
+  });
+  // A group with a drawn table is a node of its own, holding its tables, placed where its first table
+  // comes in the document. Connectors run between groups as freely as inside them
+  const drawnGroups = model.groups.filter((gr) => vs.some((v) => v.table.group === gr.name));
+  const groupOf = (v: View): ModelGroup | null => drawnGroups.find((gr) => gr.name === v.table.group) ?? null;
+  const children: ElkNodeIn[] = [];
+  for (const v of vs) {
+    const gr = groupOf(v);
+    if (!gr) children.push(tableNode(v));
+    else if (!children.some((n) => n.id === GROUP + gr.name))
+      children.push({
+        id: GROUP + gr.name,
+        layoutOptions: {
+          "elk.padding": `[top=${GROUP_HEAD},left=${GROUP_PAD},bottom=${GROUP_PAD},right=${GROUP_PAD}]`,
+          "elk.nodeSize.constraints": "MINIMUM_SIZE",
+          "elk.nodeSize.minimum": `(${Math.ceil(groupLabelW(gr) + GROUP_PAD * 2)}, 0)`,
+        },
+        children: vs.filter((x) => groupOf(x) === gr).map(tableNode),
+      });
+  }
+
   const graph: ElkGraphIn = {
     id: "root",
     layoutOptions: {
+      ...(drawnGroups.length ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
       "elk.algorithm": "layered",
       "elk.direction": "RIGHT",
       "elk.edgeRouting": "ORTHOGONAL",
@@ -842,29 +956,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.padding": "[top=40,left=40,bottom=40,right=40]",
     },
-    children: vs.map((v) => ({
-      id: v.table.name,
-      width: v.w,
-      height: v.h,
-      layoutOptions: { "elk.portConstraints": "FIXED_POS" },
-      ports: (bare(v) ? [{ name: "", y: HEAD / 2 }] : v.shown.map((c, i) => ({ name: c.name, y: rowY(i) }))).flatMap((row) =>
-        (
-          [
-            ["W", 0, "WEST"],
-            ["E", v.w, "EAST"],
-          ] as const
-        )
-          .filter(([side]) => used.has(portId(v.table.name, row.name, side)))
-          .map(([side, x, elkSide]) => ({
-            id: portId(v.table.name, row.name, side),
-            x,
-            y: row.y,
-            width: 0,
-            height: 0,
-            layoutOptions: { "elk.port.side": elkSide },
-          })),
-      ),
-    })),
+    children,
     edges: relations.map((r, i) => ({
       id: `e${i}`,
       sources: [portFor(r.parent, r.parentColumn, "E")],
@@ -873,7 +965,24 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   };
 
   const g = await elk.layout(graph);
-  const pos = new Map((g.children ?? []).map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
+  // A table inside a group is placed relative to it, and so is a connector that stays inside one
+  const pos = new Map<string, Point>();
+  const offsets = new Map<string, Point>([["root", { x: 0, y: 0 }]]);
+  const areas: Area[] = [];
+  for (const n of g.children ?? []) {
+    const at = { x: n.x ?? 0, y: n.y ?? 0 };
+    if (!n.id.startsWith(GROUP)) {
+      pos.set(n.id, at);
+      continue;
+    }
+    offsets.set(n.id, at);
+    const gr = drawnGroups.find((x) => GROUP + x.name === n.id)!;
+    areas.push({ group: gr, hue: model.groups.indexOf(gr), x: f(at.x), y: f(at.y), w: f(n.width ?? 0), h: f(n.height ?? 0) });
+    for (const c of n.children ?? []) pos.set(c.id, { x: at.x + (c.x ?? 0), y: at.y + (c.y ?? 0) });
+  }
+  const routes = new Map<string, { sections: ElkEdgeOut["sections"]; offset: Point }>();
+  for (const e of [...(g.edges ?? []), ...(g.children ?? []).flatMap((n) => n.edges ?? [])])
+    routes.set(e.id, { sections: e.sections, offset: offsets.get(e.container ?? "root") ?? { x: 0, y: 0 } });
   const W = Math.ceil(g.width ?? 0);
   const H = Math.ceil(g.height ?? 0);
   const boxes: SvgBox[] = vs.map((v) => {
@@ -903,11 +1012,13 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     s.push("</g>");
   }
   if (stage) s.push(stage.frost);
+  if (areas.length) s.push(groupAreas(areas, boxes, L, id));
 
   s.push('<g class="rz-rels">');
-  (g.edges ?? []).forEach((e, i) => {
-    const r = relations[i];
-    const sec = e.sections?.[0];
+  relations.forEach((r, i) => {
+    const route = routes.get(`e${i}`);
+    const sec = route?.sections?.[0];
+    const bends = (sec?.bendPoints ?? []).map((p) => ({ x: p.x + route!.offset.x, y: p.y + route!.offset.y }));
     const pv = byName.get(r.parent)!;
     const cv = byName.get(r.child)!;
     const pp = pos.get(r.parent)!;
@@ -915,8 +1026,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor
     const start = { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) };
     const end = { x: cp.x, y: cp.y + anchorY(cv, r.childColumn) };
-    const route = clean([start, ...(sec?.bendPoints ?? []), end]);
-    const d = edges === "curved" ? curved(route, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(route, 3);
+    const path = clean([start, ...bends, end]);
+    const d = edges === "curved" ? curved(path, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(path, 3);
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
     const ink = L.ink.line;
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}">`);

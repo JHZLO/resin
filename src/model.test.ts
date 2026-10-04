@@ -106,7 +106,7 @@ describe("neighbors", () => {
   const names = (m: Model) => m.tables.map((t) => t.name);
 
   it("keeps a table, its parents and its children, one hop per step", () => {
-    expect(names(neighbors(shop, "orders", 1))).toEqual(["users", "coupons", "orders", "order_items", "payments", "coupon_usages", "shipments"]);
+    expect(names(neighbors(shop, "orders", 1))).toEqual(["users", "coupons", "orders", "order_items", "coupon_usages", "payments", "shipments"]);
     expect(names(neighbors(shop, "refunds", 1))).toEqual(["payments", "refunds"]);
     expect(names(neighbors(shop, "refunds", 2))).toEqual(["orders", "payments", "refunds"]);
   });
@@ -124,3 +124,26 @@ describe("neighbors", () => {
     expect(names(neighbors(m, "a", 2))).toEqual(["a"]);
   });
 });
+
+describe("groups", () => {
+  it("keeps groups in document order, and puts an audit table in the group of its table", () => {
+    const m = model(`
+group ordering "Order service" {
+  table orders {
+    id      bigint   pk
+    status  varchar
+  } audit envers
+}
+table shipments {
+  id  bigint  pk
+}`);
+    expect(m.groups).toEqual([{ name: "ordering", description: "Order service" }]);
+    expect(m.tables.map((t) => [t.name, t.group])).toEqual([
+      ["orders", "ordering"],
+      ["shipments", null],
+      ["revinfo", null],
+      ["orders_aud", "ordering"],
+    ]);
+  });
+});
+

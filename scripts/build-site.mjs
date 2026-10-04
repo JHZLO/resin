@@ -33,6 +33,7 @@ const NAV = [
       ["enums-and-encryption", "Enums and encryption"],
       ["constraints", "Table constraints"],
       ["external-tables", "External tables"],
+      ["groups", "Groups"],
       ["audit", "Audit tables"],
       ["names", "Names and comments"],
     ],

@@ -61,6 +61,15 @@ export function check(doc: Document): Diagnostic[] {
         );
   }
 
+  // Groups: names of their own, unique among groups; a group with no table draws nothing
+  const groups = new Set<string>();
+  for (const g of doc.groups) {
+    if (groups.has(g.name.text)) out.push(error(`group \`${g.name.text}\` is declared twice`, g.name.span));
+    else groups.add(g.name.text);
+    if (!doc.tables.some((t) => t.group?.text === g.name.text))
+      out.push(warning(`group \`${g.name.text}\` has no tables`, g.name.span, "put tables inside it, or remove it"));
+  }
+
   for (const t of doc.tables) checkTable(doc, t, out);
   return out;
 }

@@ -249,6 +249,39 @@ describe("fromSql: tables", () => {
     expect(line(out, "sales_id")).toBe("sales_id  int?  -> `sales.items`");
   });
 
+  it("writes the tables of each schema in a group when there are several schemas", () => {
+    const out = convert(`create table sales.orders (id int primary key, customer_id int references crm.customers);
+      create table crm.customers (id int primary key);
+      create table sales.lines (id int primary key, order_id int references sales.orders);
+      create table audit_log (id int primary key);`);
+    expect(out).toBe(`group sales {
+  table orders {
+    id           int   pk
+    customer_id  int?  -> customers
+  }
+
+  table lines {
+    id        int   pk
+    order_id  int?  -> orders
+  }
+}
+
+group crm {
+  table customers {
+    id  int  pk
+  }
+}
+
+table audit_log {
+  id  int  pk
+}
+`);
+  });
+
+  it("makes no group when every table is in one schema", () => {
+    expect(convert("create table public.a (id int primary key); create table public.b (id int primary key);")).not.toContain("group");
+  });
+
   it("counts views, triggers and functions in a comment on top, and drops mysqldump's view placeholders", () => {
     const { source, notes } = fromSql(`create table t (id int primary key);
       /*!50001 CREATE TABLE v (id tinyint) */;

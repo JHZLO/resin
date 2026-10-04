@@ -8,6 +8,12 @@
 
 import type { Model, ModelColumn, ModelTable, Relation } from "../src/index.ts";
 
+/** ", Order service": a group's description after its name, when it has one */
+const groupDescription = (model: Model, name: string): string => {
+  const d = model.groups.find((g) => g.name === name)?.description;
+  return d ? `, ${d}` : "";
+};
+
 type Child = Node | string | null | false | undefined;
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string | null, ...children: Child[]): HTMLElementTagNameMap[K] {
@@ -158,6 +164,7 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
       tags.length ? h("span", "d-tags", ...tags.map((x) => h("span", "d-chip", x))) : null,
       t.description ? h("p", "d-desc", t.description) : null,
       h("p", "d-meta", `${plural(t.columns.length, "column")}, ${plural(outgoing.length, "reference")}, referenced by ${incoming.length}`),
+      t.group ? h("p", "d-meta", `In group ${t.group}${groupDescription(model, t.group)}`) : null,
     ),
     table(
       "Columns",

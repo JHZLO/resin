@@ -1,6 +1,8 @@
 %% Orders: every construct of the language appears at least once.
-external table users "Accounts service" {
-  id  bigint  pk
+group accounts "Accounts service" {
+  external table users "People who sign in" {
+    id  bigint  pk
+  }
 }
 
 table orders "Customer orders" {

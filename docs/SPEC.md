@@ -11,8 +11,10 @@ it, the implementation is wrong.
 
 ```erd
 %% Orders
-external table users "Accounts service" {
-  id  bigint  pk
+group accounts "Accounts service" {
+  external table users "People who sign in" {
+    id  bigint  pk
+  }
 }
 
 table orders "Customer orders" {
@@ -48,7 +50,7 @@ table order_items "Order lines" {
 | Reference arrows | `->` `~>` | Physical FK / logical reference |
 | Newline | `\n` | **Ends a statement.** Ignored inside parentheses |
 
-Keywords (`table` `external` `pk` `uk` `enc` `enum` `index` `unique` `as` `audit`) are
+Keywords (`group` `table` `external` `pk` `uk` `enc` `enum` `index` `unique` `as` `audit`) are
 **contextual**: they are not reserved, so a column may be called `index`; the position decides.
 A backtick name is never a keyword. `` `users` `` and `users` are the same name.
 
@@ -58,7 +60,8 @@ once and suggests the backticks.
 ## 3. Grammar (EBNF)
 
 ```ebnf
-document    = { NL | table } EOF ;
+document    = { NL | group | table } EOF ;
+group       = "group" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
 table       = [ "external" ] "table" name [ STRING ] "{" { member | NL } "}" [ audit ] ( NL | EOF ) ;
 member      = constraint | column ;
 
@@ -154,6 +157,23 @@ Declares audit tables in one line. `audit` is followed by a **method**; the only
   Declaring `revinfo` or `<table>_aud` yourself is therefore an error.
 - Not allowed on tables without a primary key, nor on external tables.
 
+### 4.7 Groups (`group`)
+
+`group name ["description"] { tables }` puts the tables written inside it in a named group: a
+service, a domain, any part of a schema that belongs together. The description is for people.
+
+- A group holds `table` and `external table` blocks and nothing else. An external table in a group
+  says which outside service owns it.
+- Groups do not nest, and a table belongs to at most one group. Tables outside every group belong to
+  none.
+- Group names are unique within a document. They are names of their own: a group may share its
+  name with a table.
+- Grouping changes nothing else: table names stay unique across the whole document, and references
+  cross groups freely.
+- A group with no tables is reported as a warning.
+- When audit tables are drawn, `<table>_aud` belongs to the group of its table; `revinfo` belongs
+  to none.
+
 ## 5. SVG rendering
 
 `toSvg(model, elk, options)` draws the model itself. Layout uses [ELK](https://eclipse.dev/elk/)'s
@@ -173,6 +193,13 @@ the primary key row it points at.
   rather than at the chevron, because many relations can share one primary key. `edges: "curved"`
   draws S-bends with level ends instead, and keeps the routed path, with wide bends, wherever an
   S-bend would cross another card.
+- **Groups** are areas around their tables, laid out by ELK as nodes that hold the cards, so a group
+  keeps its tables together and connectors cross from one group to another. An area has a faint
+  tint, an even edge with corners of 12 units, and its name and description at the top left. The
+  tint stops at the cards, so glass painted below the SVG is never tinted. In a glass look the
+  groups take hues in the order they are declared: teal, violet, amber, rose, sky, lime, then again;
+  the hue is the group's place among all the groups of the model, so a part of a model keeps the
+  colors of the whole. `graphite` draws groups in ink alone. A group is `g.rz-g[data-g]`.
 - **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
   an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
@@ -243,6 +270,9 @@ resin.
   then `ALTER TABLE`, `CREATE INDEX` and `COMMENT ON`, in order. References are resolved last.
 - Table and column names match without regard to case or schema. The `CREATE TABLE` spelling is
   written. Two tables of one name in different schemas are written `` `schema.name` ``.
+- When the tables come from two or more schemas, each schema's tables are written in a `group`
+  named after the schema, in the order the schemas first appear; tables of no schema stay outside.
+  One schema (all `public`, say) makes no group.
 
 ### 8.2 Mapping
 

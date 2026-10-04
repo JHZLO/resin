@@ -1,91 +1,100 @@
 %% A small shop, made up to show layout with more tables: several relations
 %% meet at one primary key (users.id, orders.id) and categories references itself.
-external table users "Accounts service" {
-  id  bigint  pk
+%% Groups split it by service; shipments belongs to none.
+group accounts "Accounts service" {
+  external table users "People who sign in" {
+    id  bigint  pk
+  }
 }
 
-table categories "Categories" {
-  id         bigint       pk
-  parent_id  bigint?      -> categories  index  "Parent category"
-  name       varchar(50)
+group catalog "Catalog service" {
+  table categories "Categories" {
+    id         bigint       pk
+    parent_id  bigint?      -> categories  index  "Parent category"
+    name       varchar(50)
+  }
+
+  table products "Products" {
+    id           bigint         pk
+    category_id  bigint         -> categories  index as ix_category_id
+    name         varchar(100)
+    price        decimal(12,2)
+    status       varchar        enum(ON_SALE, SOLD_OUT, HIDDEN)  index as ix_status
+    created_at   datetime
+  }
+
+  table product_options "Product options" {
+    id           bigint         pk
+    product_id   bigint         -> products  index as ix_product_id
+    name         varchar(50)
+    extra_price  decimal(12,2)
+    stock        int
+  }
 }
 
-table products "Products" {
-  id           bigint         pk
-  category_id  bigint         -> categories  index as ix_category_id
-  name         varchar(100)
-  price        decimal(12,2)
-  status       varchar        enum(ON_SALE, SOLD_OUT, HIDDEN)  index as ix_status
-  created_at   datetime
+group ordering "Order service" {
+  table carts "Carts" {
+    id          bigint    pk
+    user_id     bigint    uk as uk_user_id ~> users
+    updated_at  datetime
+  }
+
+  table cart_items "Cart items" {
+    id         bigint  pk
+    cart_id    bigint  -> carts
+    option_id  bigint  -> product_options  index
+    quantity   int
+    unique(cart_id, option_id) as uk_cart_option
+  }
+
+  table coupons "Coupons" {
+    id          bigint         pk
+    code        varchar(20)    uk as uk_code
+    discount    decimal(12,2)
+    expires_at  datetime
+  }
+
+  table orders "Orders" {
+    id          bigint       pk
+    user_id     bigint       ~> users  index as ix_user_id
+    order_no    varchar(32)  uk as uk_order_no
+    coupon_id   bigint?      ~> coupons  index
+    status      varchar      enum(PENDING, PAID, CANCELED)
+    created_at  datetime
+  } audit envers(status)
+
+  table order_items "Order items" {
+    id         bigint         pk
+    order_id   bigint         -> orders  index
+    option_id  bigint         ~> product_options  index
+    quantity   int
+    price      decimal(12,2)
+  }
+
+  table coupon_usages "Coupon usages" {
+    id         bigint    pk
+    coupon_id  bigint    -> coupons  index
+    user_id    bigint    ~> users  index
+    order_id   bigint    uk ~> orders
+    used_at    datetime
+  }
 }
 
-table product_options "Product options" {
-  id           bigint         pk
-  product_id   bigint         -> products  index as ix_product_id
-  name         varchar(50)
-  extra_price  decimal(12,2)
-  stock        int
-}
+group payments "Payment service" {
+  table payments "Payments" {
+    id        bigint         pk
+    order_id  bigint         uk ~> orders
+    amount    decimal(12,2)
+    method    varchar        enum(CARD, BANK_TRANSFER)
+    paid_at   datetime?
+  }
 
-table carts "Carts" {
-  id          bigint    pk
-  user_id     bigint    uk as uk_user_id ~> users
-  updated_at  datetime
-}
-
-table cart_items "Cart items" {
-  id         bigint  pk
-  cart_id    bigint  -> carts
-  option_id  bigint  -> product_options  index
-  quantity   int
-  unique(cart_id, option_id) as uk_cart_option
-}
-
-table coupons "Coupons" {
-  id          bigint         pk
-  code        varchar(20)    uk as uk_code
-  discount    decimal(12,2)
-  expires_at  datetime
-}
-
-table orders "Orders" {
-  id          bigint       pk
-  user_id     bigint       ~> users  index as ix_user_id
-  order_no    varchar(32)  uk as uk_order_no
-  coupon_id   bigint?      ~> coupons  index
-  status      varchar      enum(PENDING, PAID, CANCELED)
-  created_at  datetime
-} audit envers(status)
-
-table order_items "Order items" {
-  id         bigint         pk
-  order_id   bigint         -> orders  index
-  option_id  bigint         ~> product_options  index
-  quantity   int
-  price      decimal(12,2)
-}
-
-table payments "Payments" {
-  id        bigint         pk
-  order_id  bigint         uk ~> orders
-  amount    decimal(12,2)
-  method    varchar        enum(CARD, BANK_TRANSFER)
-  paid_at   datetime?
-}
-
-table refunds "Refunds" {
-  id          bigint         pk
-  payment_id  bigint         -> payments  index
-  amount      decimal(12,2)
-  reason      varchar(200)?
-}
-
-table coupon_usages "Coupon usages" {
-  id         bigint    pk
-  coupon_id  bigint    -> coupons  index
-  user_id    bigint    ~> users  index
-  order_id   bigint    uk ~> orders
-  used_at    datetime
+  table refunds "Refunds" {
+    id          bigint         pk
+    payment_id  bigint         -> payments  index
+    amount      decimal(12,2)
+    reason      varchar(200)?
+  }
 }
 
 table shipments "Shipments" {
