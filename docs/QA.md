@@ -27,6 +27,8 @@ Failures save a screenshot and trace under `test-results/`; CI uploads that dire
 
 Browser tests run on Chromium, Firefox and WebKit. Load cases run on Chromium only and record elapsed render time for 10, 100 and 500-table schemas. Full-column cases use 24 columns per table and cover a 500-table chain and a 500-table hub. The hub case has a 15-second end-to-end test budget, including page startup. Tests also assert that comment edits preserve mounted SVG, background changes avoid layout work, and returning to All reuses its layout and DOM. An animation-enabled smoke test covers composite-key focus and zoom. These synthetic budgets detect regressions; they are not a universal performance guarantee.
 
+Performance cases retain action traces and failure screenshots, but omit per-action DOM snapshots. Copying a large drawing into the trace at every step can dominate the operation being measured. Recovery tests wait for both committed storage and the recovered drawing before reloading.
+
 DDL paste tests dispatch clipboard events with fixture text. They test the editor conversion path; they do not test DataGrip or operating-system clipboard integration. WebGL lifecycle unit tests use a controlled stub.
 
 ## Manual release checks

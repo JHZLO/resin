@@ -143,12 +143,17 @@ test("migrates recovery history and writes only changed records while typing", a
   expect(writes).toContain("document:migrated");
   expect(writes).not.toContain("history:migrated");
   expect(writes).not.toContain("import:migrated");
+  await expect(page.locator('#content .rz-t[data-t="orders"]')).toHaveCount(1);
+  await expect(page.locator("#layout-status")).toBeHidden();
   await page.reload();
   await expect(page.locator(".cm-content")).toContainText("current edit");
   await workspace(page, "Documents");
   await page.getByRole("button", { name: "Restore", exact: true }).first().click();
   await expect(page.locator(".cm-content")).toContainText("table before");
   await expect(page.locator("#save-status")).toHaveText("Saved locally");
+  // Verify the recovered drawing too; persistence can finish before its layout worker starts.
+  await expect(page.locator('#content .rz-t[data-t="before"]')).toHaveCount(1);
+  await expect(page.locator("#layout-status")).toBeHidden();
   await page.reload();
   await expect(page.locator(".cm-content")).toContainText("table before");
 });
