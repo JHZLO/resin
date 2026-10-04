@@ -31,6 +31,13 @@ service catalog "Catalog service" {
     extra_price  decimal(12,2)
     stock        int
   }
+
+  table reviews "Product reviews" {
+    id          bigint   pk
+    product_id  bigint   -> products  index
+    rating      int
+    body        text?
+  }
 }
 
 service ordering "Order service" {
@@ -52,7 +59,6 @@ service ordering "Order service" {
     id          bigint         pk
     code        varchar(20)    uk as uk_code
     discount    decimal(12,2)
-    expires_at  datetime
   }
 
   table orders "Orders" {
@@ -60,7 +66,7 @@ service ordering "Order service" {
     user_id     bigint       ~> users  index as ix_user_id
     order_no    varchar(32)  uk as uk_order_no
     coupon_id   bigint?      ~> coupons  index
-    status      varchar      enum(PENDING, PAID, CANCELED)
+    status      varchar      enum(PENDING, PAID, CANCELED, REFUNDED)
     created_at  datetime
   } audit envers(status)
 
