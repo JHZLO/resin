@@ -12,14 +12,13 @@
 // schemas are written in a service per schema. The mapping rules are
 // listed in docs/SPEC.md §8.
 //
-// Nothing is dropped silently that a diagram would show: a composite foreign key or an expression
-// index stays in the output as a `%%` comment inside its table, and is reported in `notes`. What a
+// Composite foreign keys, unresolved references and expression indexes stay in the output as `%%` comments inside their table, and are reported in `notes`. What a
 // diagram never shows (DEFAULT, CHECK other than a value list, ON DELETE, storage options, views,
 // data) is left out; views, triggers, functions and procedures are counted in a comment on top.
 
 import { AUDIT_SKIP } from "./checker.ts";
 import { tokenize } from "./sql-lexer.ts";
-import { type SqlColumn, type SqlConstraint, type SqlName, type SqlTable, type SqlType, columnsOf, objectName, parseStatement, schemaName } from "./sql-parser.ts";
+import { type SqlColumn, type SqlConstraint, type SqlName, type SqlTable, type SqlType, columnsOf, keysOf, objectKey, objectName, parseStatement, schemaKey, schemaName } from "./sql-parser.ts";
 
 export interface SqlNote {
   message: string;
@@ -51,12 +50,15 @@ interface At {
 
 interface Col {
   name: string;
+  key: string;
+  display: string;
+  at: At;
   type: SqlType;
   notNull: boolean;
   pk: boolean;
   uk: { name: string | null } | null;
   index: { name: string | null } | null;
-  ref: { table: SqlName; column: string | null; kind: "physical" | "logical"; at: At } | null;
+  ref: { table: SqlName; column: string | null; key: string | null; kind: "physical" | "logical"; at: At } | null;
   values: string[] | null;
   comment: string | null;
 }
@@ -65,7 +67,7 @@ interface Tbl {
   name: SqlName;
   /** The name written in resin */
   display: string;
-  /** Lowercase object name and schema, for lookups: SQL names are case-insensitive unless quoted, and dumps mix both */
+  /** SQL lookup identity, separate from the name written in resin */
   key: string;
   schema: string | null;
   cols: Col[];
@@ -80,14 +82,31 @@ interface Tbl {
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const lower = (s: string): string => s.toLowerCase();
+const cleanName = (s: string): string => s.replace(/[`\r\n]/g, "_") || "_";
 
 /** A resin name: bare when it can be, in backticks otherwise */
-export const resinName = (s: string): string => (IDENT.test(s) ? s : `\`${s.replace(/[`\r\n]/g, "_") || "_"}\``);
+export const resinName = (s: string): string => (IDENT.test(s) ? s : `\`${cleanName(s)}\``);
 const resinString = (s: string): string => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 const oneLine = (s: string | null): string => (s ?? "").replace(/\s+/g, " ").trim();
 const typeText = (t: SqlType): string => (t.args ? `${t.name}(${t.args.join(",")})` : t.name);
 const sameSet = (a: readonly Col[], b: readonly Col[]): boolean => a.length === b.length && a.every((c) => b.includes(c));
 const plural = (word: string, n: number): string => (n === 1 ? word : `${word}s`);
+
+/** Reserve readable names first, so sanitizing an earlier name cannot take a later one's identity */
+function allocateNames(names: Iterable<string>, occupied: Iterable<string> = []): (name: string) => string {
+  const reserved = new Set([...names].filter((name) => cleanName(name) === name));
+  const used = new Set(occupied);
+  return (name) => {
+    const base = cleanName(name);
+    let result = base;
+    if (used.has(result) || (base !== name && reserved.has(base))) {
+      let suffix = 2;
+      do result = `${base}_${suffix++}`; while (used.has(result) || reserved.has(result));
+    }
+    used.add(result);
+    return result;
+  };
+}
 
 /** Is this text SQL that defines a table? The playground converts a paste when it is */
 export function looksLikeSql(text: string): boolean {
@@ -95,9 +114,9 @@ export function looksLikeSql(text: string): boolean {
 }
 
 export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport {
-  const { text, statements } = tokenize(sql);
+  const { text, statements, notes: lexicalNotes } = tokenize(sql);
   const parsed = statements.map((tokens) => ({ st: parseStatement(tokens, text), at: { line: tokens[0].line, col: tokens[0].col } }));
-  const notes: SqlNote[] = [];
+  const notes: SqlNote[] = [...lexicalNotes];
   const note = (message: string, at: At) => notes.push({ message, line: at.line, col: at.col });
 
   const tables: Tbl[] = [];
@@ -105,13 +124,22 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
   const skipped = new Map<string, number>();
   const skippedNames = new Set<string>();
 
-  const find = (name: SqlName): Tbl | null => {
-    const key = lower(objectName(name));
-    const schema = schemaName(name);
+  const matches = (name: SqlName, context?: Tbl): Tbl[] => {
+    const key = objectKey(name);
+    const schema = schemaKey(name);
     const live = tables.filter((t) => !t.dropped && t.key === key);
-    return (schema !== null && live.find((t) => t.schema === lower(schema))) || live[0] || null;
+    if (schema !== null) return live.filter((t) => t.schema === schema);
+    if (context?.schema !== null && context?.schema !== undefined) {
+      const local = live.filter((t) => t.schema === context.schema);
+      if (local.length) return local;
+    }
+    return live;
   };
-  const colOf = (t: Tbl, name: string): Col | null => t.cols.find((c) => lower(c.name) === lower(name)) ?? null;
+  const find = (name: SqlName): Tbl | null => {
+    const found = matches(name);
+    return found.length === 1 ? found[0] : null;
+  };
+  const colOf = (t: Tbl, key: string): Col | null => t.cols.find((c) => c.key === key) ?? null;
   const loss = (t: Tbl, message: string, at: At) => {
     t.losses.push(message);
     note(`table \`${objectName(t.name)}\`: ${message[0].toLowerCase()}${message.slice(1)}`, at);
@@ -119,20 +147,23 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
 
   const column = (c: SqlColumn): Col => ({
     name: c.name,
+    key: c.key,
+    display: c.name,
+    at: { line: c.line, col: c.col },
     type: c.type,
     notNull: c.notNull || c.pk,
     pk: c.pk,
     uk: c.unique ? { name: c.unique.name } : null,
     index: null,
-    ref: c.ref ? { table: c.ref.table, column: c.ref.columns?.[0] ?? null, kind: "physical", at: { line: c.line, col: c.col } } : null,
+    ref: c.ref ? { table: c.ref.table, column: c.ref.columns?.[0] ?? null, key: c.ref.keys?.[0] ?? null, kind: "physical", at: { line: c.line, col: c.col } } : null,
     values: c.type.values ?? c.checkValues,
     comment: c.comment,
   });
 
-  const columns = (t: Tbl, names: string[], what: string, at: At): Col[] | null => {
+  const columns = (t: Tbl, names: string[], keys: string[], what: string, at: At): Col[] | null => {
     const out: Col[] = [];
-    for (const name of names) {
-      const c = colOf(t, name);
+    for (const [i, name] of names.entries()) {
+      const c = colOf(t, keys[i]);
       if (!c) {
         note(`table \`${objectName(t.name)}\`: ${what} names \`${name}\`, which the table does not have`, at);
         return null;
@@ -145,13 +176,13 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
   const constrain = (t: Tbl, k: SqlConstraint, at: At): void => {
     switch (k.kind) {
       case "pk":
-        for (const c of columns(t, k.columns, "the primary key", at) ?? []) {
+        for (const c of columns(t, k.columns, k.keys, "the primary key", at) ?? []) {
           c.pk = true;
           c.notNull = true;
         }
         return;
       case "check": {
-        const c = colOf(t, k.column);
+        const c = colOf(t, k.key);
         if (c && !c.values) c.values = k.values;
         return;
       }
@@ -161,8 +192,8 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
           loss(t, `Not converted: composite foreign key (${k.columns.join(", ")}) -> ${objectName(k.ref.table)}${target}`, at);
           return;
         }
-        const [c] = columns(t, k.columns, "a foreign key", at) ?? [];
-        if (c && !c.ref) c.ref = { table: k.ref.table, column: k.ref.columns?.[0] ?? null, kind: "physical", at };
+        const [c] = columns(t, k.columns, k.keys, "a foreign key", at) ?? [];
+        if (c && !c.ref) c.ref = { table: k.ref.table, column: k.ref.columns?.[0] ?? null, key: k.ref.keys?.[0] ?? null, kind: "physical", at };
         return;
       }
       case "index": {
@@ -172,7 +203,7 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
           loss(t, `Not converted: ${label} on (${list})`, at);
           return;
         }
-        const cs = columns(t, columnsOf(k.items), `${label}`, at);
+        const cs = columns(t, columnsOf(k.items), keysOf(k.items), `${label}`, at);
         if (!cs || cs.length === 0) return;
         if (k.unique && k.where) {
           // Unique only among some rows: drawing it as unique would claim a one-to-one relation
@@ -187,8 +218,8 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
     const t: Tbl = {
       name: s.name,
       display: objectName(s.name),
-      key: lower(objectName(s.name)),
-      schema: schemaName(s.name) === null ? null : lower(schemaName(s.name)!),
+      key: objectKey(s.name),
+      schema: schemaKey(s.name),
       cols: [],
       uniques: [],
       indexes: [],
@@ -198,7 +229,7 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
       dropped: false,
     };
     for (const c of s.columns) {
-      if (colOf(t, c.name)) note(`table \`${objectName(s.name)}\`: column \`${c.name}\` appears twice; the first is kept`, c);
+      if (colOf(t, c.key)) note(`table \`${objectName(s.name)}\`: column \`${c.name}\` appears twice; the first is kept`, c);
       else t.cols.push(column(c));
     }
     for (const k of s.constraints) constrain(t, k.constraint, k);
@@ -210,9 +241,8 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
   const known = new Map((options.known ?? []).map((k) => [lower(k), k]));
   for (const { st, at } of parsed) {
     if (st.kind === "table") {
-      const existing = find(st.table.name);
-      const schema = schemaName(st.table.name);
-      if (existing && existing.schema === (schema === null ? null : lower(schema))) {
+      const existing = tables.find((t) => !t.dropped && t.key === objectKey(st.table.name) && t.schema === schemaKey(st.table.name));
+      if (existing) {
         note(`table \`${objectName(st.table.name)}\` is created twice; the first is kept`, at);
         continue;
       }
@@ -229,7 +259,7 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
         skippedNames.add(lower(st.name));
         // mysqldump stands a placeholder table in for each view until the view itself is created
         if (st.object === "view") {
-          const t = find({ parts: [st.name], ...at });
+          const t = find({ parts: [st.name], keys: [lower(st.name)], ...at });
           if (t) t.dropped = true;
         }
       }
@@ -241,7 +271,8 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
 
   // ---- pass 2: what is said about them ----
   const missing = (name: SqlName, what: string, at: At) => {
-    if (!skippedNames.has(lower(objectName(name)))) note(`${what} skipped: there is no table \`${objectName(name)}\``, at);
+    if (!skippedNames.has(lower(objectName(name))))
+      note(`${what} skipped: ${matches(name).length > 1 ? "ambiguous table" : "there is no table"} \`${name.parts.join(".")}\``, at);
   };
   for (const { st, at } of parsed) {
     if (st.kind === "alter") {
@@ -253,11 +284,11 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
       for (const a of st.actions) {
         if (a.kind === "constraint") constrain(t, a.constraint, a);
         else if (a.kind === "null") {
-          const c = colOf(t, a.column);
+          const c = colOf(t, a.key);
           if (c) c.notNull = a.notNull || c.pk;
         } else {
           const next = column(a.column);
-          const old = colOf(t, a.column.name);
+          const old = colOf(t, a.column.key);
           if (!old) t.cols.push(next);
           // MODIFY redefines the column; the keys declared elsewhere stay
           else Object.assign(old, { type: next.type, notNull: next.notNull || old.pk, values: next.values ?? old.values, comment: next.comment ?? old.comment, ref: old.ref ?? next.ref });
@@ -268,7 +299,7 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
       if (t) constrain(t, st.index, at);
       else missing(st.table, `index${st.index.name ? ` \`${st.index.name}\`` : ""}`, at);
     } else if (st.kind === "comment") {
-      const tableName = st.on === "table" ? st.name : { ...st.name, parts: st.name.parts.slice(0, -1) };
+      const tableName = st.on === "table" ? st.name : { ...st.name, parts: st.name.parts.slice(0, -1), keys: st.name.keys.slice(0, -1) };
       const t = tableName.parts.length ? find(tableName) : null;
       if (!t) {
         if (tableName.parts.length) missing(tableName, "COMMENT ON", at);
@@ -276,7 +307,7 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
       }
       if (st.on === "table") t.comment = st.text;
       else {
-        const c = colOf(t, objectName(st.name));
+        const c = colOf(t, objectKey(st.name));
         if (c) c.comment = st.text;
       }
     }
@@ -314,44 +345,94 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
   for (const t of drawn)
     if (t.schema !== null && drawn.some((o) => o !== t && o.key === t.key)) t.display = `${schemaName(t.name)}.${objectName(t.name)}`;
 
+  const renamed = (what: string, name: string, display: string, at: At) => {
+    if (name !== display) note(`${what} ${JSON.stringify(name)} renamed to ${JSON.stringify(display)} for resin`, at);
+  };
+  const tableNames = allocateNames(drawn.map((t) => t.display), options.known);
+  for (const t of drawn) {
+    const name = t.display;
+    t.display = tableNames(name);
+    renamed("table", name, t.display, t.name);
+    const columnNames = allocateNames(t.cols.map((c) => c.name));
+    for (const c of t.cols) {
+      c.display = columnNames(c.name);
+      renamed(`column of ${JSON.stringify(t.display)}`, c.name, c.display, c.at);
+      for (const value of c.values ?? [])
+        if (value === "" || /[`\r\n]/.test(value))
+          loss(t, `Not converted: enum value ${JSON.stringify(value)} of column ${JSON.stringify(c.name)}`, c.at);
+    }
+  }
+
   // ---- references ----
-  const stubs = new Map<string, { name: string; columns: { name: string; type: SqlType }[] }>();
+  interface StubColumn { name: string; key: string; display: string; type: SqlType; at: At }
+  interface Stub { name: string; display: string; at: At; columns: StubColumn[] }
+  const stubs = new Map<string, Stub>();
   const refs = new Map<Col, () => string>();
+  const knownTarget = (name: SqlName): string | null => {
+    const text = name.parts.join(".");
+    const exact = options.known?.find((k) => k === text);
+    if (exact) return exact;
+    return name.keys.every((key, i) => key === lower(name.parts[i])) ? known.get(lower(text)) ?? null : null;
+  };
+  const stubColumn = (table: SqlName, name: string, key: string, type: SqlType, at: At): { stub: Stub; column: StubColumn } => {
+    const tableKey = JSON.stringify(table.keys);
+    const stub = stubs.get(tableKey) ?? { name: table.parts.join("."), display: "", at, columns: [] };
+    stubs.set(tableKey, stub);
+    let column = stub.columns.find((c) => c.key === key);
+    if (!column) {
+      column = { name, key, display: "", type, at };
+      stub.columns.push(column);
+    } else if (typeText(column.type) !== typeText(type)) {
+      note(`external column \`${stub.name}.${name}\` has conflicting inferred types; ${typeText(column.type)} is kept`, at);
+    }
+    return { stub, column };
+  };
   for (const t of drawn)
     for (const c of t.cols) {
       const ref = c.ref;
       if (!ref) continue;
-      const target = find(ref.table);
+      const targets = matches(ref.table, t);
+      if (targets.length > 1) {
+        loss(t, `Not converted: reference ${c.name} -> ${ref.table.parts.join(".")}, ambiguous target (${targets.map((x) => x.name.parts.join(".")).join(", ")})`, ref.at);
+        continue;
+      }
+      const target = targets[0];
       if (target && audits.includes(target)) {
         loss(t, `Not converted: reference ${c.name} -> ${objectName(ref.table)}, a table that \`audit envers\` generates`, ref.at);
-        c.ref = null;
       } else if (target) {
         const pks = target.cols.filter((x) => x.pk);
-        const to = ref.column ? colOf(target, ref.column) : pks.length === 1 ? pks[0] : null;
+        const to = ref.key !== null ? colOf(target, ref.key) : pks.length === 1 ? pks[0] : null;
         if (!to) {
           const why = ref.column ? `${target.display} has no column ${ref.column}` : `the primary key of ${target.display} is not one column`;
           loss(t, `Not converted: reference ${c.name} -> ${ref.column ? `${target.display}.${ref.column}` : target.display}, ${why}`, ref.at);
-          c.ref = null;
           continue;
         }
         // Pointing at the primary key needs no column name
-        const text = pks.length === 1 && pks[0] === to ? resinName(target.display) : `${resinName(target.display)}.${resinName(to.name)}`;
+        const text = pks.length === 1 && pks[0] === to ? resinName(target.display) : `${resinName(target.display)}.${resinName(to.display)}`;
         refs.set(c, () => text);
-      } else if (known.has(lower(objectName(ref.table)))) {
-        const text = `${resinName(known.get(lower(objectName(ref.table)))!)}${ref.column ? `.${resinName(ref.column)}` : ""}`;
+      } else if (knownTarget(ref.table)) {
+        const text = `${resinName(knownTarget(ref.table)!)}${ref.column ? `.${resinName(ref.column)}` : ""}`;
         refs.set(c, () => text);
       } else {
         // A table outside the SQL: declare what is known of it, the columns pointed at
-        const key = lower(objectName(ref.table));
-        const stub = stubs.get(key) ?? { name: objectName(ref.table), columns: [] };
-        stubs.set(key, stub);
         const name = ref.column ?? "id";
+        const { stub, column: targetColumn } = stubColumn(ref.table, name, ref.key ?? "id", c.type, ref.at);
         if (!ref.column) note(`table \`${stub.name}\` is not in the SQL; its primary key is taken to be \`id\``, ref.at);
-        if (!stub.columns.some((x) => lower(x.name) === lower(name))) stub.columns.push({ name, type: c.type });
         // Only a lone column is taken for the primary key, and then the reference needs no column name
-        refs.set(c, () => (stub.columns.length === 1 ? resinName(stub.name) : `${resinName(stub.name)}.${resinName(name)}`));
+        refs.set(c, () => (stub.columns.length === 1 ? resinName(stub.display) : `${resinName(stub.display)}.${resinName(targetColumn.display)}`));
       }
     }
+
+  const stubNames = allocateNames([...stubs.values()].map((s) => s.name), [...drawn.map((t) => t.display), ...(options.known ?? [])]);
+  for (const stub of stubs.values()) {
+    stub.display = stubNames(stub.name);
+    renamed("external table", stub.name, stub.display, stub.at);
+    const columnNames = allocateNames(stub.columns.map((c) => c.name));
+    for (const c of stub.columns) {
+      c.display = columnNames(c.name);
+      renamed(`column of ${JSON.stringify(stub.display)}`, c.name, c.display, c.at);
+    }
+  }
 
   // Logical references by name, when asked for: user_id → users, buyer_user_id → users, categoryId → categories
   let inferred = 0;
@@ -359,10 +440,15 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
     for (const t of drawn)
       for (const c of t.cols) {
         if (c.ref) continue;
-        const target = guessTarget(c.name, drawn);
+        const targets = guessTargets(c.name, drawn);
+        if (targets.length > 1) {
+          note(`table \`${t.display}\`: reference for \`${c.name}\` not inferred: ambiguous target (${targets.map((x) => x.name.parts.join(".")).join(", ")})`, c.at);
+          continue;
+        }
+        const target = targets[0];
         const pks = target?.cols.filter((x) => x.pk) ?? [];
         if (!target || pks.length !== 1 || pks[0] === c || pks[0].type.name !== c.type.name) continue;
-        c.ref = { table: target.name, column: null, kind: "logical", at: { line: 0, col: 0 } };
+        c.ref = { table: target.name, column: null, key: null, kind: "logical", at: c.at };
         const text = resinName(target.display);
         refs.set(c, () => text);
         inferred++;
@@ -375,33 +461,41 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
   if (out.length) out.push("");
   for (const stub of stubs.values()) {
     const pk = stub.columns.length === 1;
-    out.push(`external table ${resinName(stub.name)} {`, ...align(stub.columns.map((x) => [resinName(x.name), typeText(x.type), pk ? "pk" : ""])), "}", "");
+    out.push(`external table ${resinName(stub.display)} {`, ...align(stub.columns.map((x) => [resinName(x.display), typeText(x.type), pk ? "pk" : ""])), "}", "");
   }
   // Tables from two or more schemas: each schema's tables in a service of its name, where it first appears
   const schemas = new Set(drawn.flatMap((t) => (t.schema === null ? [] : [t.schema])));
   const split = schemas.size >= 2;
   const written = new Set<string>();
+  const schemaNames = new Map(drawn.filter((t) => t.schema !== null).map((t) => [t.schema!, schemaName(t.name)!]));
+  const serviceNames = allocateNames(schemaNames.values());
+  for (const [schema, name] of schemaNames) {
+    const display = serviceNames(name);
+    schemaNames.set(schema, display);
+    renamed("service", name, display, drawn.find((t) => t.schema === schema)!.name);
+  }
   for (const t of drawn) {
-    if (!split || t.schema === null) out.push(...writeTable(t, refs), "");
+    if (!split || t.schema === null) out.push(...writeTable(t, refs, note), "");
     else if (!written.has(t.schema)) {
       written.add(t.schema);
       const members = drawn.filter((x) => x.schema === t.schema);
-      const body = members.flatMap((x, k) => [...(k ? [""] : []), ...writeTable(x, refs)]).map((l) => (l ? `  ${l}` : l));
-      out.push(`service ${resinName(schemaName(t.name)!)} {`, ...body, "}", "");
+      const body = members.flatMap((x, k) => [...(k ? [""] : []), ...writeTable(x, refs, note)]).map((l) => (l ? `  ${l}` : l));
+      out.push(`service ${resinName(schemaNames.get(t.schema)!)} {`, ...body, "}", "");
     }
   }
   notes.sort((a, b) => a.line - b.line || a.col - b.col);
   return { source: drawn.length ? `${out.join("\n").trimEnd()}\n` : "", notes, tables: drawn.length };
 }
 
-function writeTable(t: Tbl, refs: Map<Col, () => string>): string[] {
+function writeTable(t: Tbl, refs: Map<Col, () => string>, note: (message: string, at: At) => void): string[] {
   const pks = t.cols.filter((c) => c.pk);
-  // A name used twice in one table is an error in resin; SQL scopes some names wider, so keep the first
-  const used = new Set<string>();
+  // SQL names must stay distinct after conversion, even when resin cannot write the original spelling
+  const names = allocateNames([...t.cols.flatMap((c) => c.uk?.name ? [c.uk.name] : []), ...t.uniques.flatMap((x) => x.name ? [x.name] : []), ...t.indexes.flatMap((x) => x.name ? [x.name] : [])]);
   const claim = (n: string | null): string | null => {
-    if (n === null || used.has(n)) return null;
-    used.add(n);
-    return n;
+    if (n === null) return null;
+    const display = names(n);
+    if (display !== n) note(`index name ${JSON.stringify(n)} renamed to ${JSON.stringify(display)} in table ${JSON.stringify(t.display)}`, t.name);
+    return display;
   };
   for (const c of t.cols) {
     // UNIQUE on the only primary key column says nothing more
@@ -439,13 +533,13 @@ function writeTable(t: Tbl, refs: Map<Col, () => string>): string[] {
     if (c.index) mods.push(c.index.name ? `index as ${resinName(c.index.name)}` : "index");
     const comment = oneLine(c.comment);
     if (comment) mods.push(resinString(comment));
-    return [resinName(c.name), `${typeText(c.type)}${c.notNull ? "" : "?"}`, mods.join("  ")];
+    return [resinName(c.display), `${typeText(c.type)}${c.notNull ? "" : "?"}`, mods.join("  ")];
   });
 
-  const list = (cs: Col[]) => cs.map((c) => resinName(c.name)).join(", ");
+  const list = (cs: Col[]) => cs.map((c) => resinName(c.display)).join(", ");
   const as = (n: string | null) => (n ? ` as ${resinName(n)}` : "");
   const comment = oneLine(t.comment);
-  const audit = t.audit ? ` audit envers${t.audit.columns ? `(${t.audit.columns.map(resinName).join(", ")})` : ""}` : "";
+  const audit = t.audit ? ` audit envers${t.audit.columns ? `(${t.audit.columns.map((name) => resinName(t.cols.find((c) => c.name === name)!.display)).join(", ")})` : ""}` : "";
   return [
     `table ${resinName(t.display)}${comment ? ` ${resinString(comment)}` : ""} {`,
     ...align(rows),
@@ -479,20 +573,20 @@ function enumValues(values: string[] | null): string | null {
 
 /** The table a `..._id` column is named after, as tbls and Azimutt read names: the words before `id`
  *  are the table's name in the singular, possibly after a word or two of role (`buyer_user_id`) */
-function guessTarget(column: string, tables: readonly Tbl[]): Tbl | null {
+function guessTargets(column: string, tables: readonly Tbl[]): Tbl[] {
   const words = column
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
     .split(/_+/)
     .filter(Boolean);
-  if (words.length < 2 || words[words.length - 1] !== "id") return null;
+  if (words.length < 2 || words[words.length - 1] !== "id") return [];
   const stem = words.slice(0, -1);
   for (let k = 0; k < stem.length && k <= 3; k++) {
     const wanted = stem.slice(k).join("_");
-    const found = tables.find((t) => t.key === wanted || t.key === `${wanted}s` || singular(t.key) === wanted);
-    if (found) return found;
+    const found = tables.filter((t) => lower(t.key) === wanted || lower(t.key) === `${wanted}s` || singular(lower(t.key)) === wanted);
+    if (found.length) return found;
   }
-  return null;
+  return [];
 }
 
 /** The last word of a table name in the singular: categories → category, addresses → address */

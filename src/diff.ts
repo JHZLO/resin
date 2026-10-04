@@ -125,14 +125,18 @@ export function diff(before: Model, after: Model): ModelDiff {
       for (const c of t.columns) if (c.change) changes.push({ table: t.name, column: c.name, kind: c.change.kind, details: c.change.details });
   }
 
-  // Relations: the newer ones, the ones that are gone, and the ones whose kind changed (-> to ~>)
+  // Compare the facts drawn on a connector, including cardinality and the parent's requirement
   const beforeRelations = new Map(before.relations.filter((r) => r.origin === "table").map((r) => [relationKey(r), r]));
   const afterKeys = new Set(after.relations.map(relationKey));
   const relations: Relation[] = after.relations.map((r) => {
     if (r.origin !== "table") return r;
     const old = beforeRelations.get(relationKey(r));
     if (!old) return { ...r, change: marked("added") };
-    return old.kind !== r.kind ? { ...r, change: marked("changed") } : r;
+    const details: string[] = [];
+    if (old.kind !== r.kind) details.push(`reference kind ${old.kind} → ${r.kind}`);
+    if (old.one !== r.one) details.push(`cardinality ${old.one ? "one-to-one" : "one-to-many"} → ${r.one ? "one-to-one" : "one-to-many"}`);
+    if (old.optional !== r.optional) details.push(r.optional ? "parent now optional" : "parent now required");
+    return details.length ? { ...r, change: marked("changed", details) } : r;
   });
   for (const [key, r] of beforeRelations) if (!afterKeys.has(key) && tables.some((t) => t.name === r.child) && tables.some((t) => t.name === r.parent)) relations.push({ ...r, change: marked("removed") });
 

@@ -17,12 +17,16 @@ import type { SqlToken } from "./sql-lexer.ts";
 /** A possibly qualified name (`public.orders`, `[dbo].[Users]`); the last part is the object */
 export interface SqlName {
   parts: string[];
+  keys: string[];
   line: number;
   col: number;
 }
 
 export const objectName = (n: SqlName): string => n.parts[n.parts.length - 1];
-export const schemaName = (n: SqlName): string | null => (n.parts.length > 1 ? n.parts[n.parts.length - 2] : null);
+export const objectKey = (n: SqlName): string => n.keys[n.keys.length - 1];
+export const schemaName = (n: SqlName): string | null => (n.parts.length > 1 ? n.parts.slice(0, -1).join(".") : null);
+export const schemaKey = (n: SqlName): string | null => (n.keys.length > 1 ? JSON.stringify(n.keys.slice(0, -1)) : null);
+const identifierKey = (t: SqlToken): string => t.caseSensitive ? t.value : t.value.toLowerCase();
 
 export interface SqlType {
   /** Lowercase, normalized to one resin identifier: `character varying` → `varchar` */
@@ -36,10 +40,12 @@ export interface SqlRef {
   table: SqlName;
   /** null when the reference names no column: it points at the primary key */
   columns: string[] | null;
+  keys: string[] | null;
 }
 
 export interface SqlColumn {
   name: string;
+  key: string;
   type: SqlType;
   notNull: boolean;
   pk: boolean;
@@ -52,14 +58,14 @@ export interface SqlColumn {
   col: number;
 }
 
-export type IndexItem = { column: string } | { expression: string };
+export type IndexItem = { column: string; key: string } | { expression: string };
 
 export type SqlConstraint =
-  | { kind: "pk"; columns: string[] }
+  | { kind: "pk"; columns: string[]; keys: string[] }
   /** UNIQUE constraints and indexes alike: a unique constraint is a unique index with a name */
   | { kind: "index"; name: string | null; unique: boolean; items: IndexItem[]; where: string | null }
-  | { kind: "fk"; columns: string[]; ref: SqlRef }
-  | { kind: "check"; column: string; values: string[] };
+  | { kind: "fk"; columns: string[]; keys: string[]; ref: SqlRef }
+  | { kind: "check"; column: string; key: string; values: string[] };
 
 export interface SqlTable {
   name: SqlName;
@@ -73,7 +79,7 @@ export interface SqlTable {
 export type AlterAction =
   | { kind: "constraint"; constraint: SqlConstraint; line: number; col: number }
   | { kind: "column"; column: SqlColumn }
-  | { kind: "null"; column: string; notNull: boolean };
+  | { kind: "null"; column: string; key: string; notNull: boolean };
 
 export type SqlStatement =
   | { kind: "table"; table: SqlTable }
@@ -152,11 +158,14 @@ class Cursor {
     if (!this.isName()) return null;
     const first = this.next();
     const parts = [first.value];
+    const keys = [identifierKey(first)];
     while (this.punct(".") && this.isName(1)) {
       this.pos++;
-      parts.push(this.next().value);
+      const part = this.next();
+      parts.push(part.value);
+      keys.push(identifierKey(part));
     }
-    return { parts, line: first.line, col: first.col };
+    return { parts, keys, line: first.line, col: first.col };
   }
   rest(): SqlToken[] {
     const out = this.tokens.slice(this.pos);
@@ -346,9 +355,9 @@ function alterTable(c: Cursor, text: string): SqlStatement {
     adding = false;
     if (a.eat("ALTER")) {
       a.eat("COLUMN");
-      const col = a.isName() ? a.next().value : null;
-      if (col && a.eat("SET", "NOT", "NULL")) actions.push({ kind: "null", column: col, notNull: true });
-      else if (col && a.eat("DROP", "NOT", "NULL")) actions.push({ kind: "null", column: col, notNull: false });
+      const col = a.isName() ? a.next() : null;
+      if (col && a.eat("SET", "NOT", "NULL")) actions.push({ kind: "null", column: col.value, key: identifierKey(col), notNull: true });
+      else if (col && a.eat("DROP", "NOT", "NULL")) actions.push({ kind: "null", column: col.value, key: identifierKey(col), notNull: false });
     } else if (a.eat("MODIFY")) {
       // MySQL: MODIFY [COLUMN] c type ... redefines the column
       a.eat("COLUMN");
@@ -388,9 +397,9 @@ function extendedProperty(c: Cursor): SqlStatement {
   const schema = args.get("@level0name");
   const parts = [...(schema ? [schema] : []), args.get("@level1name")!];
   if (is("@level2type", "COLUMN") && args.has("@level2name"))
-    return { kind: "comment", on: "column", name: { parts: [...parts, args.get("@level2name")!], ...at }, text: args.get("@value") ?? null };
+    return { kind: "comment", on: "column", name: { parts: [...parts, args.get("@level2name")!], keys: [...parts, args.get("@level2name")!].map((p) => p.toLowerCase()), ...at }, text: args.get("@value") ?? null };
   if (args.has("@level2type")) return skip;
-  return { kind: "comment", on: "table", name: { parts, ...at }, text: args.get("@value") ?? null };
+  return { kind: "comment", on: "table", name: { parts, keys: parts.map((p) => p.toLowerCase()), ...at }, text: args.get("@value") ?? null };
 }
 
 // ---- table elements ----
@@ -433,18 +442,20 @@ function tableConstraint(e: Cursor, text: string): SqlConstraint | null {
   if (e.eat("PRIMARY", "KEY")) {
     e.eatAny("CLUSTERED", "NONCLUSTERED");
     if (e.eat("USING")) e.next();
-    return { kind: "pk", columns: columnsOf(indexItems(e.group() ?? [], text)) };
+    const items = indexItems(e.group() ?? [], text);
+    return { kind: "pk", columns: columnsOf(items), keys: keysOf(items) };
   }
   if (e.eat("FOREIGN", "KEY")) {
     if (e.isName()) e.next(); // MySQL allows an index name here
-    const columns = columnsOf(indexItems(e.group() ?? [], text));
+    const items = indexItems(e.group() ?? [], text);
+    const columns = columnsOf(items);
     if (!e.eat("REFERENCES")) return null;
     const ref = reference(e);
-    return ref ? { kind: "fk", columns, ref } : null;
+    return ref ? { kind: "fk", columns, keys: keysOf(items), ref } : null;
   }
   if (e.eat("CHECK")) {
     const found = valueList(e.group() ?? []);
-    return found ? { kind: "check", column: found.column, values: found.values } : null;
+    return found ? { kind: "check", ...found } : null;
   }
   const unique = e.eat("UNIQUE");
   e.eatAny("FULLTEXT", "SPATIAL");
@@ -461,6 +472,7 @@ function tableConstraint(e: Cursor, text: string): SqlConstraint | null {
 }
 
 export const columnsOf = (items: IndexItem[]): string[] => items.flatMap((i) => ("column" in i ? [i.column] : []));
+export const keysOf = (items: IndexItem[]): string[] => items.flatMap((i) => ("column" in i ? [i.key] : []));
 
 /** The items of an index or key column list. `a`, `a DESC`, `a(10)` (a MySQL prefix), `a text_pattern_ops`
  *  and `a COLLATE x` are columns; anything else (`lower(a)`, `(a + b)`) is an expression */
@@ -470,7 +482,7 @@ function indexItems(group: SqlToken[], text: string): IndexItem[] {
     let k = 0;
     if (rest[0]?.kind === "punct" && rest[0].value === "(" && rest[1]?.kind === "number" && rest[2]?.kind === "punct" && rest[2].value === ")") k = 3;
     const plain = rest.slice(k).every((t) => t.kind === "word" || t.kind === "quoted");
-    return (first.kind === "word" || first.kind === "quoted") && plain ? { column: first.value } : { expression: snippet(text, item) };
+    return (first.kind === "word" || first.kind === "quoted") && plain ? { column: first.value, key: identifierKey(first) } : { expression: snippet(text, item) };
   });
 }
 
@@ -481,6 +493,7 @@ function reference(e: Cursor): SqlRef | null {
   if (!table) return null;
   const group = e.group();
   const columns = group ? splitTop(group).map((part) => part[0].value) : null;
+  const keys = group ? splitTop(group).map((part) => identifierKey(part[0])) : null;
   for (;;) {
     if (e.eat("ON")) {
       e.next(); // DELETE | UPDATE
@@ -492,7 +505,7 @@ function reference(e: Cursor): SqlRef | null {
     else if (!(e.eat("NOT", "DEFERRABLE") || e.eat("DEFERRABLE") || e.eat("NOT", "FOR", "REPLICATION") || e.eat("ENABLE") || e.eat("DISABLE") || e.eat("VALIDATE") || e.eat("NOVALIDATE")))
       break;
   }
-  return { table, columns };
+  return { table, columns, keys };
 }
 
 /** Words that start a column constraint, so a column whose type is left out (SQLite) is recognized */
@@ -505,6 +518,7 @@ function column(e: Cursor): SqlColumn {
   const name = e.next();
   const col: SqlColumn = {
     name: name.value,
+    key: identifierKey(name),
     type: { name: "any", args: null, values: null },
     notNull: false,
     pk: false,
@@ -564,7 +578,7 @@ function column(e: Cursor): SqlColumn {
       case "CHECK": {
         e.next();
         const found = valueList(e.group() ?? []);
-        if (found && found.column.toLowerCase() === col.name.toLowerCase()) col.checkValues = found.values;
+        if (found && found.key === col.key) col.checkValues = found.values;
         continue;
       }
       case "COMMENT": {
@@ -715,7 +729,7 @@ function expression(e: Cursor): void {
 /** The values of a check that lists them, in the forms dialects write:
  *  `status IN ('A', 'B')`, PostgreSQL's `(status)::text = ANY (ARRAY['A'::text, 'B'::text])` and
  *  SQL Server's `[status]='A' OR [status]='B'`. null for any other check */
-function valueList(group: readonly SqlToken[]): { column: string; values: string[] } | null {
+function valueList(group: readonly SqlToken[]): { column: string; key: string; values: string[] } | null {
   // Drop parentheses and casts (with their type arguments): what is left is a flat sequence
   const flat: SqlToken[] = [];
   for (let k = 0; k < group.length; k++) {
@@ -750,21 +764,21 @@ function valueList(group: readonly SqlToken[]): { column: string; values: string
   };
   if (isWord(flat[1], "IN")) {
     const values = list(2);
-    return values ? { column: head.value, values } : null;
+    return values ? { column: head.value, key: identifierKey(head), values } : null;
   }
   if (isPunct(flat[1], "=") && isWord(flat[2], "ANY") && isWord(flat[3], "ARRAY") && isPunct(flat[4], "[") && isPunct(flat[flat.length - 1], "]")) {
     const values = list(5, flat.length - 1);
-    return values ? { column: head.value, values } : null;
+    return values ? { column: head.value, key: identifierKey(head), values } : null;
   }
   // a = 'x' OR a = 'y' ...
   const values: string[] = [];
   for (let k = 0; k < flat.length; k += 4) {
     const col = flat[k];
-    if (!col || col.value !== head.value || !isPunct(flat[k + 1], "=") || !isValue(flat[k + 2])) return null;
+    if (!col || identifierKey(col) !== identifierKey(head) || !isPunct(flat[k + 1], "=") || !isValue(flat[k + 2])) return null;
     values.push(flat[k + 2].value);
     if (k + 3 < flat.length && !isWord(flat[k + 3], "OR")) return null;
   }
-  return values.length > 1 ? { column: head.value, values } : null;
+  return values.length > 1 ? { column: head.value, key: identifierKey(head), values } : null;
 }
 
 const strings = (group: readonly SqlToken[]): string[] => group.filter((t) => t.kind === "string").map((t) => t.value);

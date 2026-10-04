@@ -135,7 +135,7 @@ describe("fromSql: keys and indexes", () => {
   });
 
   it("writes single-column indexes on the column and composite ones as index(...)", () => {
-    const out = convert(`create table t (id int primary key, a int, b int, key ix_a (a), index ix_ab (a, b));
+    const out = convert(`create table public.t (id int primary key, a int, b int, key ix_a (a), index ix_ab (a, b));
       create index ix_b on public.t using btree (b desc);`);
     expect(line(out, "a")).toBe("a  int?  index as ix_a");
     expect(line(out, "b")).toBe("b  int?  index as ix_b");
@@ -166,9 +166,69 @@ describe("fromSql: references", () => {
     expect(line(out, "d_id")).toBe("d_id  int?  -> a");
   });
 
-  it("matches names case-insensitively and without their schema, and writes the declared spelling", () => {
-    const out = convert("CREATE TABLE [dbo].[Users] ([Id] int PRIMARY KEY); CREATE TABLE orders (user_id int REFERENCES public.USERS (ID));");
+  it("matches bare and bracket names case-insensitively within the requested schema", () => {
+    const out = convert("CREATE TABLE [dbo].[Users] ([Id] int PRIMARY KEY); CREATE TABLE orders (user_id int REFERENCES dbo.USERS (ID));");
     expect(line(out, "user_id")).toBe("user_id  int?  -> Users");
+  });
+
+  it("never substitutes a different schema for an explicitly qualified target", () => {
+    const out = convert("create table stock.items (id int primary key); create table orders (item_id int references sales.items(id));");
+    expect(out).toContain("external table `sales.items`");
+    expect(line(out, "item_id")).toBe("item_id  int?  -> `sales.items`");
+  });
+
+  it("resolves unqualified references in the source schema and reports ambiguous targets", () => {
+    const sql = `create table stock.items (id int primary key);
+      create table sales.items (id int primary key);
+      create table sales.orders (item_id int references items);
+      create table orders (other_id int references items);`;
+    const { source, notes } = fromSql(sql);
+    expect(compile(source).model).not.toBeNull();
+    expect(line(source, "item_id")).toBe("item_id  int?  -> `sales.items`");
+    expect(line(source, "other_id")).toBe("other_id  int?");
+    expect(notes.some((n) => n.line === 4 && n.message.includes("ambiguous"))).toBe(true);
+  });
+
+  it("keeps PostgreSQL double-quoted table and column names distinct", () => {
+    const out = convert(`create table "Users" ("Id" int, id int, primary key ("Id"), unique(id));
+      create table users (id int primary key);
+      create table orders (a int references "Users"("Id"), b int references users(id), c int references "Users"(id));
+      create index by_lower_id on "Users" (id);`);
+    const model = compile(out).model!;
+    expect(model.tables.map((t) => t.name)).toEqual(["Users", "users", "orders"]);
+    expect(model.tables[0].columns.map((c) => [c.name, c.pk, c.uk, c.index?.name])).toEqual([
+      ["Id", true, false, undefined], ["id", false, true, "by_lower_id"],
+    ]);
+    expect(model.relations.map((r) => [r.childColumn, r.parent, r.parentColumn])).toEqual([
+      ["a", "Users", "Id"], ["b", "users", "id"], ["c", "Users", "id"],
+    ]);
+  });
+
+  it("keeps external targets from different schemas separate", () => {
+    const out = convert("create table orders (a int references crm.users(id), b int references billing.users(id));");
+    expect(compile(out).model!.relations.map((r) => r.parent)).toEqual(["crm.users", "billing.users"]);
+  });
+
+  it("does not apply qualified alterations, indexes or comments to a different schema", () => {
+    const { source, notes } = fromSql(`create table actual.users (id int primary key, name text);
+      alter table missing.users add wrong int;
+      create index wrong_index on missing.users(name);
+      comment on column missing.users.name is 'wrong';`);
+    expect(source).not.toContain("wrong");
+    expect(notes.map((n) => n.line)).toEqual([2, 3, 4]);
+    expect(notes.every((n) => n.message.includes("missing.users"))).toBe(true);
+  });
+
+  it("resolves quoted schemas, columns, comments and ALTER constraints by exact identity", () => {
+    const out = convert(`create table "A"."Users" ("Id" int, id int);
+      create table a."Users" (id int primary key);
+      alter table "A"."Users" add primary key ("Id");
+      alter table "A"."Users" alter column id set not null;
+      comment on column "A"."Users"."Id" is 'Upper key';
+      create table orders (u int references "A"."Users"("Id"));`);
+    expect(line(out, "Id")).toBe('Id  int  pk  "Upper key"');
+    expect(line(out, "u")).toBe("u  int?  -> `A.Users`");
+    expect(compile(out).model!.tables).toHaveLength(3);
   });
 
   it("declares a referenced table that is not in the SQL as an external table", () => {
@@ -204,6 +264,25 @@ describe("fromSql: references", () => {
     expect(line(out, "categoryId")).toBe("categoryId  bigint?  ~> categories");
     expect(line(out, "user_id")).toBe("user_id  varchar(36)?");
   });
+
+  it("does not infer a reference when several schemas or singular forms match", () => {
+    for (const names of [["crm.users", "billing.users"], ["user", "users"]]) {
+      const sql = `create table ${names[0]} (id bigint primary key);
+        create table ${names[1]} (id int primary key);
+        create table orders (user_id bigint);`;
+      const { source, notes } = fromSql(sql, { inferReferences: true });
+      expect(source).not.toContain("~>");
+      expect(notes.some((n) => n.line === 3 && n.message.includes("ambiguous"))).toBe(true);
+    }
+  });
+
+  it("does not replace an unresolved explicit foreign key with a guessed reference", () => {
+    const { source, notes } = fromSql(`create table users (id bigint primary key);
+      create table wrong (id bigint primary key);
+      create table orders (user_id bigint references wrong(missing));`, { inferReferences: true });
+    expect(source).not.toContain("~>");
+    expect(notes.some((n) => n.message.includes("wrong has no column missing"))).toBe(true);
+  });
 });
 
 describe("fromSql: values and descriptions", () => {
@@ -223,10 +302,10 @@ describe("fromSql: values and descriptions", () => {
   });
 
   it("reads descriptions from COMMENT, COMMENT ON and SQL Server extended properties", () => {
-    const out = convert(`create table t (id int primary key comment 'Key', note text) comment='Things';
+    const out = convert(`create table public.t (id int primary key comment 'Key', note text) comment='Things';
       COMMENT ON COLUMN public.t.note IS 'Free "text"
       on two lines';
-      create table u ([Id] int);
+      create table dbo.u ([Id] int);
       EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'People', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'u';`);
     expect(out).toContain('table t "Things" {');
     expect(line(out, "id")).toBe('id  int  pk  "Key"');
@@ -241,6 +320,26 @@ describe("fromSql: tables", () => {
     expect(out).toContain("table `Order Details` {");
     expect(out).toContain("  `unit price`  int?\n");
     expect(out).toContain("  `주문`        int?\n");
+  });
+
+  it("renames colliding sanitized table and column names and follows their references", () => {
+    const sql = 'create table "a`b" ("x`y" int, x_y int, primary key ("x`y"));\n' +
+      'create table a_b (id int primary key);\n' +
+      'create table child (id int primary key, x int references "a`b"("x`y"));';
+    const { source, notes } = fromSql(sql);
+    const model = compile(source).model;
+    expect(model).not.toBeNull();
+    expect(new Set(model!.tables.map((t) => t.name)).size).toBe(3);
+    const parent = model!.tables.find((t) => t.name !== "a_b" && t.name !== "child")!;
+    expect(parent.columns.map((c) => c.name)).toEqual(["x_y_2", "x_y"]);
+    expect(model!.relations[0]).toMatchObject({ parent: parent.name, parentColumn: "x_y_2" });
+    expect(notes.filter((n) => n.message.includes("renamed"))).toHaveLength(2);
+  });
+
+  it("reports enum values that resin cannot represent", () => {
+    const { source, notes } = fromSql("create table t (v enum('', 'a`b', 'valid'));" );
+    expect(line(source, "v")).toBe("v  enum?  enum(valid)");
+    expect(notes.filter((n) => n.message.includes("enum value"))).toHaveLength(2);
   });
 
   it("keeps the schema in the name when two schemas have a table of the same name", () => {
@@ -315,6 +414,14 @@ table audit_log {
     expect(fromSql("create table t as select 1;").notes).toEqual([
       { message: "skipped table `t`: it has no column list (CREATE TABLE ... AS or LIKE)", line: 1, col: 1 },
     ]);
+  });
+
+  it("reports broken SQL delimiters while keeping earlier complete tables", () => {
+    for (const broken of ["create table b (id int", "/* unfinished", "create table b (v text default 'unfinished", 'create table "unfinished', "create function f() as $$ unfinished"]) {
+      const { source, notes } = fromSql(`create table good (id int primary key);\n${broken}`);
+      expect(source).toContain("table good {");
+      expect(notes.some((n) => n.line === 2 && n.message.includes("unterminated"))).toBe(true);
+    }
   });
 });
 

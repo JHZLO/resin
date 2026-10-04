@@ -19,6 +19,8 @@ export type SqlTokenKind = "word" | "quoted" | "string" | "number" | "punct";
 
 export interface SqlToken {
   kind: SqlTokenKind;
+  /** Standard double quotes preserve identifier case; other quoting follows dump conventions */
+  caseSensitive?: boolean;
   /** A word as written, a quoted name without its quotes, a string unescaped, punctuation as written */
   value: string;
   /** The word in uppercase, for keyword checks; "" for other kinds */
@@ -35,6 +37,7 @@ export interface SqlSource {
   /** The input with COPY data blanked out (line numbers unchanged); token offsets point into it */
   text: string;
   statements: SqlToken[][];
+  notes: { message: string; line: number; col: number }[];
 }
 
 const ESCAPES: Record<string, string> = { n: "\n", r: "\r", t: "\t", "0": "", Z: "" };
@@ -86,10 +89,14 @@ export function tokenize(source: string): SqlSource {
   };
 
   const statements: SqlToken[][] = [];
+  const notes: SqlSource["notes"] = [];
+  const note = (message: string, offset: number) => notes.push({ message, ...where(offset) });
   let current: SqlToken[] = [];
   /** Parentheses open in the current statement */
   let depth = 0;
+  let openParenthesis = 0;
   const endStatement = () => {
+    if (depth > 0) note("unterminated SQL parentheses; the statement may be incomplete", openParenthesis);
     if (current.length) statements.push(current);
     current = [];
     depth = 0;
@@ -136,12 +143,14 @@ export function tokenize(source: string): SqlSource {
       value += c;
       j++;
     }
+    note(`unterminated SQL ${close === "'" ? "string" : "quoted name"}; the remaining input may be incomplete`, i);
     return [value, n];
   };
 
   let delimiter = ";";
   /** Inside a MySQL versioned comment, whose closing marker is to be dropped */
   let versioned = false;
+  let versionedStart = 0;
   let i = 0;
   while (i < n) {
     const c = text[i];
@@ -179,12 +188,14 @@ export function tokenize(source: string): SqlSource {
     }
     if (c === "/" && text[i + 1] === "*") {
       if (text[i + 2] === "!") {
+        versionedStart = i;
         i += 3;
         while (isDigit(text.charCodeAt(i))) i++;
         versioned = true;
         continue;
       }
       const e = text.indexOf("*/", i + 2);
+      if (e < 0) note("unterminated SQL comment; the remaining input was skipped", i);
       i = e < 0 ? n : e + 2;
       continue;
     }
@@ -202,6 +213,7 @@ export function tokenize(source: string): SqlSource {
     if (c === '"' || c === "`") {
       const [value, end] = quoted(i, c, false);
       push("quoted", value, i, end);
+      if (c === '"') current[current.length - 1].caseSensitive = true;
       i = end;
       continue;
     }
@@ -218,6 +230,7 @@ export function tokenize(source: string): SqlSource {
       if (tag.test(text)) {
         const open = text.slice(i, tag.lastIndex);
         const close = text.indexOf(open, tag.lastIndex);
+        if (close < 0) note("unterminated SQL dollar quote; the remaining input may be incomplete", i);
         const end = close < 0 ? n : close + open.length;
         push("string", text.slice(tag.lastIndex, close < 0 ? n : close), i, end);
         i = end;
@@ -259,11 +272,15 @@ export function tokenize(source: string): SqlSource {
       i += 2;
       continue;
     }
-    if (c === "(") depth++;
+    if (c === "(") {
+      if (depth === 0) openParenthesis = i;
+      depth++;
+    }
     else if (c === ")") depth = Math.max(0, depth - 1);
     push("punct", c, i, i + 1);
     i++;
   }
   endStatement();
-  return { text, statements };
+  if (versioned) note("unterminated SQL versioned comment; the remaining input may be incomplete", versionedStart);
+  return { text, statements, notes };
 }

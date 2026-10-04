@@ -93,6 +93,18 @@ describe("diff", () => {
     expect(d.model.tables.filter((t) => t.origin === "audit").every((t) => !t.change)).toBe(true);
   });
 
+  it("marks a relation when only its cardinality or parent requirement changes", () => {
+    const before = model(BASE);
+    const after = model(BASE.replace("user_id  bigint  ->", "user_id  bigint?  uk ->"));
+    const relation = diff(before, after).model.relations[0];
+    expect(relation).toMatchObject({ one: true, optional: true, change: {
+      kind: "changed", details: ["cardinality one-to-many → one-to-one", "parent now optional"],
+    } });
+    expect(diff(after, before).model.relations[0].change).toEqual({
+      kind: "changed", details: ["cardinality one-to-one → one-to-many", "parent now required"],
+    });
+  });
+
   it("writes the changes as a Markdown list", () => {
     const after = BASE.replace("  email  varchar(255)\n", "") + "\n\ntable refunds {\n  id  bigint  pk\n}";
     expect(diffMarkdown(diff(model(BASE), model(after)).changes)).toBe(

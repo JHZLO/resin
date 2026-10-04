@@ -275,8 +275,7 @@ resin.
   SQL Server's `sp_addextendedproperty` for `MS_Description`. Every other statement is skipped.
 - Tables are resolved in two passes: first `CREATE TABLE`, `DROP TABLE` and enum types, in order;
   then `ALTER TABLE`, `CREATE INDEX` and `COMMENT ON`, in order. References are resolved last.
-- Table and column names match without regard to case or schema. The `CREATE TABLE` spelling is
-  written. Two tables of one name in different schemas are written `` `schema.name` ``.
+- Explicitly qualified SQL table names match their exact schema. An absent target becomes an external table; the importer never substitutes a table from another schema. Unqualified targets first use the referencing table's schema and otherwise must be unambiguous. Standard double-quoted names preserve case. The declared spelling is written in resin.
 - When the tables come from two or more schemas, each schema's tables are written in a `service`
   named after the schema, as a schema per service is a common way to split one database; in the
   order the schemas first appear, tables of no schema outside. One schema (all `public`, say) makes
@@ -310,11 +309,15 @@ resin.
   dropped, non-number arguments (`max`, `*`) drop the arguments, the schema of a type is dropped,
   arrays get PostgreSQL's `_` prefix (`text[]` → `_text`), and a column with no type is `any`.
 - **Names** that are not identifiers, and **enum values** that are neither identifiers nor numbers,
-  are written in backticks.
+  are written in backticks. Backticks and line breaks inside a name become underscores. If this
+  would collide with another name, a numeric suffix makes it distinct. Every renamed name and
+  every enum value that cannot be written is reported in the notes. References use the new names.
 - **Inferred references** (`inferReferences`) are off by default. A column without a reference
   whose name ends in `_id` or `Id` points with `~>` at the table named by the words before it,
   singular or plural, possibly after up to three leading words, when that table's primary key is
-  one column of the same type name. The output then starts with a comment saying so.
+  one column of the same type name. A name with several matching tables is not inferred, even
+  when only one has a compatible key; a note lists the ambiguity. The output then starts with a
+  comment saying so when at least one reference was inferred.
 
 ### 8.3 What is left out
 
@@ -322,11 +325,13 @@ resin.
   `ON UPDATE`, collations, storage and partition options, sequences, privileges and data.
 - Views, materialized views, triggers, functions and procedures are not written; the first line
   counts them: `%% Skipped: 2 views, 1 trigger`.
-- Composite foreign keys and expression indexes are not written. Each stays in its table as a
+- Composite foreign keys, unresolved references and expression indexes are not written. Each stays in its table as a
   comment, `%% Not converted: ...`. A partial unique index is written as a plain index with the
   comment `%% Partial unique index ...`, because it is unique among some rows only.
 - Every comment of this kind, every skipped object and every statement that could not be read is
   also reported as a note with its line and column in the SQL.
+- Unclosed SQL quotes, comments and parentheses are reported as notes at their opening position.
+  Complete statements before the broken input are still imported; a partial result is not silent.
 
 ## 9. Lint
 
@@ -366,7 +371,8 @@ playground draws it when a link carries both versions.
 - A table **changes** when one of its columns is added, removed or changed, or when any of these
   differ: external or not, description, service, its `unique(...)` and `index(...)` constraints,
   audit.
-- A relation changes when its kind changes (`->` to `~>`).
+- A relation changes when its kind (`->` to `~>`), cardinality (one-to-one or one-to-many), or
+  parent requirement (optional or required) changes. Its change details describe each difference.
 
 ### 10.2 The merged model
 

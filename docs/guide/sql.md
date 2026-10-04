@@ -75,6 +75,8 @@ There is no dialect to choose. One reader takes MySQL and MariaDB (including `my
 
 Statements are read one at a time, so one that cannot be read costs only itself. Tables are collected first and everything said about them afterwards, so it does not matter whether a dump puts its keys, indexes and comments before or after the tables. A line that starts with `CREATE` or `ALTER` begins a new statement even when the one before it has no semicolon, which helps with DDL copied out of a database tool.
 
+Unclosed quotes, comments and parentheses produce notes at their opening position. Complete statements before the broken input are still imported. Check these notes before using a partial result.
+
 ## How facts carry over
 
 | SQL | resin |
@@ -96,7 +98,9 @@ Statements are read one at a time, so one that cannot be read costs only itself.
 
 When the tables come from two or more schemas, each schema's tables are written in a [service](services.md) named after it, as a schema per service is a common way to split one database, and the diagram shows the schemas as areas. One schema, such as `public` alone, makes no service. A foreign key from one schema into another stays `->`, as the SQL has it, so resin warns about it.
 
-Names are matched without regard to case or schema, as most databases do, and written the way the `CREATE TABLE` spells them. A name resin cannot write bare goes in backticks (`` `Order Details` ``). When two schemas have a table of the same name, both keep their schema (`` `sales.items` ``).
+An explicit schema is respected: `sales.items` never points at `stock.items`. A reference without a schema first looks in its source table's schema, then among all tables if exactly one matches. If it is ambiguous, resin leaves the reference out and adds a comment and note. Double-quoted names keep their case, so PostgreSQL's `"Users"` and `users` stay distinct. Bare names, backtick names and bracket names are matched without regard to case.
+
+Names are written the way the `CREATE TABLE` spells them. A name resin cannot write bare goes in backticks (`` `Order Details` ``). When two schemas have a table of the same name, both keep their schema (`` `sales.items` ``). Backticks and line breaks inside a name become underscores. A numeric suffix prevents collisions with another name, and the notes list every rename. References follow the renamed table or column.
 
 ## Types
 
@@ -133,10 +137,10 @@ table orders {
 }
 ```
 
-That covers foreign keys over several columns, indexes on expressions (`lower(email)`), and partial unique indexes (`WHERE deleted_at IS NULL`), which are drawn as plain indexes: they are unique only among some rows.
+That covers foreign keys over several columns, unresolved references, indexes on expressions (`lower(email)`), and partial unique indexes (`WHERE deleted_at IS NULL`), which are drawn as plain indexes: they are unique only among some rows. Enum values that are empty or contain a backtick or line break cannot be written; the notes list every value left out.
 
 ## Logical references
 
 Many schemas keep references only in the application, with no `FOREIGN KEY` behind them. `--infer-refs` on the command line, or `inferReferences: true` in code, reads them from column names and writes them as [logical references](references.md) (`~>`).
 
-A column called `<name>_id` or `<name>Id` that has no foreign key points at the table named after it, singular or plural, when that table has a one-column primary key of the same type: `user_id` points at `users`, `categoryId` at `categories`. A word or two in front are taken as a role, so `buyer_user_id` points at `users` too. The output says on its first line that the references were inferred. Names are only a guess, so this is off unless you ask for it.
+A column called `<name>_id` or `<name>Id` that has no foreign key points at the table named after it, singular or plural, when that table has a one-column primary key of the same type: `user_id` points at `users`, `categoryId` at `categories`. A word or two in front are taken as a role, so `buyer_user_id` points at `users` too. If several tables match the name, the reference is not inferred and a note explains why. The output says on its first line that the references were inferred. Names are only a guess, so this is off unless you ask for it.
