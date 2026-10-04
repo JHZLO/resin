@@ -184,13 +184,27 @@ test("renders a static diagram without WebGL and does not execute descriptions",
 });
 
 test("keeps a narrow layout usable with the panel open", async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...args: unknown[]) {
+      if (type === "webgl" || type === "webgl2") return null;
+      return Reflect.apply(original, this, [type, ...args]);
+    } as typeof original;
+  });
   await page.setViewportSize({ width: 375, height: 812 });
   await open(page);
   await page.locator("#find").click();
   await page.locator("#palette-input").fill("users");
   await page.locator("#palette-input").press("Enter");
   await expect(page.locator("#inspector")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const bounds = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth,
+    overflowing: [...document.querySelectorAll("body *")].filter(el => el.getBoundingClientRect().right > innerWidth).map(el => ({ tag: el.tagName, id: el.id, right: el.getBoundingClientRect().right })).slice(0, 12) }));
+  expect(bounds.width, JSON.stringify(bounds)).toBeLessThanOrEqual(bounds.viewport);
+  for (const button of await page.locator(".bar-actions button:visible, #inspector-close").all()) {
+    const box = await button.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(bounds.viewport);
+  }
   await page.locator("#inspector-close").click();
   await expect(page.locator("#find")).toBeVisible();
 });

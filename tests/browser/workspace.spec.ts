@@ -41,7 +41,7 @@ test("reviews skipped SQL, adds a logical relation, and preserves its service on
   await page.getByRole("button", { name: "Preview import", exact: true }).click();
   await expect(page.getByText(/SQL 3:1 - skipped table/)).toBeVisible();
   await page.getByRole("button", { name: "Apply import", exact: true }).click();
-  await expect(page.locator('[data-t="billing.orders"]')).toBeVisible();
+  await expect(page.locator('.rz-t[data-t="billing.orders"]')).toBeVisible();
   await page.getByRole("button", { name: "Explore", exact: true }).click();
   await page.getByRole("checkbox", { name: /billing.orders.user_id/ }).check();
   await page.getByRole("button", { name: "Add selected relations", exact: true }).click();
