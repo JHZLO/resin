@@ -206,7 +206,7 @@ describe("fromSql: references", () => {
 
   it("keeps external targets from different schemas separate", () => {
     const out = convert("create table orders (a int references crm.users(id), b int references billing.users(id));");
-    expect(compile(out).model!.relations.map((r) => r.parent)).toEqual(["crm.users", "billing.users"]);
+    expect(compile(out).model!.relations.map((r) => r.parent)).toEqual(["`crm.users`", "`billing.users`"]);
   });
 
   it("does not apply qualified alterations, indexes or comments to a different schema", () => {
@@ -244,12 +244,26 @@ describe("fromSql: references", () => {
     expect(line(source, "user_id")).toBe("user_id  bigint?  -> Users.id");
   });
 
-  it("keeps a composite foreign key as a comment rather than splitting it", () => {
+  it("keeps a composite foreign key as one relation with ordered column pairs", () => {
     const { source, notes } = fromSql(`create table s (shop int, sku int, primary key (shop, sku));
-      create table t (id int primary key, shop int, sku int, foreign key (shop, sku) references s (shop, sku));`);
-    expect(source).toContain("  %% Not converted: composite foreign key (shop, sku) -> s (shop, sku)\n}");
+      create table t (id int primary key, shop int, sku int, constraint fk_item foreign key (shop, sku) references s (shop, sku));`);
+    expect(source).toContain("  foreign(shop, sku) -> s(shop, sku) as fk_item\n}");
     expect(line(source, "shop")).toBe("shop  int  pk");
-    expect(notes).toHaveLength(1);
+    expect(notes).toEqual([]);
+    expect(compile(source).model!.relations).toHaveLength(1);
+    expect(compile(source).model!.relations[0]).toMatchObject({ childColumns: ["shop", "sku"], parentColumns: ["shop", "sku"], constraint: "fk_item" });
+  });
+
+  it("imports composite references to external tables and reports unequal or missing columns", () => {
+    const sql = `create table t (a int, b text, foreign key (a, b) references ext.items (x, y),
+      foreign key (a, b) references ext.broken (x), foreign key (a, absent) references ext.missing (x, y));`;
+    const { source, notes } = fromSql(sql);
+    const model = compile(source).model;
+    expect(model).not.toBeNull();
+    expect(model!.relations).toHaveLength(1);
+    expect(model!.relations[0]).toMatchObject({ parent: "`ext.items`", childColumns: ["a", "b"], parentColumns: ["x", "y"] });
+    expect(notes).toHaveLength(2);
+    expect(source).toContain("%% Not converted:");
   });
 
   it("infers logical references from column names only when asked, and only when the types match", () => {

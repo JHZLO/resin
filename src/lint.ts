@@ -7,7 +7,7 @@
 // errors: references are resolved exactly as the model resolves them.
 
 import type { Column, Document, Span, Table } from "./ast.ts";
-import { resolveRef } from "./checker.ts";
+import { resolveRef, resolveTable } from "./checker.ts";
 import { type Diagnostic, sortDiagnostics } from "./diagnostics.ts";
 
 export type LintRule = "ref-index" | "no-pk" | "unrelated" | "type-drift" | "dup-index";
@@ -58,6 +58,11 @@ export function lint(doc: Document): Diagnostic[] {
         out.push(finding("ref-index", `reference column ${code(c.name.text)} has no index`, c.name.span, "add `index` to the column, or start a composite index with it"));
     if (!t.columns.some((c) => c.pk))
       out.push(finding("no-pk", `table ${code(t.name.text)} has no primary key`, t.name.span, "mark its key column `pk`"));
+    for (const fk of t.foreignKeys) {
+      const columns = fk.columns.map(c => t.columns.find(x => x.name.text === c.text)!);
+      if (!indexes.some(ix => startsWith(ix.columns, columns)))
+        out.push(finding("ref-index", "composite reference has no covering index", fk.span, `add index(${fk.columns.map(c => c.text).join(", ")})`));
+    }
   }
 
   // unrelated: tables no reference joins to another table
@@ -68,6 +73,12 @@ export function lint(doc: Document): Diagnostic[] {
         const target = resolveRef(doc, c)?.table;
         if (target && target !== t) joined.add(t).add(target);
       }
+    for (const t of doc.tables) {
+      for (const fk of t.foreignKeys) {
+        const target = resolveTable(doc, fk.table.text, t, fk.service?.text);
+        if (target && target !== t) joined.add(t).add(target);
+      }
+    }
     for (const t of doc.tables) {
       if (joined.has(t)) continue;
       out.push(

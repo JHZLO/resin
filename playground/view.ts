@@ -237,13 +237,15 @@ export function createFocus(svg: SVGSVGElement): Focus {
     on.forEach(markTable);
   };
   const focusRow = (table: string, column: string): boolean => {
-    const hits = rels.filter((r) => (r.dataset.b === table && r.dataset.bc === column) || (r.dataset.a === table && r.dataset.ac === column));
+    const columns = (r: SVGElement, side: "a" | "b"): string[] => r.dataset[`${side}cs`] ? JSON.parse(r.dataset[`${side}cs`]!) : [r.dataset[`${side}c`]!];
+    const has = (r: SVGElement, side: "a" | "b") => r.dataset[side] === table && columns(r, side).includes(column);
+    const hits = rels.filter((r) => has(r, "a") || has(r, "b"));
     if (!hits.length) return false;
     svg.classList.add("is-focus");
     for (const r of hits) {
       r.classList.add("is-on");
-      markRow(r.dataset.a!, r.dataset.ac!);
-      markRow(r.dataset.b!, r.dataset.bc!);
+      for (const c of columns(r, "a")) markRow(r.dataset.a!, c);
+      for (const c of columns(r, "b")) markRow(r.dataset.b!, c);
     }
     return true;
   };

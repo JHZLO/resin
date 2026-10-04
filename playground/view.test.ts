@@ -162,7 +162,7 @@ describe("PanZoom", () => {
 });
 
 /** The focus code only reads SVG groups and applies classes; rendering belongs to the SVG tests */
-function diagram() {
+function diagram(composite = false) {
   const node = (data: Record<string, string>, children: Surface[] = []) => Object.assign(new Surface(), {
     dataset: data,
     querySelectorAll: () => children,
@@ -178,6 +178,7 @@ function diagram() {
   const other = node({ t: "other" }, [otherRef]);
   const shadow = node({ t: "parent" });
   const relation = node({ a: "parent", ac: "id", b: "child", bc: "parent_id" });
+  if (composite) Object.assign(relation.dataset, { acs: '["tenant","id"]', bcs: '["tenant","parent_id"]' });
   const unrelated = node({ a: "parent", ac: "id", b: "other", bc: "parent_id" });
   const all = [parentId, parentTenant, childId, childRef, childTenant, otherRef, parent, child, other, shadow, relation, unrelated];
   const svg = Object.assign(new Surface(), {
@@ -220,4 +221,13 @@ describe("diagram focus", () => {
     expect(d.all.some((el) => el.classList.contains("is-on"))).toBe(false);
   });
 
+  it("highlights every column of a composite reference when any member is selected", () => {
+    const d = diagram(true);
+    for (const table of ["parent", "child"]) {
+      d.focus.row(table, "tenant");
+      for (const el of [d.parentId, d.parentTenant, d.childRef, d.childTenant, d.relation]) expect(el.classList.contains("is-on")).toBe(true);
+      expect(d.unrelated.classList.contains("is-on")).toBe(false);
+      expect(d.childId.classList.contains("is-on")).toBe(false);
+    }
+  });
 });

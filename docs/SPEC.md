@@ -63,7 +63,7 @@ once and suggests the backticks.
 document    = { NL | service | table } EOF ;
 service     = "service" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
 table       = [ "external" ] "table" name [ STRING ] "{" { member | NL } "}" [ audit ] ( NL | EOF ) ;
-member      = constraint | column ;
+member      = constraint | foreign | column ;
 
 column      = name type { modifier } ( NL | "}" ) ;   (* "}" is not consumed, for one-line tables *)
 type        = IDENT [ "(" NUMBER { "," NUMBER } ")" ] [ "?" ] ;
@@ -71,10 +71,11 @@ modifier    = "pk" | "enc"
             | "uk" [ "as" name ]
             | "index" [ "as" name ]
             | "enum" values
-            | ( "->" | "~>" ) name [ "." name ]
+            | ( "->" | "~>" ) name [ "." name [ "." name ] ]
             | STRING ;
 
 constraint  = ( "unique" | "index" ) list [ "as" name ] ;  (* only when "(" directly follows the keyword *)
+foreign     = "foreign" list ( "->" | "~>" ) name [ "." name ] list [ "as" name ] ;
 audit       = "audit" IDENT [ list ] ;
 list        = "(" [ name { "," name } [ "," ] ] ")" ;
 values      = "(" [ value { "," value } [ "," ] ] ")" ;
@@ -86,7 +87,7 @@ name        = IDENT | QUOTED ;
 
 ### 4.1 Tables
 
-- `table name ["description"] { ... }`: names are unique within a document, external tables
+- `table name ["description"] { ... }`: names are unique within their service, or the unscoped part of a document, external tables
   included. The description is for people.
 - `external table name ["description"] { ... }`: a table that lives **outside this document**
   (another service, another database). List only the columns you point at, usually the primary
@@ -116,7 +117,8 @@ name        = IDENT | QUOTED ;
 
 ### 4.3 References and cardinality
 
-- A reference is **attached to a column**. There are no separate relationship lines.
+- A single-column reference is attached to a column. Composite references use `foreign(a, b) -> target(x, y) as name` inside the child table. Both lists must have at least two distinct columns and the same length. Position pairs the columns; this is one constraint, not several independent foreign keys. `~>` declares a logical composite reference.
+- `-> service.table.column` selects an exact service and column. A two-part name remains `table.column`. An unqualified table is resolved in the current service first, then by a unique name across the document. Ambiguous names are errors. A composite target may be `service.table(x, y)`.
 - Without `.c`, the reference points at the target's primary key, which must be a single column.
 - The target must be a `table` or an `external table` of the same document.
 - **How many**: when the referencing column has `uk`, or is the table's only primary key, the
@@ -170,7 +172,7 @@ database. The description is for people.
   belong to none, as in a document about a single service.
 - Service names are unique within a document. They are names of their own: a service may share its
   name with a table.
-- Table names stay unique across the whole document, and references reach across services.
+- Table names are unique within a service. The model uses qualified service and table names as stable identities and keeps the short label separately. References may reach across services.
 - **A physical reference (`->`) from a table of one service to a table of another is reported as a
   warning**: a `FOREIGN KEY` ties the data of two services together, and cannot span two databases
   at all. Write `~>`, a logical reference, instead. A reference to or from a table outside every
@@ -294,6 +296,7 @@ resin.
 | An index over one column | `index` / `index as name`; a second index on the same column is left out |
 | The same over several columns | `index(...)` / `index(...) as name` |
 | A one-column foreign key to `t.c` | `-> t` when `c` is the primary key of `t`, `-> t.c` otherwise |
+| A foreign key over several columns | `foreign(a, b) -> t(x, y) as name`, preserving the order of both column lists |
 | A foreign key to a table the SQL does not create | `-> t`, and `external table t` with the columns referenced; a lone column is its `pk`. Without a column, the column is taken to be `id` |
 | A foreign key to a table in `known` | `-> t` / `-> t.c`, with no external table |
 | MySQL `enum('A', ...)` | Type `enum`, `enum(A, ...)` |
@@ -325,8 +328,8 @@ resin.
   `ON UPDATE`, collations, storage and partition options, sequences, privileges and data.
 - Views, materialized views, triggers, functions and procedures are not written; the first line
   counts them: `%% Skipped: 2 views, 1 trigger`.
-- Composite foreign keys, unresolved references and expression indexes are not written. Each stays in its table as a
-  comment, `%% Not converted: ...`. A partial unique index is written as a plain index with the
+- A foreign key whose target or column pairs cannot be resolved, and an expression index, stay
+  in their table as a comment, `%% Not converted: ...`. A partial unique index is written as a plain index with the
   comment `%% Partial unique index ...`, because it is unique among some rows only.
 - Every comment of this kind, every skipped object and every statement that could not be read is
   also reported as a note with its line and column in the SQL.

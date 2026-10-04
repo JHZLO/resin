@@ -16,3 +16,11 @@ The [playground](playground.md) makes the `group` change by itself when it opens
 ## Why the changes
 
 Parentheses now only ever hold lists, and a name always follows `as`, so `index(a, b)` is always a composite index and `index as name` always names one. `audit` names its method, `envers`, so other kinds of audit can come later without changing the meaning of existing files.
+
+## Service-scoped identities and composite references
+
+Table names can repeat across services. Existing references still resolve when their short names are unambiguous. If a short name now matches more than one table, write the target as `service.table.column`.
+
+Model `name`, relation endpoints, SVG `data-t` and layout boxes now use qualified service identities, such as `billing.orders`. `ModelTable.label` carries the short display name. Use the canonical identity for lookups and `label ?? name` for display. A table moved between services appears as a removal and an addition in a diff. Old shared related views are upgraded when their short name has a unique match.
+
+Composite references have `childColumns` and `parentColumns` arrays on one relation, with an optional `constraint` name. The legacy singular column fields contain the first pair. Consumers should use the arrays when present.

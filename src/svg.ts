@@ -503,7 +503,7 @@ function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "na
   const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW + nullW;
   const headW =
     PAD * 2 +
-    sansW(t.name, 13.5) * 1.04 +
+    sansW(t.label ?? t.name, 13.5) * 1.04 +
     10 +
     (t.description ? sansW(t.description, 12) : 0) +
     (v.tag ? 14 + chipW(v.tag) : 0) +
@@ -578,7 +578,7 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   const hit = bare(v) ? `<rect class="rz-hit" width="${w}" height="${HEAD}" rx="${RX}" fill="currentColor" fill-opacity="0"/>` : `<path class="rz-hit" d="${capPath(w)}" fill="currentColor" fill-opacity="0"/>`;
   s.push(`<g class="rz-head">${hit}`);
   s.push(
-    `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${fill(I.text)}>${esc(t.name)}` +
+    `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${fill(I.text)}>${esc(t.label ?? t.name)}` +
       (t.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(I.muted)}>${esc(t.description)}</tspan>` : "") +
       "</text>",
   );
@@ -698,12 +698,13 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
   const expand = opts.audit === "expand";
   const tables = model.tables.filter((t) => expand || t.origin !== "audit");
   const names = new Set(tables.map((t) => t.name));
-  const relations = model.relations.filter((r) => names.has(r.parent) && names.has(r.child));
+  const relations = model.relations.filter((r) => names.has(r.parent) && names.has(r.child)).flatMap(r =>
+    r.childColumns ? r.childColumns.map((column, i) => ({ ...r, childColumn: column, parentColumn: r.parentColumns![i] })) : [r]);
   const referenced = new Set(relations.map((r) => `${r.parent}.${r.parentColumn}`));
   const out = tables.map((table) => {
     // A column that holds a reference is a foreign key even when its target is not drawn (a part of the
     // model, as the playground's related tables view draws)
-    const refCols = new Set([...relations.filter((r) => r.child === table.name).map((r) => r.childColumn), ...table.columns.filter((c) => c.ref).map((c) => c.name)]);
+    const refCols = new Set([...relations.filter((r) => r.child === table.name).map((r) => r.childColumn), ...table.columns.filter((c) => c.ref).map((c) => c.name), ...(table.foreignKeys ?? []).flatMap(k => k.columns)]);
     const isKey = (c: ModelColumn) => c.pk || c.uk || refCols.has(c.name) || referenced.has(`${table.name}.${c.name}`);
     const shown = opts.columns === "none" ? [] : opts.columns === "keys" ? table.columns.filter(isKey) : table.columns;
     const hidden = table.columns.length - shown.length;
@@ -715,6 +716,7 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
           : null;
     // Names only leaves out everything under the header, the constraints and the count of columns too
     const foot = opts.columns === "none" ? [] : table.constraints.map((k) => `${k.name ?? (k.kind === "unique" ? "unique" : "index")} (${k.columns.join(", ")})`);
+    if (opts.columns !== "none") for (const fk of table.foreignKeys ?? []) foot.push(`${fk.name ?? "foreign"} (${fk.columns.join(", ")})`);
     if (hidden && opts.columns !== "none") foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
     const base = { table, shown, hidden, refCols, tag, foot };
     return { ...base, ...measure(base) };
@@ -1068,7 +1070,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const d = edges === "curved" ? curved(path, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(path, 3);
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
     const ink: Ink = r.change ? [diffHue(L, r.change.kind), r.change.kind === "removed" ? 0.6 : 1] : L.ink.line;
-    s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}">`);
+    const composite = r.childColumns ? ` data-acs="${esc(JSON.stringify(r.parentColumns))}" data-bcs="${esc(JSON.stringify(r.childColumns))}"` : "";
+    s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}"${composite}>`);
     s.push(`<path d="${d}" fill="none" ${stroke(ink)} stroke-width="1.2"${dash}/>`);
     // Primary key end: a chevron, like resin's `->`. Foreign key end: a square port and N (many) or 1 (one)
     s.push(

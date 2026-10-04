@@ -8,7 +8,7 @@
 // v0.1 syntax (the `erd` header, `index(name)`, `unique name(a, b)`, `audit` without a method) is
 // recognized and answered with a hint on how to write it now (SPEC §7).
 
-import type { Audit, Column, Document, EnumValue, Ident, Ref, Service, Span, Table, TableConstraint, TypeRef } from "./ast.ts";
+import type { Audit, Column, Document, EnumValue, ForeignKey, Ident, Ref, Service, Span, Table, TableConstraint, TypeRef } from "./ast.ts";
 import { type Diagnostic, error } from "./diagnostics.ts";
 import { type Token, type TokenKind, lex } from "./lexer.ts";
 
@@ -184,12 +184,14 @@ class Parser {
 
     const columns: Column[] = [];
     const constraints: TableConstraint[] = [];
+    const foreignKeys: ForeignKey[] = [];
     const done = (audit: Audit | null): Table => ({
       name,
       external: external !== null,
       description,
       columns,
       constraints,
+      foreignKeys,
       audit,
       service,
       span,
@@ -202,7 +204,8 @@ class Parser {
         return done(null);
       }
       try {
-        if (this.atConstraint()) constraints.push(this.constraint());
+        if (this.atWord("foreign") && this.at("lparen", 1)) foreignKeys.push(this.foreignKey());
+        else if (this.atConstraint()) constraints.push(this.constraint());
         else {
           this.rejectOldConstraint();
           columns.push(this.column());
@@ -257,6 +260,25 @@ class Parser {
     const method = this.name("an audit method");
     const columns = this.at("lparen") ? this.list("a column name to audit") : null;
     return { method, columns, span: a.span };
+  }
+
+  private foreignKey(): ForeignKey {
+    const kw = this.next();
+    const columns = this.list("a source column name");
+    const arrow = this.peek();
+    if (!this.at("arrow") && !this.at("tildeArrow")) this.fail("expected `->` or `~>`", arrow.span);
+    this.next();
+    let table = this.name("a referenced table name");
+    let service: Ident | null = null;
+    if (this.at("dot")) {
+      this.next();
+      service = table;
+      table = this.name("a referenced table name");
+    }
+    const targetColumns = this.list("a target column name");
+    const name = this.optionalAs("a foreign key name");
+    this.endOfMember();
+    return { columns, table, service, targetColumns, name, kind: arrow.kind === "arrow" ? "physical" : "logical", span: kw.span };
   }
 
   // ---- columns ----
@@ -364,13 +386,20 @@ class Parser {
 
   private ref(): Ref {
     const arrow = this.next();
-    const table = this.name("a referenced table name");
+    let table = this.name("a referenced table name");
+    let service: Ident | null = null;
     let column: Ident | null = null;
     if (this.at("dot")) {
       this.next();
       column = this.name("a referenced column name");
+      if (this.at("dot")) {
+        this.next();
+        service = table;
+        table = column;
+        column = this.name("a referenced column name");
+      }
     }
-    return { kind: arrow.kind === "arrow" ? "physical" : "logical", table, column, span: arrow.span };
+    return { kind: arrow.kind === "arrow" ? "physical" : "logical", table, column, span: arrow.span, ...(service ? { service } : {}) };
   }
 
   // ---- shared ----

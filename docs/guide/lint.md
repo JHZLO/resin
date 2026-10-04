@@ -104,3 +104,7 @@ table orders {
 | `unrelated` | A table no reference joins to another table |
 | `type-drift` | A column whose type differs from the other columns of its name |
 | `dup-index` | An index another index covers, or a unique constraint that repeats the primary key |
+
+## Composite references
+
+A composite reference needs an index, unique key or primary key whose leading columns match the ordered source list. The `ref-index` warning points at the whole constraint. A composite relation also counts when checking whether a table is unrelated.

@@ -15,7 +15,7 @@ The grammar of resin v0.2. The [specification](https://github.com/JHZLO/resin/bl
 | Reference arrows | `->` `~>` | Foreign key, logical reference |
 | Newline | `\n` | Ends a statement. Ignored inside parentheses |
 
-The keywords `service`, `table`, `external`, `pk`, `uk`, `enc`, `enum`, `index`, `unique`, `as` and `audit` are contextual: they are not reserved, and the position decides.
+The keywords `service`, `table`, `external`, `pk`, `uk`, `enc`, `enum`, `index`, `unique`, `foreign`, `as` and `audit` are contextual: they are not reserved, and the position decides.
 
 ## Syntax
 
@@ -23,7 +23,7 @@ The keywords `service`, `table`, `external`, `pk`, `uk`, `enc`, `enum`, `index`,
 document    = { NL | service | table } EOF ;
 service     = "service" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
 table       = [ "external" ] "table" name [ STRING ] "{" { member | NL } "}" [ audit ] ( NL | EOF ) ;
-member      = constraint | column ;
+member      = constraint | foreign | column ;
 
 column      = name type { modifier } ( NL | "}" ) ;   (* "}" is not consumed, for one-line tables *)
 type        = IDENT [ "(" NUMBER { "," NUMBER } ")" ] [ "?" ] ;
@@ -31,10 +31,11 @@ modifier    = "pk" | "enc"
             | "uk" [ "as" name ]
             | "index" [ "as" name ]
             | "enum" values
-            | ( "->" | "~>" ) name [ "." name ]
+            | ( "->" | "~>" ) name [ "." name [ "." name ] ]
             | STRING ;
 
 constraint  = ( "unique" | "index" ) list [ "as" name ] ;  (* only when "(" directly follows the keyword *)
+foreign     = "foreign" list ( "->" | "~>" ) name [ "." name ] list [ "as" name ] ;
 audit       = "audit" IDENT [ list ] ;
 list        = "(" [ name { "," name } [ "," ] ] ")" ;
 values      = "(" [ value { "," value } [ "," ] ] ")" ;

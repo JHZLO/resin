@@ -37,12 +37,13 @@ function model(): Model {
       { name: "parents", description: null, origin: "table", service: null, audit: null,
         columns: [column("tenant", { pk: true }), column("id", { pk: true })], constraints: [] },
       { name: "children", description: null, origin: "table", service: null, audit: null,
-        columns: [column("id", { pk: true }), column("tenant"), column("parent_id", { ref: { table: "parents", column: "id", kind: "physical" } }), column("status", {
+        columns: [column("id", { pk: true }), column("tenant"), column("parent_id"), column("status", {
           type: "varchar", nullable: true, enc: true, enumValues: ["ready", "done"], description: "<b>literal</b>",
-        })], constraints: [{ kind: "index", name: "ix_parent", columns: ["tenant", "parent_id"] }] },
+        })], constraints: [{ kind: "index", name: "ix_parent", columns: ["tenant", "parent_id"] }],
+        foreignKeys: [{ columns: ["tenant", "parent_id"], target: "parents", targetColumns: ["tenant", "id"], kind: "physical", name: "fk_parent" }] },
     ],
-    relations: [{ parent: "parents", parentColumn: "id",
-      child: "children", childColumn: "parent_id", kind: "physical", one: false, optional: false, origin: "table" }],
+    relations: [{ parent: "parents", parentColumn: "tenant", parentColumns: ["tenant", "id"],
+      child: "children", childColumn: "tenant", childColumns: ["tenant", "parent_id"], kind: "physical", one: false, optional: false, origin: "table" }],
   };
 }
 
@@ -51,6 +52,20 @@ const descendants = (el: ElementStub): ElementStub[] => [el, ...el.children.flat
 const click = (el: ElementStub, detail = 1) => el.dispatchEvent(Object.assign(new Event("click"), { detail }));
 
 describe("table and column details", () => {
+  it("lists complete composite references and gives every member an FK key", () => {
+    const m = model();
+    const panel = element(tableDetails(m, "children", vi.fn(), vi.fn()));
+    const rows = descendants(panel).filter((el) => el.tag === "tr" && ["tenant", "parent_id"].includes(el.dataset.c));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.textContent.startsWith("FK"))).toBe(true);
+    expect(panel.textContent).toContain("tenant, parent_idparents (tenant, id)");
+    const pop = element(columnDetails(m, "children", "parent_id", vi.fn()));
+    expect(pop.textContent).toContain("Referencesparents (tenant, id), foreign key");
+    const parent = element(columnDetails(m, "parents", "id", vi.fn()));
+    expect(parent.textContent).toContain("Referenced bychildren (tenant, parent_id)");
+    m.relations = [];
+    expect(element(columnDetails(m, "children", "parent_id", vi.fn())).textContent).toMatch(/^FK/);
+  });
 
   it("keeps enum, nullity, encryption, index columns, and literal descriptions in the panel", () => {
     const panel = element(tableDetails(model(), "children", vi.fn(), vi.fn()));

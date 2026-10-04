@@ -83,3 +83,9 @@ const { svg } = await toSvg(part, new ELK());
 ## Lower-level steps
 
 `parse`, `check` and `lower` are the steps `compile` runs, exported for tools that need one of them on its own: an editor that wants the syntax tree, say, or a linter that only checks.
+
+## Table identities and composite relations
+
+A service-owned table has a qualified `name`, such as `billing.orders`, and a short `label`. Use `name` for relationships and `neighbors`, and `label ?? name` for display. Unscoped names containing a dot are quoted in their identity to avoid colliding with a service-qualified table.
+
+A composite FK remains one entry in `model.relations`. Read `childColumns ?? [childColumn]` and `parentColumns ?? [parentColumn]` as ordered pairs. `constraint` stores its optional name. `ModelTable.foreignKeys` lists the composite declarations.

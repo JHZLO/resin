@@ -34,7 +34,7 @@ export interface ModelDiff {
 const same = <T>(a: T, b: T): boolean => JSON.stringify(a) === JSON.stringify(b);
 const refText = (r: ModelColumn["ref"]): string => (r ? `${r.kind === "physical" ? "->" : "~>"} ${r.table}.${r.column}` : "");
 const constraintText = (k: ModelConstraint): string => `${k.kind}${k.name ? ` ${k.name}` : ""} (${k.columns.join(", ")})`;
-const relationKey = (r: Relation): string => `${r.child}.${r.childColumn}>${r.parent}.${r.parentColumn}`;
+const relationKey = (r: Relation): string => JSON.stringify([r.child, r.childColumns ?? [r.childColumn], r.parent, r.parentColumns ?? [r.parentColumn]]);
 
 /** What differs between two versions of a column, in words */
 function columnDetails(a: ModelColumn, b: ModelColumn): string[] {
@@ -65,6 +65,7 @@ function tableDetails(a: ModelTable, b: ModelTable): string[] {
   for (const k of after) if (!before.includes(k)) out.push(`${k} added`);
   for (const k of before) if (!after.includes(k)) out.push(`${k} removed`);
   if (!same(a.audit, b.audit)) out.push(!a.audit ? "audit added" : !b.audit ? "audit removed" : "audited columns changed");
+  if (!same(a.foreignKeys ?? [], b.foreignKeys ?? [])) out.push("composite references changed");
   return out;
 }
 

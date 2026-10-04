@@ -45,6 +45,7 @@ export interface Table {
   description: string | null;
   columns: Column[];
   constraints: TableConstraint[];
+  foreignKeys: ForeignKey[];
   audit: Audit | null;
   /** The name of the service the table is written in, or null */
   service: Ident | null;
@@ -84,8 +85,19 @@ export interface Ref {
   /** physical = `->` (a FOREIGN KEY constraint), logical = `~>` (application-level reference) */
   kind: "physical" | "logical";
   table: Ident;
+  service?: Ident | null;
   /** null when omitted; the checker resolves it to the target's single primary key */
   column: Ident | null;
+  span: Span;
+}
+
+export interface ForeignKey {
+  columns: Ident[];
+  table: Ident;
+  service: Ident | null;
+  targetColumns: Ident[];
+  kind: "physical" | "logical";
+  name: Ident | null;
   span: Span;
 }
 
@@ -106,3 +118,7 @@ export interface Audit {
 
 /** `varchar(32)`: the type name with its arguments, as written */
 export const typeText = (t: TypeRef): string => (t.args ? `${t.name.text}(${t.args.join(",")})` : t.name.text);
+
+export const quoteName = (name: string): string => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `\`${name}\``;
+/** Stable model identity; the label remains the declared table name. */
+export const tableId = (table: Table, name = table.name.text): string => table.service ? `${quoteName(table.service.text)}.${quoteName(name)}` : name.includes(".") ? quoteName(name) : name;

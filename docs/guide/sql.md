@@ -89,6 +89,7 @@ Unclosed quotes, comments and parentheses produce notes at their opening positio
 | `KEY n (a)`, `INDEX n (a)`, `CREATE INDEX n ON t (a)` | `index as n` on `a` |
 | The same over several columns | `index(a, b) as n` |
 | `REFERENCES t (c)` or `FOREIGN KEY (a) REFERENCES t (c)`, also in `ALTER TABLE` | `-> t` when `c` is the primary key of `t`, `-> t.c` otherwise |
+| `FOREIGN KEY (a, b) REFERENCES t (x, y)` | `foreign(a, b) -> t(x, y)`, preserving both column orders and the constraint name |
 | A reference to a table the SQL does not create | An `external table` with the columns pointed at |
 | MySQL `enum('A', 'B')` | Type `enum` with `enum(A, B)` |
 | PostgreSQL `CREATE TYPE s AS ENUM ('A', 'B')` | Type `s` with `enum(A, B)` |
@@ -129,7 +130,7 @@ table order_items {
   line      integer  pk
   shop_id   bigint?
   sku       text?
-  %% Not converted: composite foreign key (shop_id, sku) -> shop_items (shop_id, sku)
+  %% Not converted: reference shop_id -> shops.code, shops has no column code
 }
 
 table orders {
@@ -137,7 +138,7 @@ table orders {
 }
 ```
 
-That covers foreign keys over several columns, unresolved references, indexes on expressions (`lower(email)`), and partial unique indexes (`WHERE deleted_at IS NULL`), which are drawn as plain indexes: they are unique only among some rows. Enum values that are empty or contain a backtick or line break cannot be written; the notes list every value left out.
+That covers references whose targets cannot be resolved, indexes on expressions (`lower(email)`), and partial unique indexes (`WHERE deleted_at IS NULL`), which are drawn as plain indexes: they are unique only among some rows. Foreign keys over several columns become one `foreign(...)` relation with ordered column pairs. Enum values that are empty or contain a backtick or line break cannot be written; the notes list every value left out.
 
 ## Logical references
 

@@ -64,7 +64,7 @@ export type SqlConstraint =
   | { kind: "pk"; columns: string[]; keys: string[] }
   /** UNIQUE constraints and indexes alike: a unique constraint is a unique index with a name */
   | { kind: "index"; name: string | null; unique: boolean; items: IndexItem[]; where: string | null }
-  | { kind: "fk"; columns: string[]; keys: string[]; ref: SqlRef }
+  | { kind: "fk"; columns: string[]; keys: string[]; ref: SqlRef; name: string | null }
   | { kind: "check"; column: string; key: string; values: string[] };
 
 export interface SqlTable {
@@ -451,7 +451,7 @@ function tableConstraint(e: Cursor, text: string): SqlConstraint | null {
     const columns = columnsOf(items);
     if (!e.eat("REFERENCES")) return null;
     const ref = reference(e);
-    return ref ? { kind: "fk", columns, keys: keysOf(items), ref } : null;
+    return ref ? { kind: "fk", columns, keys: keysOf(items), ref, name } : null;
   }
   if (e.eat("CHECK")) {
     const found = valueList(e.group() ?? []);

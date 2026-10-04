@@ -106,17 +106,17 @@ describe("neighbors", () => {
   const names = (m: Model) => m.tables.map((t) => t.name);
 
   it("keeps a table, its parents and its children, one hop per step", () => {
-    expect(names(neighbors(shop, "orders", 1))).toEqual(["users", "coupons", "orders", "order_items", "coupon_usages", "payments", "shipments"]);
-    expect(names(neighbors(shop, "refunds", 1))).toEqual(["payments", "refunds"]);
-    expect(names(neighbors(shop, "refunds", 2))).toEqual(["orders", "payments", "refunds"]);
+    expect(names(neighbors(shop, "ordering.orders", 1))).toEqual(["accounts.users", "ordering.coupons", "ordering.orders", "ordering.order_items", "ordering.coupon_usages", "payments.payments", "shipments"]);
+    expect(names(neighbors(shop, "payments.refunds", 1))).toEqual(["payments.payments", "payments.refunds"]);
+    expect(names(neighbors(shop, "payments.refunds", 2))).toEqual(["ordering.orders", "payments.payments", "payments.refunds"]);
   });
 
   it("keeps every relation among the tables it keeps, and the references to the rest", () => {
-    const part = neighbors(shop, "orders", 1);
-    expect(part.relations.some((r) => r.child === "coupon_usages" && r.parent === "coupons")).toBe(true);
+    const part = neighbors(shop, "ordering.orders", 1);
+    expect(part.relations.some((r) => r.child === "ordering.coupon_usages" && r.parent === "ordering.coupons")).toBe(true);
     expect(part.relations.every((r) => names(part).includes(r.parent) && names(part).includes(r.child))).toBe(true);
-    const items = part.tables.find((t) => t.name === "order_items")!;
-    expect(items.columns.find((c) => c.name === "option_id")?.ref?.table).toBe("product_options");
+    const items = part.tables.find((t) => t.name === "ordering.order_items")!;
+    expect(items.columns.find((c) => c.name === "option_id")?.ref?.table).toBe("catalog.product_options");
   });
 
   it("leaves a table alone when nothing joins it", () => {
@@ -139,10 +139,10 @@ table shipments {
 }`);
     expect(m.services).toEqual([{ name: "ordering", description: "Order service" }]);
     expect(m.tables.map((t) => [t.name, t.service])).toEqual([
-      ["orders", "ordering"],
+      ["ordering.orders", "ordering"],
       ["shipments", null],
       ["revinfo", null],
-      ["orders_aud", "ordering"],
+      ["ordering.orders_aud", "ordering"],
     ]);
   });
 });

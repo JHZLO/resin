@@ -4,7 +4,7 @@
 // The model (model.ts) assumes it only ever sees trees that passed these checks without errors.
 // resolveRef is exported because the model resolves references with exactly the same rule.
 
-import type { Column, Document, Ident, Table } from "./ast.ts";
+import { type Column, type Document, type Ident, type Table, tableId } from "./ast.ts";
 import { type Diagnostic, error, warning } from "./diagnostics.ts";
 
 export const AUDIT_SUFFIX = "_aud";
@@ -14,11 +14,19 @@ export const AUDIT_METHODS = ["envers"] as const;
 /** Columns a bare `audit envers` leaves out: there is no point in versioning timestamps */
 export const AUDIT_SKIP = new Set(["created_at", "updated_at"]);
 
+export function resolveTable(doc: Document, name: string, owner: Table | undefined, service?: string | null): Table | null {
+  const matches = doc.tables.filter(t => t.name.text === name);
+  if (service != null) return matches.find(t => t.service?.text === service) ?? null;
+  const local = matches.find(t => (t.service?.text ?? null) === (owner?.service?.text ?? null));
+  return local ?? (matches.length === 1 ? matches[0] : null);
+}
+
 /** The column a reference points at, or null when it cannot be resolved (the checker has reported it) */
 export function resolveRef(doc: Document, col: Column): { table: Table; column: Column } | null {
   const ref = col.ref;
   if (!ref) return null;
-  const table = doc.tables.find((t) => t.name.text === ref.table.text);
+  const owner = doc.tables.find(t => t.columns.includes(col));
+  const table = resolveTable(doc, ref.table.text, owner, ref.service?.text);
   if (!table) return null;
   if (ref.column) {
     const name = ref.column.text;
@@ -43,15 +51,15 @@ export function check(doc: Document): Diagnostic[] {
   const tables = new Map<string, Table>();
 
   for (const t of doc.tables) {
-    if (tables.has(t.name.text)) out.push(error(`table \`${t.name.text}\` is declared twice`, t.name.span));
-    else tables.set(t.name.text, t);
+    if (tables.has(tableId(t))) out.push(error(`table \`${t.name.text}\` is declared twice`, t.name.span));
+    else tables.set(tableId(t), t);
   }
 
   const audited = doc.tables.filter((t) => t.audit && !t.external);
   if (audited.length > 0) {
-    const generated = new Set([REVINFO, ...audited.map((t) => t.name.text + AUDIT_SUFFIX)]);
+    const generated = new Set([REVINFO, ...audited.map((t) => tableId(t, t.name.text + AUDIT_SUFFIX))]);
     for (const t of doc.tables)
-      if (generated.has(t.name.text))
+      if (generated.has(tableId(t)))
         out.push(
           error(
             `\`${t.name.text}\` clashes with a table that \`audit\` generates`,
@@ -113,6 +121,30 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
     }
   }
 
+  for (const fk of t.foreignKeys) {
+    fk.columns.forEach(known);
+    if (t.external) out.push(error("external tables cannot hold foreign keys", fk.span));
+    if (fk.columns.length !== fk.targetColumns.length)
+      out.push(error("foreign key lists must have the same number of columns", fk.span));
+    else if (fk.columns.length < 2)
+      out.push(error("a composite foreign key needs at least two columns", fk.span, "use a column reference for one column"));
+    if (new Set(fk.columns.map(c => c.text)).size !== fk.columns.length || new Set(fk.targetColumns.map(c => c.text)).size !== fk.targetColumns.length)
+      out.push(error("foreign key lists cannot repeat a column", fk.span));
+    const target = resolveTable(doc, fk.table.text, t, fk.service?.text);
+    if (!target) out.push(error(`referenced table \`${fk.table.text}\` is missing or ambiguous`, fk.table.span, "qualify the table with its service"));
+    else {
+      for (let i = 0; i < fk.targetColumns.length; i++) {
+        const named = fk.targetColumns[i];
+        const to = target.columns.find(c => c.name.text === named.text);
+        const from = cols.get(fk.columns[i]?.text);
+        if (!to) out.push(error(`table \`${target.name.text}\` has no column \`${named.text}\``, named.span));
+        else if (from && from.type.name.text !== to.type.name.text) out.push(warning(`type mismatch in composite reference: \`${from.name.text}\` and \`${named.text}\``, from.type.span));
+      }
+      if (fk.kind === "physical" && t.service && target.service && t.service.text !== target.service.text)
+        out.push(warning("a composite foreign key crosses service boundaries", fk.span, "write `~>` for a logical reference"));
+    }
+  }
+
   // Index and unique names are only shown, but two constraints with the same name in one table are ambiguous
   const names = new Map<string, Ident>();
   const named = (i: Ident | null) => {
@@ -125,6 +157,7 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
     named(c.index?.name ?? null);
   }
   for (const k of t.constraints) named(k.name);
+  for (const k of t.foreignKeys) named(k.name);
 
   if (t.audit) {
     const a = t.audit;
@@ -147,13 +180,14 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
 
 function checkRef(doc: Document, t: Table, c: Column, out: Diagnostic[]): void {
   const ref = c.ref!;
-  const target = doc.tables.find((t) => t.name.text === ref.table.text);
+  const target = resolveTable(doc, ref.table.text, t, ref.service?.text);
   if (!target) {
+    const ambiguous = !ref.service && doc.tables.filter(x => x.name.text === ref.table.text).length > 1;
     out.push(
       error(
-        `referenced table \`${ref.table.text}\` is not in this document`,
+        ambiguous ? `referenced table \`${ref.table.text}\` is ambiguous` : `referenced table \`${ref.table.text}\` is not in this document`,
         ref.table.span,
-        "declare it with `external table` if it lives outside this document",
+        ambiguous ? "write `service.table.column` to select its owner" : "declare it with `external table` if it lives outside this document",
       ),
     );
     return;

@@ -109,7 +109,7 @@ describe("toSvg", () => {
     expect(svg).not.toContain('class="rz-s"');
     expect(count(svg, 'class="rz-t"')).toBe(4);
     expect(background).toBe("#05060C");
-    expect(boxes.map((b) => b.table)).toEqual(["users", "orders", "order_items", "payments"]);
+    expect(boxes.map((b) => b.table)).toEqual(["accounts.users", "orders", "order_items", "payments"]);
     expect(boxes.every((b) => b.w >= 200 && b.h > 0)).toBe(true);
   });
 
@@ -205,7 +205,7 @@ table shipments {
     expect(svg).toMatch(/data-svc="ordering"><rect[^>]*fill="#5EEAD4"[^>]*mask="url\(#rz-areas\)"/);
     expect(svg).toMatch(/data-svc="accounts"><rect[^>]*fill="#C4B5FD"/);
     const area = /data-svc="ordering"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(svg)!.slice(1).map(Number);
-    const orders = boxes.find((b) => b.table === "orders")!;
+    const orders = boxes.find((b) => b.table === "ordering.orders")!;
     expect(orders.x).toBeGreaterThan(area[0]);
     expect(orders.y).toBeGreaterThan(area[1]);
     expect(orders.x + orders.w).toBeLessThan(area[0] + area[2]);
@@ -217,7 +217,7 @@ table shipments {
     const m = modelOf(SRC);
     const { svg } = await toSvg(m, elk);
     expect(svg).toMatch(/data-svc="ordering"><rect[^>]*fill="currentColor"/);
-    const part = { ...m, tables: m.tables.filter((t) => t.name !== "users"), relations: m.relations.filter((r) => r.parent !== "users") };
+    const part = { ...m, tables: m.tables.filter((t) => t.name !== "accounts.users"), relations: m.relations.filter((r) => r.parent !== "accounts.users") };
     expect(count((await toSvg(part, elk)).svg, 'class="rz-svc"')).toBe(1);
   });
 });

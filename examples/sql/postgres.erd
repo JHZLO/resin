@@ -1,5 +1,10 @@
 %% Skipped: 1 function, 1 materialized view, 1 trigger
 
+external table `public.shop_items` {
+  shop_id  bigint
+  sku      text
+}
+
 table users {
   id          bigint        pk
   email       varchar(255)  uk as users_email_key
@@ -23,5 +28,5 @@ table order_items {
   line      integer  pk
   shop_id   bigint?
   sku       text?
-  %% Not converted: composite foreign key (shop_id, sku) -> shop_items (shop_id, sku)
+  foreign(shop_id, sku) -> `public.shop_items`(shop_id, sku) as order_items_shop_sku_fkey
 }

@@ -68,3 +68,7 @@ A table is `g.rz-t[data-t]`, a service `g.rz-svc[data-svc]`, a table's header `g
 ## Deterministic
 
 Text is never measured. Widths follow fixed rules, so the same input gives the same SVG in a browser and on the command line.
+
+## Composite constraints
+
+Composite references draw one connector per ordered column pair while retaining one semantic relation in the model. Their connectors carry `data-acs` and `data-bcs` JSON arrays for coordinated focus. Cards include the constraint in their footer, and Keys keeps every member column. Service-owned cards display the short table label and use the qualified identity in `data-t` and layout boxes.

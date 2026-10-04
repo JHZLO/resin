@@ -57,3 +57,9 @@ schema.erd:8:27: error: referenced table `customer` is not in this document
 ## Old syntax
 
 The parser recognizes the syntax of v0.1 and says how to write it now, as in ``index names go after `as` since v0.2``. See [Migrating from v0.1](migrating.md).
+
+## Service names and composite references
+
+An ambiguous short table name reports ``referenced table `users` is ambiguous`` at the target name. Use `service.table.column` to select its owner.
+
+Composite constraints report errors for unequal source and target lengths, fewer than two columns, repeated columns, missing tables or columns, and a constraint declared on an external table. The list-size error is `foreign key lists must have the same number of columns` and points at `foreign`. Type differences and physical references crossing services remain warnings.

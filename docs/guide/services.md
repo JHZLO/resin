@@ -66,7 +66,8 @@ A reference to or from a table outside every service is not checked.
 
 - Services do not nest, and a table belongs to at most one service.
 - Service names are unique within a document. A service may share its name with a table.
-- Table names stay unique across the whole document, and references reach across services.
+- Table names are unique within their service. Unscoped tables have their own namespace.
+- An unqualified reference first looks in its own service, then accepts a unique matching table elsewhere. If more than one table matches, use `service.table.column`.
 - A service with no tables is reported as a warning.
 - When audit tables are drawn, `<table>_aud` sits in the service of its table, and `revinfo` in none.
 
@@ -75,3 +76,21 @@ A reference to or from a table outside every service is not checked.
 Each service is an area with a faint tint, an even edge and its name and description at the top left. The tables of a service are laid out together, and connectors run between services as they do inside one. In the glass looks services take hues in the order they are declared (teal, violet, amber, rose, sky, lime); the plain `graphite` look draws them in ink. The playground's side panel says which service a table is in.
 
 When resin [imports SQL](sql.md) whose tables come from two or more schemas, it writes each schema's tables in a service named after the schema.
+
+## Same table name in different services
+
+```erd example file=service-names.erd "Each service owns its users table"
+service accounts {
+  table users { id bigint pk }
+}
+service billing {
+  table users { id bigint pk }
+  table invoices {
+    id bigint pk
+    owner_id bigint -> users
+    account_id bigint ~> accounts.users.id
+  }
+}
+```
+
+`owner_id` resolves to `billing.users`. `account_id` explicitly selects `accounts.users`. Model and diagram data identifiers use qualified names; the card title remains `users`. A quoted literal name such as `a.b` remains distinct from table `b` in service `a`.

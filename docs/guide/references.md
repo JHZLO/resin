@@ -63,3 +63,23 @@ table payments {
 ```
 
 A NOT NULL referencing column means every row has exactly one parent. Make it nullable with `?` and the parent becomes optional: zero or one. The diagram shows `NULL` on that row.
+
+## Composite references
+
+```erd example file=composite.erd "A tenant and product id form one foreign key"
+table products {
+  tenant_id bigint pk
+  id bigint pk
+}
+table order_items {
+  id bigint pk
+  tenant_id bigint
+  product_id bigint
+  foreign(tenant_id, product_id) -> products(tenant_id, id) as fk_product
+  index(tenant_id, product_id)
+}
+```
+
+The two lists are ordered: `tenant_id` references `tenant_id`, and `product_id` references `id`. This is one constraint and one model relation. Both lists need at least two distinct columns and the same number of columns. `~>` writes a composite logical reference. A target in another service uses `foreign(a, b) ~> service.target(x, y)`.
+
+The diagram draws each column pair. Selecting any member highlights every pair in the constraint. The details panel lists the constraint as one reference. A composite relation is one-to-one when its complete source set is a primary or unique key. It is optional when any source column is nullable.
