@@ -15,6 +15,7 @@ import { columnDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
+import { showStars } from "./stars.ts";
 import { type Focus, MOVE_MS, PanZoom, createFocus } from "./view.ts";
 
 const EXAMPLES: Record<string, string> = {
@@ -1256,6 +1257,8 @@ function convertSql(pasted: string, doc: string, rest: string): ReturnType<Paste
 }
 
 // ---- boot ----
+
+void showStars();
 
 const cursorPos = byId("cursor-pos");
 const editor = createEditor(

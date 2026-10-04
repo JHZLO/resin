@@ -137,6 +137,14 @@ code { font-family: var(--font-mono); font-size: 0.88em; }
 #theme[data-mode="auto"] .i-auto, #theme[data-mode="light"] .i-light, #theme[data-mode="dark"] .i-dark { display: block; }
 .menu-btn { display: none; }
 @media (hover: hover) and (pointer: fine) { .nav-link:hover { background: var(--hover); color: var(--ink); } }
+/* GitHub, with the star count: a click opens the repository, where the star is given */
+.nav-link.star { gap: 8px; margin-left: 6px; padding: 0 11px; border: 1px solid var(--glass-rim); background: var(--glass-tint); color: var(--ink); }
+.nav-link.star .star-label { display: inline-flex; align-items: center; gap: 5px; }
+.nav-link.star .star-label svg { width: 14px; height: 14px; }
+.star-count { padding-left: 8px; border-left: 1px solid var(--glass-rim); color: var(--muted); font-variant-numeric: tabular-nums; animation: star-in 150ms ease-out; }
+.star-count[hidden] { display: none; }
+@keyframes star-in { from { opacity: 0; } }
+@media (hover: hover) and (pointer: fine) { .nav-link.star:hover { background: var(--active); } }
 
 /* ---------- code ---------- */
 .code { margin: 0; padding: 16px 18px; overflow-x: auto; font: 13px/1.65 var(--font-mono); color: var(--ink); tab-size: 2; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
@@ -283,8 +291,13 @@ code { font-family: var(--font-mono); font-size: 0.88em; }
   .pager { grid-template-columns: 1fr; }
   .pager a.next { grid-column: 1; }
   .nav-link .label { display: none; }
+  /* a phone has room for GitHub and the count only */
+  .nav-link.star { gap: 7px; margin-left: 2px; padding: 0 9px; }
+  .nav-link.star .star-label { display: none; }
+  .star-count { padding-left: 7px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-xl:active, .nav-link:active, .mini-btn:active, .pager a:active { transform: none; }
+  .star-count { animation: none; }
   .docs-side { transition: none !important; }
 }

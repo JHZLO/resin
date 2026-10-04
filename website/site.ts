@@ -3,6 +3,7 @@
 // docs the example that follows the reading, search, and the menu on small screens.
 
 import { LiveGlass } from "../playground/glass.ts";
+import { showStars } from "../playground/stars.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 
 const $ = <T extends Element = HTMLElement>(s: string, root: ParentNode = document): T | null => root.querySelector<T>(s);
@@ -92,6 +93,7 @@ addEventListener("scroll", onScroll, { passive: true });
 onScroll();
 
 applyTheme();
+void showStars();
 
 // ---- docs ----
 

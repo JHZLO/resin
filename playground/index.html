@@ -191,6 +191,12 @@ button { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .btn.ghost:hover { color: var(--ink); background: var(--control-on); } }
 .btn.icon { width: 30px; justify-content: center; padding: 0; }
 .btn svg { width: 16px; height: 16px; flex: none; }
+/* GitHub, with the star count: a click opens the repository, where the star is given */
+.link-source .star-label { display: inline-flex; align-items: center; gap: 4px; }
+.link-source .star-label svg { width: 13px; height: 13px; }
+.star-count { padding-left: 8px; border-left: 1px solid var(--rule); color: var(--muted); font-variant-numeric: tabular-nums; animation: star-in 150ms ease-out; }
+.star-count[hidden] { display: none; }
+@keyframes star-in { from { opacity: 0; } }
 #theme .i { display: none; }
 #theme[data-mode="auto"] .i-auto, #theme[data-mode="light"] .i-light, #theme[data-mode="dark"] .i-dark { display: block; }
 
@@ -687,9 +693,9 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   .splitter::after { display: none; }
 }
 @media (max-width: 600px) {
-  .brand-sub, .stats, #copy-svg, .bar-actions .link-docs, .link-source .link-label, .find-label, .find-btn .kbd { display: none; }
+  .brand-sub, .stats, #copy-svg, .bar-actions .link-docs, .link-source .star-label, .find-label, .find-btn .kbd { display: none; }
   .find-btn { min-width: 0; width: 30px; justify-content: center; padding: 0; }
-  .link-source { width: 30px; justify-content: center; padding: 0; }
+  .link-source { min-width: 30px; justify-content: center; padding: 0 7px; }
   .float.view button .label-long, .float.stages .label-long, .float.zoom .label-long, .float.related .label-long { display: none; }
   .float.related .label-short { display: inline; }
   .ins-resize { display: none; }
@@ -703,6 +709,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 @media (prefers-reduced-motion: reduce) {
   .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after, .work.is-moving { transition: none; }
   .btn:active, .float button:active, .menu button:active, .find-btn:active { transform: none; }
+  .star-count { animation: none; }
   .menu, .inspector, .toast, .pop, .palette { transition: opacity 150ms ease; }
   @starting-style {
     .menu, .inspector, .palette { transform: none; }
@@ -767,9 +774,10 @@ body.is-resizing { cursor: col-resize; user-select: none; }
       <svg class="i i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
     </button>
     <a class="btn ghost link-docs" href="../docs/">Docs</a>
-    <a class="btn link-source" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener" title="Source code on GitHub">
+    <a class="btn link-source" href="https://github.com/JHZLO/resin" target="_blank" rel="noopener" aria-label="Star resin on GitHub" title="Star resin on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
-      <span class="link-label">GitHub</span>
+      <span class="star-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/></svg><span class="link-label">Star</span></span>
+      <span class="star-count" data-stars hidden></span>
     </a>
   </div>
 </header>
