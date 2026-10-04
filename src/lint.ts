@@ -7,7 +7,7 @@
 // errors: references are resolved exactly as the model resolves them.
 
 import type { Column, Document, Span, Table } from "./ast.ts";
-import { resolveRef, resolveTable } from "./checker.ts";
+import { Resolution } from "./resolution.ts";
 import { type Diagnostic, sortDiagnostics } from "./diagnostics.ts";
 
 export type LintRule = "ref-index" | "no-pk" | "unrelated" | "type-drift" | "dup-index";
@@ -47,6 +47,7 @@ const startsWith = (long: readonly Column[], short: readonly Column[]): boolean 
 const sameSet = (a: readonly Column[], b: readonly Column[]): boolean => a.length === b.length && a.every((c) => b.includes(c));
 
 export function lint(doc: Document): Diagnostic[] {
+  const resolution = new Resolution(doc);
   const out: Diagnostic[] = [];
   const own = doc.tables.filter((t) => !t.external);
 
@@ -70,12 +71,12 @@ export function lint(doc: Document): Diagnostic[] {
     const joined = new Set<Table>();
     for (const t of doc.tables)
       for (const c of t.columns) {
-        const target = resolveRef(doc, c)?.table;
+        const target = resolution.ref(c)?.table;
         if (target && target !== t) joined.add(t).add(target);
       }
     for (const t of doc.tables) {
       for (const fk of t.foreignKeys) {
-        const target = resolveTable(doc, fk.table.text, t, fk.service?.text);
+        const target = resolution.table(fk.table.text, t, fk.service?.text);
         if (target && target !== t) joined.add(t).add(target);
       }
     }
@@ -93,10 +94,11 @@ export function lint(doc: Document): Diagnostic[] {
   const byName = new Map<string, { table: Table; column: Column }[]>();
   for (const t of doc.tables)
     for (const c of t.columns) {
-      const target = resolveRef(doc, c);
+      const target = resolution.ref(c);
       if (target && target.column.type.name.text !== c.type.name.text) continue;
       const same = byName.get(c.name.text) ?? [];
-      byName.set(c.name.text, [...same, { table: t, column: c }]);
+      same.push({ table: t, column: c });
+      byName.set(c.name.text, same);
     }
   for (const [name, uses] of byName) {
     if (new Set(uses.map((u) => u.table)).size < 2) continue;

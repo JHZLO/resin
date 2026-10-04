@@ -5,6 +5,7 @@
 // resolveRef is exported because the model resolves references with exactly the same rule.
 
 import { type Column, type Document, type Ident, type Table, tableId } from "./ast.ts";
+import { Resolution } from "./resolution.ts";
 import { type Diagnostic, error, warning } from "./diagnostics.ts";
 
 export const AUDIT_SUFFIX = "_aud";
@@ -46,7 +47,7 @@ export function auditedColumns(table: Table): Column[] {
   return table.columns.filter((c) => !c.pk && names.has(c.name.text));
 }
 
-export function check(doc: Document): Diagnostic[] {
+export function check(doc: Document, resolution = new Resolution(doc)): Diagnostic[] {
   const out: Diagnostic[] = [];
   const tables = new Map<string, Table>();
 
@@ -78,11 +79,11 @@ export function check(doc: Document): Diagnostic[] {
       out.push(warning(`service \`${s.name.text}\` has no tables`, s.name.span, "put tables inside it, or remove it"));
   }
 
-  for (const t of doc.tables) checkTable(doc, t, out);
+  for (const t of doc.tables) checkTable(t, out, resolution);
   return out;
 }
 
-function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
+function checkTable(t: Table, out: Diagnostic[], resolution: Resolution): void {
   const cols = new Map<string, Column>();
   for (const c of t.columns) {
     if (cols.has(c.name.text)) out.push(error(`column \`${c.name.text}\` appears twice in table \`${t.name.text}\``, c.name.span));
@@ -104,7 +105,7 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
           "external tables only receive references; declare it as `table` to draw this relation",
         ),
       );
-    else if (c.ref) checkRef(doc, t, c, out);
+    else if (c.ref) checkRef(t, c, out, resolution);
   }
 
   for (const k of t.constraints) {
@@ -130,7 +131,7 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
       out.push(error("a composite foreign key needs at least two columns", fk.span, "use a column reference for one column"));
     if (new Set(fk.columns.map(c => c.text)).size !== fk.columns.length || new Set(fk.targetColumns.map(c => c.text)).size !== fk.targetColumns.length)
       out.push(error("foreign key lists cannot repeat a column", fk.span));
-    const target = resolveTable(doc, fk.table.text, t, fk.service?.text);
+    const target = resolution.table(fk.table.text, t, fk.service?.text);
     if (!target) out.push(error(`referenced table \`${fk.table.text}\` is missing or ambiguous`, fk.table.span, "qualify the table with its service"));
     else {
       for (let i = 0; i < fk.targetColumns.length; i++) {
@@ -178,11 +179,11 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
   }
 }
 
-function checkRef(doc: Document, t: Table, c: Column, out: Diagnostic[]): void {
+function checkRef(t: Table, c: Column, out: Diagnostic[], resolution: Resolution): void {
   const ref = c.ref!;
-  const target = resolveTable(doc, ref.table.text, t, ref.service?.text);
+  const target = resolution.table(ref.table.text, t, ref.service?.text);
   if (!target) {
-    const ambiguous = !ref.service && doc.tables.filter(x => x.name.text === ref.table.text).length > 1;
+    const ambiguous = !ref.service && (resolution.names.get(ref.table.text)?.length ?? 0) > 1;
     out.push(
       error(
         ambiguous ? `referenced table \`${ref.table.text}\` is ambiguous` : `referenced table \`${ref.table.text}\` is not in this document`,
@@ -206,7 +207,7 @@ function checkRef(doc: Document, t: Table, c: Column, out: Diagnostic[]): void {
     );
     return;
   }
-  const resolved = resolveRef(doc, c);
+  const resolved = resolution.ref(c);
   // Only the type name is compared: foreign keys often mix lengths (varchar(32) against varchar(64))
   if (resolved && resolved.column.type.name.text !== c.type.name.text)
     out.push(

@@ -6,7 +6,8 @@
 // the model only says what to draw.
 
 import { type Column, type Document, type Table, tableId, typeText } from "./ast.ts";
-import { AUDIT_SUFFIX, REVINFO, auditedColumns, resolveRef, resolveTable } from "./checker.ts";
+import { AUDIT_SUFFIX, REVINFO, auditedColumns } from "./checker.ts";
+import { Resolution } from "./resolution.ts";
 import type { Change } from "./diff.ts";
 
 export type TableOrigin = "table" | "external" | "audit";
@@ -98,7 +99,7 @@ const plain = (name: string, type: string, extra: Partial<ModelColumn> = {}): Mo
   ...extra,
 });
 
-export function lower(doc: Document): Model {
+export function lower(doc: Document, resolution = new Resolution(doc)): Model {
   const tables: ModelTable[] = [];
   const relations: Relation[] = [];
 
@@ -109,14 +110,14 @@ export function lower(doc: Document): Model {
       ...(t.service || t.name.text.includes(".") ? { label: t.name.text } : {}),
       description: t.description,
       origin: t.external ? "external" : "table",
-      columns: t.columns.map((c) => column(doc, c)),
+      columns: t.columns.map((c) => column(resolution, c)),
       constraints: t.constraints.map((k) => ({ kind: k.kind, name: k.name?.text ?? null, columns: k.columns.map((i) => i.text) })),
       audit: t.audit ? { method: t.audit.method.text, columns: auditedColumns(t).map((c) => c.name.text) } : null,
       service: t.service?.text ?? null,
-      ...(t.foreignKeys.length ? { foreignKeys: t.foreignKeys.map(fk => ({ columns: fk.columns.map(c => c.text), target: tableId(resolveTable(doc, fk.table.text, t, fk.service?.text)!), targetColumns: fk.targetColumns.map(c => c.text), kind: fk.kind, name: fk.name?.text ?? null })) } : {}),
+      ...(t.foreignKeys.length ? { foreignKeys: t.foreignKeys.map(fk => ({ columns: fk.columns.map(c => c.text), target: tableId(resolution.table(fk.table.text, t, fk.service?.text)!), targetColumns: fk.targetColumns.map(c => c.text), kind: fk.kind, name: fk.name?.text ?? null })) } : {}),
     });
     for (const c of t.columns) {
-      const target = resolveRef(doc, c);
+      const target = resolution.ref(c);
       if (!target) continue;
       relations.push({
         parent: tableId(target.table),
@@ -130,7 +131,7 @@ export function lower(doc: Document): Model {
       });
     }
     for (const fk of t.foreignKeys) {
-      const target = resolveTable(doc, fk.table.text, t, fk.service?.text)!;
+      const target = resolution.table(fk.table.text, t, fk.service?.text)!;
       const cols = fk.columns.map(c => c.text);
       const pk = t.columns.filter(c => c.pk).map(c => c.name.text);
       const same = (other: string[]) => other.length === cols.length && cols.every(c => other.includes(c));
@@ -169,8 +170,8 @@ export function lower(doc: Document): Model {
   return { tables, relations, services: doc.services.map((s) => ({ name: s.name.text, description: s.description })) };
 }
 
-function column(doc: Document, c: Column): ModelColumn {
-  const target = resolveRef(doc, c);
+function column(resolution: Resolution, c: Column): ModelColumn {
+  const target = resolution.ref(c);
   return {
     name: c.name.text,
     type: typeText(c.type),

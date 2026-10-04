@@ -236,3 +236,20 @@ describe("golden svg", () => {
     });
   }
 });
+
+it("routes a high-degree hub deterministically without dropping endpoints", async () => {
+  const source = Array.from({ length: 40 }, (_, i) => `table t${i} {\n id int pk\n${i ? " parent_id int -> t0.id index\n" : ""}}`).join("\n");
+  const model = modelOf(source);
+  const first = await toSvg(model, elk);
+  const next = await toSvg(model, elk);
+  expect(next.svg).toBe(first.svg);
+  expect(first.boxes).toHaveLength(40);
+  expect(count(first.svg, 'class="rz-r"')).toBe(39);
+  expect(first.svg).not.toMatch(/NaN|undefined/);
+  for (const box of first.boxes) {
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.w).toBeLessThanOrEqual(first.width);
+    expect(box.y + box.h).toBeLessThanOrEqual(first.height);
+  }
+});

@@ -701,10 +701,12 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
   const relations = model.relations.filter((r) => names.has(r.parent) && names.has(r.child)).flatMap(r =>
     r.childColumns ? r.childColumns.map((column, i) => ({ ...r, childColumn: column, parentColumn: r.parentColumns![i] })) : [r]);
   const referenced = new Set(relations.map((r) => `${r.parent}.${r.parentColumn}`));
+  const childColumns = new Map<string, string[]>();
+  for (const r of relations) { const columns = childColumns.get(r.child) ?? []; columns.push(r.childColumn); childColumns.set(r.child, columns); }
   const out = tables.map((table) => {
     // A column that holds a reference is a foreign key even when its target is not drawn (a part of the
     // model, as the playground's related tables view draws)
-    const refCols = new Set([...relations.filter((r) => r.child === table.name).map((r) => r.childColumn), ...table.columns.filter((c) => c.ref).map((c) => c.name), ...(table.foreignKeys ?? []).flatMap(k => k.columns)]);
+    const refCols = new Set([...(childColumns.get(table.name) ?? []), ...table.columns.filter((c) => c.ref).map((c) => c.name), ...(table.foreignKeys ?? []).flatMap(k => k.columns)]);
     const isKey = (c: ModelColumn) => c.pk || c.uk || refCols.has(c.name) || referenced.has(`${table.name}.${c.name}`);
     const shown = opts.columns === "none" ? [] : opts.columns === "keys" ? table.columns.filter(isKey) : table.columns;
     const hidden = table.columns.length - shown.length;
@@ -979,10 +981,15 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
       });
   }
 
+  const degree = new Map<string, number>();
+  for (const r of relations) for (const name of [r.parent, r.child]) degree.set(name, (degree.get(name) ?? 0) + 1);
+  const hasHub = [...degree.values()].some(n => n >= 32);
   const graph: ElkGraphIn = {
     id: "root",
     layoutOptions: {
       ...(drawnServices.length ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
+      // ELK's hub treatment avoids expensive leaf placement around highly referenced tables.
+      ...(hasHub ? { "elk.layered.highDegreeNodes.treatment": "true", "elk.layered.highDegreeNodes.threshold": "32" } : {}),
       "elk.algorithm": "layered",
       "elk.direction": "RIGHT",
       "elk.edgeRouting": "ORTHOGONAL",

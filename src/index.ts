@@ -2,6 +2,7 @@
 // model. The package's public API is exported from here only, so callers never depend on internal
 // file paths.
 
+import { Resolution } from "./resolution.ts";
 import type { Document } from "./ast.ts";
 import { check } from "./checker.ts";
 import { type Diagnostic, hasErrors, sortDiagnostics } from "./diagnostics.ts";
@@ -35,8 +36,9 @@ export interface CompileResult {
 
 export function compile(source: string): CompileResult {
   const parsed = parse(source);
+  const resolution = new Resolution(parsed.doc);
   // With syntax errors the tree is incomplete; checking it would add bogus errors ("no such table")
-  const diagnostics = hasErrors(parsed.diagnostics) ? parsed.diagnostics : [...parsed.diagnostics, ...check(parsed.doc)];
-  const model = hasErrors(diagnostics) ? null : lower(parsed.doc);
+  const diagnostics = hasErrors(parsed.diagnostics) ? parsed.diagnostics : [...parsed.diagnostics, ...check(parsed.doc, resolution)];
+  const model = hasErrors(diagnostics) ? null : lower(parsed.doc, resolution);
   return { doc: parsed.doc, model, diagnostics: sortDiagnostics(diagnostics) };
 }
