@@ -18,12 +18,12 @@ Failures save a screenshot and trace under `test-results/`; CI uploads that dire
 
 | Layer | Checks |
 |---|---|
-| Language and SQL | Valid and invalid schemas, diagnostic positions, five DDL dialect fixtures, qualified and quoted identifiers, unsupported-reference notes, deterministic output |
+| Language and SQL | Valid and invalid schemas, diagnostic positions, five DDL dialect fixtures, qualified and quoted identifiers, composite references, deterministic output |
 | Comparison and CLI | Reference changes, missing files, invalid arguments, help, stdout and stderr boundaries |
-| PR Action | Added, removed and renamed paths, unusual filenames, identical reruns, concurrent branch updates, paginated comments, restricted token fallback |
+| PR Action | Divergent base branches, merge-base lookup, added, removed and renamed paths, unusual filenames, identical reruns, concurrent branch updates, paginated comments, restricted token fallback |
 | Playground state | Malformed saved values, share decoding, same-document view changes, empty comparison bases, reload recovery |
-| Browser workflows | DDL paste conversion and undo, errors and recovery, relation focus, related views, folded-column navigation, current-source export, narrow layouts, keyboard focus |
-| Rendering | Fit and gesture calculations, context restoration, reduced-motion refresh, static fallback, escaped descriptions, large schemas |
+| Browser workflows | DDL paste conversion and undo, import review and reimport, named documents and reload, storage failure and source download, reading links, saved views, relation focus, folded-column navigation, narrow layouts, keyboard focus |
+| Rendering | Fit and gesture calculations, context restoration, reduced-motion refresh, static fallback, escaped descriptions, large schemas, layout cancellation and document switching |
 
 Browser tests run on Chromium, Firefox and WebKit. Load cases run on Chromium only and record elapsed render time for 10, 100 and 500-table schemas. They verify fit and navigation, not a universal performance guarantee.
 

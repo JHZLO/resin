@@ -365,8 +365,10 @@ ${siteHead("", "home", false)}
 // ---- the playground: one self-contained page ----
 
 async function renderPlayground() {
+  const worker = await readFile("node_modules/elkjs/lib/elk-worker.min.js", "utf8");
   const result = await build({
     entryPoints: ["playground/main.ts"],
+    define: { __RESIN_WORKER__: JSON.stringify(worker) },
     bundle: true,
     format: "iife",
     minify: true,

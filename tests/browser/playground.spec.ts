@@ -224,6 +224,31 @@ test("keeps a table panel open on a second header click", async ({ page }) => {
   await expect(page.locator("#inspector")).toBeVisible();
 });
 
+test("cancels a large layout and switches documents without applying stale work", async ({ page }) => {
+  await page.addInitScript(() => {
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (this: Worker, message: unknown, ...rest: unknown[]) {
+      if ((message as { cmd?: string })?.cmd === "layout") document.documentElement.dataset.layoutStarted = "true";
+      return Reflect.apply(post, this, [message, ...rest]);
+    } as typeof post;
+  });
+  const code = Array.from({ length: 500 }, (_, i) => `table pending_${i} {\n id int pk\n${i ? ` previous_id int -> pending_${i - 1} index\n` : ""}${Array.from({ length: 10 }, (_, c) => ` value_${c} varchar`).join("\n")}\n}`).join("\n");
+  await page.goto(`/playground/${await encode(shared(code))}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Layout cancelled");
+  await expect(page.locator("#content .rz-t")).toHaveCount(0);
+  await page.evaluate(() => { delete document.documentElement.dataset.layoutStarted; });
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect.poll(() => page.locator("html").getAttribute("data-layout-started")).toBe("true");
+  await page.getByRole("combobox", { name: "Example", exact: true }).selectOption({ label: "blank.erd" });
+  await expect.poll(() => page.locator("#content .rz-t").count()).toBe(1);
+  await expect(page.locator('#content .rz-t[data-t="things"]')).toBeVisible();
+  await expect(page.locator("#content .rz-t")).toHaveCount(1);
+  await expect(page.getByRole("status")).toBeHidden();
+  await page.getByRole("button", { name: "Documents", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Schema workspace" })).toContainText("Recent documents");
+});
+
 test("moves keyboard focus out of search and back when the panel closes", async ({ page }) => {
   await open(page);
   await page.locator("#find").click();

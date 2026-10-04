@@ -2,15 +2,18 @@
 // Every change recompiles; errors show up as lint marks and in the problems list, and the diagram
 // keeps the last valid drawing (dimmed) until the source compiles again.
 
-import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, compile, diff, fromSql, lint, looksLikeSql, neighbors, parse, toSvg } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, compile, diff, fromSql, lint, looksLikeSql, parse } from "../src/index.ts";
+import { Documents, type LocalDocument } from "./documents.ts";
+import { RenderClient } from "./render-client.ts";
+import { createWorkspace, saveFile, fileName } from "./workspace.ts";
+import { relatedModel, relationPath, subset } from "./schema-tools.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
-import { type SharedState, decode, encode, readState } from "./share.ts";
+import { type SharedState, decode, encode } from "./share.ts";
 import { type Focus, MOVE_MS, PanZoom, createFocus } from "./view.ts";
 
 const EXAMPLES: Record<string, string> = {
@@ -18,7 +21,6 @@ const EXAMPLES: Record<string, string> = {
   shop: shopExample,
   blank: 'table things "Start here" {\n  id    bigint       pk\n  name  varchar(100)\n}\n',
 };
-const STORE = "resin.playground";
 const THEME_STORE = "resin.theme";
 const STAGE_STORE = "resin.stage";
 const PANEL_STORE = "resin.panel";
@@ -30,7 +32,11 @@ type StageName = keyof typeof STAGES;
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", related: null, base: null, grid: true };
-const elk = new ELK();
+let storage: Pick<Storage, "getItem" | "setItem">;
+try { storage = localStorage; } catch { storage = { getItem: () => null, setItem: () => { throw new Error("Storage unavailable"); } }; }
+const documents = new Documents(storage, state);
+const renderer = new RenderClient();
+const exporter = new RenderClient();
 
 /** The whole model, which the side panel and the column card describe */
 let lastModel: Model | null = null;
@@ -50,25 +56,15 @@ try {
 
 // ---- persistence ----
 
-function load(): Partial<typeof state> | null {
-  try {
-    const raw = localStorage.getItem(STORE);
-    const value: unknown = raw ? JSON.parse(raw) : null;
-    const saved = readState(value);
-    if (!saved) return null;
-    const grid = (value as Record<string, unknown>).grid;
-    return { ...saved, grid: typeof grid === "boolean" ? grid : true };
-  } catch {
-    return null;
-  }
-}
-
 function save(): void {
-  try {
-    localStorage.setItem(STORE, JSON.stringify(state));
-  } catch {
-    /* private mode or storage disabled: the URL still carries the state */
-  }
+  documents.update(state);
+  const active = documents.active;
+  // A reload must not reopen an older hash while compression is still debounced.
+  if (history.state?.resinDocument !== active.id) history.replaceState({ resinDocument: active.id }, "");
+  byId("document-name").textContent = active.title;
+  byId("save-status").textContent = documents.error ? "Not saved" : "Saved locally";
+  byId("save-error").textContent = documents.error ?? "";
+  byId("save-error").hidden = documents.error === null;
 }
 
 let hashTimer = 0;
@@ -82,9 +78,9 @@ async function writeHash(): Promise<boolean> {
   const generation = ++hashGeneration;
   clearTimeout(hashTimer);
   try {
-    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null });
+    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null, view: state.view, reading: state.reading });
     if (generation !== hashGeneration) return false;
-    if (location.hash !== hash) history.replaceState(null, "", hash);
+    if (location.hash !== hash) history.replaceState({ resinDocument: documents.active.id }, "", hash);
     return true;
   } catch {
     return false;
@@ -288,6 +284,9 @@ async function openTable(name: string, animate = true): Promise<void> {
   // A table the related view leaves out: the view moves to it, so following references walks the schema
   if (state.related && drawnModel && !drawnModel.tables.some((t) => t.name === name)) {
     await setRelated({ table: name, steps: state.related.steps });
+  }
+  if (!state.related && drawnModel && !drawnModel.tables.some(t => t.name === name)) {
+    state.view = {}; fitNext = true; save(); scheduleHash(); await render();
   }
   if (seq !== navigationSeq) return;
   closePop();
@@ -517,8 +516,37 @@ function setStale(stale: boolean): void {
   viewport.classList.toggle("is-stale", stale && lastModel !== null);
 }
 
+function layoutStatus(message: string, busy = false): void {
+  byId("layout-status").hidden = !message;
+  byId("layout-message").textContent = message;
+  byId("layout-cancel").hidden = !busy;
+  byId("layout-retry").hidden = busy;
+  viewport.setAttribute("aria-busy", String(busy));
+}
+byId("layout-cancel").addEventListener("click", () => { renderSeq++; renderer.cancel(); layoutStatus("Layout cancelled. Retry when ready."); setStale(true); });
+byId("layout-retry").addEventListener("click", () => void render());
+function modelForView(model: Model, current: SharedState): Model {
+  let shown = model;
+  if (current.related) shown = relatedModel(model, current.related.table, current.related.steps, current.view?.direction ?? "both");
+  if (current.view?.path) {
+    const path = relationPath(model, ...current.view.path);
+    if (path) shown = subset(shown, new Set(path));
+  }
+  if (current.view?.services) shown = subset(shown, new Set(shown.tables.filter(t => !t.service || current.view!.services!.includes(t.service)).map(t => t.name)));
+  if (current.view?.changesOnly && current.base != null) {
+    const keep = new Set(model.tables.filter(t => t.change || t.columns.some(c => c.change)).map(t => t.name));
+    for (const r of model.relations) if (r.change) { keep.add(r.parent); keep.add(r.child); }
+    const changed = new Set(keep);
+    for (const r of model.relations) if (changed.has(r.parent) || changed.has(r.child)) { keep.add(r.parent); keep.add(r.child); }
+    shown = subset(shown, keep);
+  }
+  return shown;
+}
+
 async function render(): Promise<void> {
   const seq = ++renderSeq;
+  renderer.cancel();
+  layoutStatus("");
   const result = compile(state.code);
   // The lint rules need resolved references, so they run only on a document that compiled
   const findings = result.model ? lint(result.doc) : [];
@@ -529,6 +557,7 @@ async function render(): Promise<void> {
     return;
   }
   try {
+    layoutStatus("Laying out the diagram…", true);
     // With the live canvas the SVG carries only what sits on the glass; the canvas paints the rest
     const look = canvasLook();
     // Comparing with a base version (from a link): draw what changed since it. A base that does not
@@ -538,13 +567,17 @@ async function render(): Promise<void> {
     const full = compared ? compared.model : result.model;
     showCompare(compared?.changes ?? null);
     // The related view needs its table; when the table is renamed or removed, every table comes back
+    if (state.related && !full.tables.some(t => t.name === state.related!.table)) {
+      const legacy = full.tables.filter(t => t.label === state.related!.table);
+      if (legacy.length === 1) state.related = { ...state.related, table: legacy[0].name };
+    }
     if (state.related && !full.tables.some((t) => t.name === state.related!.table && (state.audit === "expand" || t.origin !== "audit"))) {
       state.related = null;
       save();
       scheduleHash();
     }
-    const shown = state.related ? neighbors(full, state.related.table, state.related.steps) : full;
-    const { svg, width, height, background, boxes } = await toSvg(shown, elk, {
+    const shown = modelForView(full, state);
+    const { svg, width, height, background, boxes } = await renderer.render(shown, {
       columns: state.columns,
       audit: state.audit,
       look,
@@ -553,12 +586,14 @@ async function render(): Promise<void> {
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
+    layoutStatus("");
     viewport.style.backgroundColor = background ?? "";
     glass?.setLook(stageOf(look), glassOf(look));
     lastModel = full;
     drawnModel = shown;
-    const empty = full.tables.length === 0;
+    const empty = shown.tables.length === 0;
     byId("empty").hidden = !empty;
+    byId("empty").textContent = full.tables.length ? "No tables match this view. Use Reset view to see all tables." : "Add a table, or paste SQL, to see it here.";
     content.innerHTML = empty ? "" : svg;
     panzoom.setSize(width, height);
     if (fitNext) {
@@ -579,13 +614,17 @@ async function render(): Promise<void> {
     const counted = (m: Model) => m.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
     const tables = counted(full);
     const relations = shown.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
-    const tablesText = state.related ? `${counted(shown)} of ${tables} tables` : `${tables} ${tables === 1 ? "table" : "tables"}`;
+    const tablesText = counted(shown) !== tables ? `${counted(shown)} of ${tables} tables` : `${tables} ${tables === 1 ? "table" : "tables"}`;
     byId("stats").textContent = empty ? "" : `${tablesText}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
+    const filters = [state.view?.path && `Path: ${state.view.path.join(" → ")}`, state.view?.services && "Service filter", state.view?.changesOnly && "Changed tables and neighbors", state.related && state.view?.direction && state.view.direction !== "both" && `${state.view.direction} references`].filter(Boolean);
+    byId("view-summary").hidden = filters.length === 0;
+    byId("view-summary-text").textContent = filters.join(" / ");
     showRelated(Math.max(0, counted(shown) - 1));
     setStale(false);
   } catch (e) {
     if (seq !== renderSeq) return;
-    console.error(e);
+    if (e instanceof DOMException && e.name === "AbortError") return;
+    layoutStatus(e instanceof Error ? e.message : "Layout failed. Please retry.");
     setStale(true);
   }
 }
@@ -593,6 +632,7 @@ async function render(): Promise<void> {
 let renderTimer = 0;
 function scheduleRender(): void {
   renderSeq++; // Invalidate a pending layout as soon as the document changes.
+  renderer.cancel();
   clearTimeout(renderTimer);
   renderTimer = window.setTimeout(render, 120);
 }
@@ -850,8 +890,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]"))
 byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
   if (!EXAMPLES[key]) return;
-  fitNext = true;
-  editor.setText(EXAMPLES[key]);
+  openDocument(documents.create(`${key}.erd`, { ...state, code: EXAMPLES[key], related: null, base: null, view: {}, reading: false }));
 });
 
 byId("grid-toggle").addEventListener("click", () => {
@@ -917,9 +956,9 @@ async function exportSvg(look: SvgLook): Promise<string | null> {
   }
   const base = snapshot.base !== null && snapshot.base !== undefined ? compile(snapshot.base).model : null;
   const full = base ? diff(base, model).model : model;
-  const shown = snapshot.related ? neighbors(full, snapshot.related.table, snapshot.related.steps) : full;
+  const shown = modelForView(full, snapshot);
   try {
-    const { svg } = await toSvg(shown, elk, { columns: snapshot.columns, audit: snapshot.audit, edges: snapshot.edges, look, standalone: true });
+    const { svg } = await exporter.render(shown, { columns: snapshot.columns, audit: snapshot.audit, edges: snapshot.edges, look, standalone: true });
     return svg + "\n";
   } catch {
     toast("Could not export the diagram. Please try again");
@@ -1046,6 +1085,7 @@ splitter.addEventListener("keydown", (e) => {
 const EDITOR_STORE = "resin.editor";
 const folded = () => work.classList.contains("is-folded");
 function fold(hide: boolean, animate = true): void {
+  if (state.reading && !hide) return;
   if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     work.classList.add("is-moving");
     window.setTimeout(() => work.classList.remove("is-moving"), 300);
@@ -1054,7 +1094,7 @@ function fold(hide: boolean, animate = true): void {
   const hadFocus = byId("source").contains(document.activeElement);
   work.classList.toggle("is-folded", hide);
   byId("source").toggleAttribute("inert", hide);
-  byId("editor-show").hidden = !hide;
+  byId("editor-show").hidden = !hide || state.reading === true;
   if (hide && hadFocus) byId("editor-show").focus();
   try {
     if (hide) localStorage.setItem(EDITOR_STORE, "hidden");
@@ -1123,15 +1163,18 @@ function closeSqlBar(): void {
   sqlBar.hidden = true;
 }
 
-function showConverted(tables: number, raw: string, converted: string, source: string): void {
+function showConverted(tables: number, raw: string, converted: string, sql: string, result: ReturnType<typeof fromSql>): void {
   rememberHint();
-  const notes = source.split("\n").filter((l) => l.trimStart().startsWith("%%")).map((l) => l.trim());
+  const notes = result.notes.map(n => `SQL ${n.line}:${n.col} - ${n.message}`);
+  documents.imported({ sql, source: result.source, notes: result.notes });
   conversion = { raw, converted, notes };
   const count = document.createElement("b");
   count.textContent = `${tables} ${tables === 1 ? "table" : "tables"}`;
   sqlText.replaceChildren("Converted ", count, " from SQL");
   sqlNotes.textContent = `${notes.length} ${notes.length === 1 ? "note" : "notes"}`;
-  sqlNotes.hidden = notes.length === 0;
+  sqlNotes.hidden = false;
+  sqlNotes.textContent = notes.length ? `${notes.length} notes / Review` : "Review import";
+  sqlNotes.title = "Review the original SQL and all conversion notes";
   sqlUndo.hidden = false;
   sqlBar.dataset.state = "done";
   sqlBar.hidden = false;
@@ -1141,7 +1184,7 @@ function showConverted(tables: number, raw: string, converted: string, source: s
  *  which would no longer undo the conversion, and the line stays while a note is left to go to */
 function followSqlBar(text: string): void {
   if (!conversion || text === conversion.converted) return;
-  if (text === conversion.raw || !conversion.notes.some((n) => text.includes(n))) closeSqlBar();
+  if (text === conversion.raw) closeSqlBar();
   else sqlUndo.hidden = true;
 }
 
@@ -1149,17 +1192,7 @@ sqlUndo.addEventListener("click", () => {
   editor.undo();
   editor.view.focus();
 });
-// Each press goes to the next note after the cursor, and around again from the top
-sqlNotes.addEventListener("click", () => {
-  if (!conversion) return;
-  const lines = editor.getText().split("\n");
-  const at = lines.flatMap((l, i) => (conversion!.notes.includes(l.trim()) ? [i + 1] : []));
-  if (at.length === 0) return;
-  const doc = editor.view.state.doc;
-  const current = doc.lineAt(editor.view.state.selection.main.head).number;
-  const next = at.find((n) => n > current) ?? at[0];
-  editor.focusAt(next, lines[next - 1].indexOf("%%") + 1);
-});
+sqlNotes.addEventListener("click", () => workspace.show("Import"));
 byId("sql-close").addEventListener("click", () => {
   rememberHint();
   closeSqlBar();
@@ -1173,8 +1206,13 @@ function convertSql(pasted: string, doc: string, rest: string): ReturnType<Paste
   if (!looksLikeSql(pasted)) return null;
   const whole = doc.trim() === "" || Object.values(EXAMPLES).includes(doc);
   const converted = fromSql(pasted, { known: whole ? [] : parse(rest).doc.tables.map((t) => t.name.text) });
-  if (converted.tables === 0) return null;
-  const applied = (raw: string, after: string) => showConverted(converted.tables, raw, after, converted.source);
+  if (converted.tables === 0) {
+    toast(converted.notes[0]?.message ?? "No tables found in this SQL");
+    documents.imported({ sql: pasted, source: converted.source, notes: converted.notes });
+    return null;
+  }
+  documents.checkpoint("Before SQL paste");
+  const applied = (raw: string, after: string) => showConverted(converted.tables, raw, after, pasted, converted);
   if (whole || rest.trim() === "") {
     fitNext = true;
     return { text: converted.source, whole, applied };
@@ -1225,29 +1263,69 @@ function upgraded(shared: Partial<typeof state> | null): Partial<typeof state> |
   return { ...shared, ...(shared.code ? { code: upgrade(shared.code) } : {}), ...(shared.base ? { base: upgrade(shared.base) } : {}) };
 }
 
-async function adopt(shared: Partial<typeof state> | null): Promise<void> {
-  if (!shared) return;
-  Object.assign(state, shared);
-  fitNext = true;
-  if (editor.getText() !== state.code) editor.setText(state.code);
-  syncControls();
-  save();
-  await render();
+const workspace = createWorkspace({
+  documents, state: () => state, model: () => lastModel,
+  open: openDocument,
+  edit: source => { editor.setText(source); fitNext = true; },
+  view: next => { Object.assign(state, next); fitNext = true; syncControls(); save(); scheduleHash(); void render(); },
+  notify: toast,
+  shareReading: async () => { const hash = await encode({ ...state, reading: true }); await copy(`${location.href.split("#")[0]}${hash}`, "Reading link copied"); },
+});
+byId("workspace-open").addEventListener("click", () => workspace.show("Documents"));
+byId("view-reset").addEventListener("click", () => { state.view = {}; state.related = null; fitNext = true; save(); scheduleHash(); syncControls(); void render(); });
+byId("explore-open").addEventListener("click", () => workspace.show("Explore"));
+byId("edit-copy").addEventListener("click", () => {
+  openDocument(documents.create(`${documents.active.title} copy`, { ...state, reading: false }));
+  fold(false, false);
+});
+byId("download-source").addEventListener("click", () => saveFile(state.code, `${fileName(documents.active.title)}.erd`));
+byId("download-png").addEventListener("click", async () => {
+  const svg = await exportSvg(canvasLook());
+  if (!svg) return;
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const scale = Math.min(2, 8192 / Math.max(img.width, img.height), Math.sqrt(32_000_000 / (img.width * img.height)));
+    const canvas = document.createElement("canvas"); canvas.width = Math.max(1, Math.round(img.width * scale)); canvas.height = Math.max(1, Math.round(img.height * scale));
+    const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("PNG export is unavailable");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error("PNG export failed")), "image/png"));
+    saveFile(blob, `${fileName(documents.active.title)}.png`, "image/png");
+  } catch { toast("Could not create the PNG. Try SVG instead."); }
+  finally { URL.revokeObjectURL(url); }
+});
+function syncReading(): void {
+  byId("edit-copy").hidden = !state.reading;
+  byId("workspace-open").hidden = state.reading === true;
+  if (state.reading) fold(true, false);
+  byId("editor-show").hidden = !folded() || state.reading === true;
 }
-
+function openDocument(document: LocalDocument): void {
+  Object.assign(state, { base: null, related: null, view: {}, reading: false }, upgraded(document.state));
+  editor.resetText(state.code);
+  closeSqlBar(); closeInspector(); closePop(); fitNext = true;
+  syncControls(); syncReading(); save(); scheduleHash(); void render();
+}
+async function adopt(shared: Partial<typeof state> | null): Promise<void> {
+  if (typeof shared?.code !== "string") return;
+  const next = { ...state, ...shared };
+  const active = documents.active;
+  if (active.state.code !== next.code || state.reading !== next.reading) {
+    documents.create("Shared schema", next);
+  }
+  Object.assign(state, next); editor.resetText(state.code); fitNext = true;
+  syncControls(); syncReading(); save(); await render();
+}
 window.addEventListener("hashchange", async () => {
   clearTimeout(hashTimer);
   const generation = ++hashGeneration;
   const shared = upgraded(await decode(location.hash));
   if (generation === hashGeneration && shared) await adopt(shared);
 });
-
 (async () => {
-  const shared = upgraded((await decode(location.hash)) ?? load());
-  if (shared) {
-    Object.assign(state, shared);
-    if (editor.getText() !== state.code) editor.setText(state.code);
-  }
-  syncControls();
-  await render();
+  Object.assign(state, upgraded(documents.active.state));
+  const localVisit = history.state?.resinDocument === documents.active.id;
+  const shared = localVisit ? null : upgraded(await decode(location.hash));
+  if (shared) await adopt(shared);
+  else { editor.resetText(state.code); syncControls(); syncReading(); save(); await render(); }
 })();

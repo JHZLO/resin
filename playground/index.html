@@ -707,6 +707,42 @@ body.is-resizing { cursor: col-resize; user-select: none; }
     .pop { scale: none; }
   }
 }
+/* Workspace tools reuse the palette surface, inspector tables and existing control tokens. */
+.workspace { position: fixed; inset: 0; margin: auto; translate: none; transform: none; width: min(720px, calc(100vw - 24px)); max-width: none; max-height: min(860px, calc(100dvh - 32px)); padding: 0; color: var(--ink); }
+.workspace:not([open]) { display: none; }
+.workspace[open] { display: flex; flex-direction: column; }
+.workspace::backdrop { background: var(--bg); opacity: .7; }
+.workspace .ins-bar { flex-shrink: 0; }
+.workspace-body { overflow: auto; min-height: 0; padding: 16px 20px; }
+.workspace-body h3 { font-size: 13px; font-weight: 600; margin: 22px 0 10px; }
+.workspace-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.workspace > .workspace-actions { padding: 8px 20px; border-bottom: 1px solid var(--rule); flex-shrink: 0; }
+.workspace-actions [aria-selected="true"] { background: var(--control-on); }
+.workspace-field { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; font-size: 12px; color: var(--muted); }
+.workspace :is(input[type="text"], select, textarea) { min-width: 0; max-width: 100%; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); color: var(--ink); padding: 8px 10px; font: inherit; }
+.workspace textarea { resize: vertical; width: 100%; font: 12px/1.6 var(--font-mono); }
+.workspace :is(input, select, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.workspace-hint, .workspace-message { font-size: 12px; color: var(--muted); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-message { margin: 0; padding: 8px 20px; flex-shrink: 0; max-height: 120px; overflow: auto; }
+.workspace-message:empty { display: none; }
+.workspace-grow { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+.workspace-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.workspace-choice small { width: 100%; padding-left: 24px; color: var(--muted); }
+.workspace-list > .workspace-actions { border-bottom: 1px solid var(--rule); font-size: 12px; }
+.document-bar { flex-shrink: 0; min-height: 32px; font-size: 11px; }
+#save-status { color: var(--muted); white-space: nowrap; }
+#save-error { color: var(--warn); padding: 8px 12px; }
+.layout-status { top: auto; bottom: 66px; left: 12px; right: 12px; max-width: 620px; font-size: 12px; gap: 10px; }
+.layout-status span { flex: 1; }
+#view-summary { flex-shrink: 0; font-size: 12px; }
+@media (max-width: 600px) {
+  .workspace-body { padding: 12px; }
+  .workspace > .workspace-actions { padding: 8px 12px; }
+  .workspace-message { padding: 8px 12px; }
+  .pane-title { display: none; }
+  .bar-actions { gap: 4px; }
+  #workspace-open, #edit-copy { font-size: 12px; padding: 0 8px; }
+}
 </style>
 </head>
 <body>
@@ -715,6 +751,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
     %MARK%<span class="brand-name">resin</span><span class="brand-sub">playground</span>
   </a>
   <div class="bar-actions">
+    <button type="button" class="btn" id="workspace-open" aria-haspopup="dialog" aria-controls="workspace">Documents</button>
+    <button type="button" class="btn" id="edit-copy" hidden>Edit a copy</button>
     <button type="button" class="btn" id="share">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
       Copy link
@@ -751,6 +789,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
         <button type="button" class="btn ghost icon" id="editor-hide" aria-label="Hide the editor" title="Hide the editor (Ctrl or Cmd + \)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15.5 10 13.5 12l2 2"/></svg></button>
       </span>
     </div>
+    <div class="sql-bar document-bar"><span id="document-name" class="sql-text">Untitled</span><span id="save-status">Saved locally</span><button type="button" class="btn ghost" id="download-source" title="Download the source file">.erd</button></div>
+    <p id="save-error" role="alert" class="workspace-message" hidden></p>
     <div class="sql-bar" id="compare-bar" data-state="compare" hidden>
       <span class="sql-text" id="compare-text" aria-live="polite"></span>
       <button type="button" class="btn sql-undo" id="compare-stop" title="Draw this version alone">Stop comparing</button>
@@ -776,16 +816,18 @@ body.is-resizing { cursor: col-resize; user-select: none; }
       <button type="button" class="btn ghost icon" id="editor-show" aria-label="Show the editor" title="Show the editor (Ctrl or Cmd + \)" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13.5 10l2 2-2 2"/></svg></button>
       <span class="pane-title">Diagram</span>
       <span class="stats" id="stats"></span>
+      <button type="button" class="btn ghost" id="explore-open" aria-haspopup="dialog" aria-controls="workspace">Explore</button>
       <button type="button" class="find-btn" id="find" aria-haspopup="dialog" aria-controls="palette" aria-expanded="false" title="Find a table (Ctrl or Cmd + K)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><span class="find-label">Find a table</span><span class="kbd" id="find-key">Cmd K</span></button>
       <span class="head-actions">
         <button type="button" class="btn ghost" id="copy-svg">Copy SVG</button>
         <span class="menu-wrap">
           <button type="button" class="btn" id="download" aria-haspopup="menu" aria-expanded="false" aria-controls="download-menu" title="Download SVG">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
-            SVG
+            Export
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div class="menu" id="download-menu" role="menu" aria-label="Download SVG" hidden>
+            <button type="button" role="menuitem" id="download-png"><span class="menu-title">PNG image</span><span class="menu-sub">Current theme, up to 2x resolution</span></button>
             <button type="button" role="menuitem" data-variant="plain"><span class="swatch graphite" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background, fits any page</span></button>
             <button type="button" role="menuitem" data-variant="dark"><span class="swatch sw-aurora-dark" aria-hidden="true"></span><span class="menu-title">Aurora, dark</span><span class="menu-sub">Glass on its background, as a still</span></button>
             <button type="button" role="menuitem" data-variant="light"><span class="swatch sw-aurora-light" aria-hidden="true"></span><span class="menu-title">Aurora, light</span><span class="menu-sub">Glass on its background, as a still</span></button>
@@ -793,9 +835,11 @@ body.is-resizing { cursor: col-resize; user-select: none; }
         </span>
       </span>
     </div>
+    <div id="view-summary" class="sql-bar" hidden><span class="sql-text" id="view-summary-text"></span><button type="button" class="btn" id="view-reset">Reset view</button></div>
     <div class="panel" id="panel-diagram">
       <div class="viewport grid" id="viewport">
         <div class="content" id="content"></div>
+        <div class="float layout-status" id="layout-status" role="status" hidden><span id="layout-message"></span><button type="button" id="layout-cancel">Cancel</button><button type="button" id="layout-retry" hidden>Retry</button></div>
         <p class="notice empty" id="empty" hidden>Add a <code>table</code>, or paste SQL, to see it here.</p>
         <p class="notice stale" id="stale" hidden>Showing the last valid diagram. Fix the errors to update it.</p>
         <div class="float related" id="related-pill" role="group" aria-label="Related tables" hidden>

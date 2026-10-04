@@ -16,6 +16,7 @@ The first public version of the language, grammar v0.2.
 - Keep table panels open on repeated clicks, reveal folded columns, and restore focus after search.
 - Fit large diagrams, handle interrupted touch gestures, and restore the glass canvas after context loss.
 - Handle CLI usage errors and make PR comparisons safe to rerun, including renamed files and restricted tokens.
+- Compare pull requests from their common ancestor to exclude unrelated base-branch changes.
 
 ### Quality checks
 
@@ -23,6 +24,13 @@ The first public version of the language, grammar v0.2.
 - CI checks on Node 22.18 and 24. Browser workflows and source checks must pass before Pages deployment.
 
 ### Added
+
+- Named local documents, `.erd` and `.sql` files, recovery snapshots, and visible storage failure handling.
+- SQL import review with original source, complete notes, service assignment and updates that retain annotations.
+- Logical relation suggestions and editing, direction filters, relationship paths, service filters and saved views.
+- File comparison with changed tables and neighbors, reading links, and PNG export.
+- Cancellable layout in a real Web Worker, retry handling and layout reuse for cosmetic changes.
+- Service-scoped table identities and ordered composite foreign-key constraints with coordinated column focus.
 
 - The resin language: tables with `name type[?] modifiers` columns, `pk`, `uk`, `enc`, `enum(...)`,
   `index`, physical (`->`) and logical (`~>`) references, composite `unique(...)` and `index(...)`.

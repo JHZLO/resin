@@ -13,6 +13,8 @@ export interface SharedState {
   /** An older version of the document: the diagram then marks what changed since it. Optional, so
    *  links made before it existed still open */
   base?: string | null;
+  view?: { direction?: "both" | "incoming" | "outgoing"; path?: [string, string]; services?: string[]; changesOnly?: boolean };
+  reading?: boolean;
 }
 
 /** Links and local storage are untrusted input. Keep only fields the editor understands. */
@@ -21,6 +23,7 @@ export function readState(value: unknown): SharedState | null {
   const input = value as Record<string, unknown>;
   if (typeof input.code !== "string") return null;
   const related = input.related as Partial<NonNullable<SharedState["related"]>> | null;
+  const view = input.view && typeof input.view === "object" && !Array.isArray(input.view) ? input.view as NonNullable<SharedState["view"]> : null;
   return {
     code: input.code,
     columns: input.columns === "keys" || input.columns === "none" ? input.columns : "all",
@@ -28,6 +31,13 @@ export function readState(value: unknown): SharedState | null {
     edges: input.edges === "curved" ? "curved" : "angular",
     related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
     base: typeof input.base === "string" ? input.base : null,
+    ...(view ? { view: {
+      direction: view.direction === "incoming" || view.direction === "outgoing" ? view.direction : "both",
+      ...(Array.isArray(view.path) && view.path.length === 2 && view.path.every(v => typeof v === "string") ? { path: view.path as [string, string] } : {}),
+      ...(Array.isArray(view.services) && view.services.every(v => typeof v === "string") ? { services: view.services } : {}),
+      changesOnly: view.changesOnly === true,
+    } } : {}),
+    ...(input.reading === true ? { reading: true } : {}),
   };
 }
 

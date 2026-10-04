@@ -12,7 +12,8 @@ as an SVG where every foreign key row is wired to the primary key it points at.
 **[Try it in the playground](https://jhzlo.github.io/resin/playground/)** | [Docs](https://jhzlo.github.io/resin/docs/) | [Language reference](docs/SPEC.md) | [Contributing](CONTRIBUTING.md)
 
 Paste DDL from DataGrip or another database tool. Focus on connected entities and trace key
-references.
+references. Save named documents locally, review import notes, add logical relations, compare DDL
+versions, and export a diagram or an editable `.erd` file.
 
 [![Preview: focus on connected entities and trace key references. Click to watch the full resin demo.](website/media/resin-demo-preview.webp)](https://jhzlo.github.io/resin/#demo)
 

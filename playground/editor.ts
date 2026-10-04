@@ -21,9 +21,9 @@ import {
 import { tags as t } from "@lezer/highlight";
 import type { Diagnostic } from "../src/index.ts";
 
-const KEYWORDS = new Set(["service", "table", "external", "pk", "uk", "enc", "enum", "index", "unique", "as", "audit"]);
+const KEYWORDS = new Set(["service", "table", "external", "pk", "uk", "enc", "enum", "index", "unique", "foreign", "as", "audit"]);
 /** Keywords that open a line where no column type follows */
-const LINE_KEYWORDS = new Set(["service", "table", "external", "unique", "index", "audit"]);
+const LINE_KEYWORDS = new Set(["service", "table", "external", "unique", "foreign", "index", "audit"]);
 
 interface TokState {
   /** Identifiers seen on this line so far */
@@ -112,6 +112,7 @@ export interface Editor {
   view: EditorView;
   getText(): string;
   setText(text: string): void;
+  resetText(text: string): void;
   undo(): void;
   showDiagnostics(ds: Diagnostic[]): void;
   focusAt(line: number, col: number): void;
@@ -142,11 +143,7 @@ export function createEditor(
   onCursor: (line: number, col: number) => void = () => {},
   convertPaste: PasteConverter = () => null,
 ): Editor {
-  const view = new EditorView({
-    parent,
-    state: EditorState.create({
-      doc: text,
-      extensions: [
+  const extensions = [
         lineNumbers(),
         highlightActiveLineGutter(),
         highlightActiveLine(),
@@ -193,15 +190,18 @@ export function createEditor(
             onCursor(line.number, head - line.from + 1);
           }
         }),
-      ],
-    }),
-  });
+      ];
+  const view = new EditorView({ parent, state: EditorState.create({ doc: text, extensions }) });
 
   return {
     view,
     getText: () => view.state.doc.toString(),
     setText(next) {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } });
+    },
+    resetText(next) {
+      view.setState(EditorState.create({ doc: next, extensions }));
+      onCursor(1, 1);
     },
     showDiagnostics(ds) {
       view.dispatch(setDiagnostics(view.state, ds.map((d) => toCm(view.state.doc, d))));
