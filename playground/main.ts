@@ -10,7 +10,7 @@ import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
-import { type SharedState, decode, encode } from "./share.ts";
+import { type SharedState, decode, encode, readState } from "./share.ts";
 import { type Focus, MOVE_MS, PanZoom, createFocus } from "./view.ts";
 
 const EXAMPLES: Record<string, string> = {
@@ -53,7 +53,11 @@ try {
 function load(): Partial<typeof state> | null {
   try {
     const raw = localStorage.getItem(STORE);
-    return raw ? (JSON.parse(raw) as Partial<typeof state>) : null;
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    const saved = readState(value);
+    if (!saved) return null;
+    const grid = (value as Record<string, unknown>).grid;
+    return { ...saved, grid: typeof grid === "boolean" ? grid : true };
   } catch {
     return null;
   }
@@ -68,13 +72,23 @@ function save(): void {
 }
 
 let hashTimer = 0;
+let hashGeneration = 0;
 function scheduleHash(): void {
+  hashGeneration++;
   clearTimeout(hashTimer);
-  hashTimer = window.setTimeout(writeHash, 400);
+  hashTimer = window.setTimeout(() => void writeHash(), 400);
 }
-async function writeHash(): Promise<void> {
-  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null });
-  if (location.hash !== hash) history.replaceState(null, "", hash);
+async function writeHash(): Promise<boolean> {
+  const generation = ++hashGeneration;
+  clearTimeout(hashTimer);
+  try {
+    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null });
+    if (generation !== hashGeneration) return false;
+    if (location.hash !== hash) history.replaceState(null, "", hash);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---- toast ----
@@ -241,6 +255,8 @@ const pop = byId("pop");
 /** The table in the side panel, and the column in the popover */
 let inspected: string | null = null;
 let popped: { table: string; column: string } | null = null;
+let inspectorReturn: HTMLElement | null = null;
+let navigationSeq = 0;
 
 const rowEl = (table: string, column: string): SVGGElement | null =>
   [...content.querySelectorAll<SVGGElement>(".rz-t")]
@@ -254,37 +270,37 @@ function settleFocus(): void {
 }
 
 /** Bring a table to the middle of what the side panel leaves visible */
-function reveal(name: string, onlyIfCovered = false): void {
+function reveal(name: string, onlyIfCovered = false, animate = true): void {
   const b = lastBoxes.find((x) => x.table === name);
   if (!b) return;
   const covered = inspector.hidden ? 0 : inspector.offsetWidth;
   const right = panzoom.x + (b.x + b.w) * panzoom.scale;
   if (onlyIfCovered && right <= viewport.clientWidth - covered - 16) return;
-  panzoom.centerOn(b.x + b.w / 2, b.y + b.h / 2, covered);
+  panzoom.centerOn(b.x + b.w / 2, b.y + b.h / 2, covered, animate);
 }
 
 /** Open a table in the side panel, focus it, and bring it into view */
-function openTable(name: string): void {
+async function openTable(name: string, animate = true): Promise<void> {
+  const seq = ++navigationSeq;
+  const table = lastModel?.tables.find((t) => t.name === name);
+  if (!table) return;
+  if (table.origin === "audit" && state.audit === "collapse") await setView({ audit: "expand" });
   // A table the related view leaves out: the view moves to it, so following references walks the schema
   if (state.related && drawnModel && !drawnModel.tables.some((t) => t.name === name)) {
-    void setRelated({ table: name, steps: state.related.steps }).then(() => openTable(name));
-    return;
+    await setRelated({ table: name, steps: state.related.steps });
   }
+  if (seq !== navigationSeq) return;
   closePop();
   showInspector(name);
   focus?.table(name);
   glass?.refresh();
-  reveal(name);
+  reveal(name, false, animate);
+  if (!animate) byId("inspector-close").focus();
 }
 
-/** A table name on the diagram: opens its panel, or closes it when it is already open */
+/** Repeated header clicks keep the panel open; only its close button and Escape dismiss it. */
 function pickTable(name: string): void {
   closePop();
-  if (inspected === name && !inspector.hidden) {
-    closeInspector();
-    focus?.clear();
-    return;
-  }
   showInspector(name);
   focus?.table(name);
   // The panel opens over the canvas: keep the table that was clicked in view
@@ -292,24 +308,32 @@ function pickTable(name: string): void {
 }
 
 /** A column on the diagram (or in the panel): shows its popover, or closes it when it is already open */
-function pickColumn(table: string, column: string): void {
+async function pickColumn(table: string, column: string, animate = true): Promise<void> {
+  const seq = ++navigationSeq;
   if (popped && popped.table === table && popped.column === column && !pop.hidden) {
     closePop();
     settleFocus();
     return;
   }
+  // The panel always lists every column. Selecting a folded row first makes it visible.
+  if (!rowEl(table, column) && lastModel?.tables.find((t) => t.name === table)?.columns.some((c) => c.name === column)) {
+    await setView({ columns: "all" });
+    if (seq !== navigationSeq) return;
+  }
   focus?.row(table, column);
   showPop(table, column);
+  if (!pop.hidden) revealRow(table, column, animate);
+  glass?.refresh();
 }
 
 function showInspector(name: string): void {
-  const view = lastModel ? tableDetails(lastModel, name, openTable, (t, c) => {
-    pickColumn(t, c);
-    // A row picked in the panel may sit under the panel or off the canvas: bring it out
-    if (!pop.hidden) revealRow(t, c);
-    glass?.refresh();
-  }) : null;
+  const view = lastModel ? tableDetails(lastModel, name, openTable, pickColumn) : null;
   if (!view) return closeInspector();
+  if (inspector.hidden) {
+    const active = document.activeElement as HTMLElement | null;
+    inspectorReturn = active?.closest("#palette") ? byId("find") : active;
+  }
+  const activeColumn = inspectorBody.contains(document.activeElement) ? (document.activeElement as HTMLElement).closest<HTMLElement>("tr[data-c]")?.dataset.c : null;
   inspected = name;
   inspectorBody.replaceChildren(view);
   byId("inspector-title").textContent = name;
@@ -318,13 +342,19 @@ function showInspector(name: string): void {
   diagramPanel.classList.add("has-inspector");
   markPicked();
   fitFloats();
+  if (activeColumn) inspectorBody.querySelector<HTMLButtonElement>(`tr[data-c="${CSS.escape(activeColumn)}"] button`)?.focus();
 }
 
 function closeInspector(): void {
+  const restoreFocus = inspector.contains(document.activeElement);
   inspected = null;
   inspector.hidden = true;
   diagramPanel.classList.remove("has-inspector");
   fitFloats();
+  if (restoreFocus) {
+    const target = inspectorReturn?.isConnected && inspectorReturn.getClientRects().length ? inspectorReturn : byId("find");
+    target.focus();
+  }
 }
 
 function showPop(table: string, column: string): void {
@@ -350,7 +380,7 @@ function markPicked(): void {
 }
 
 /** Center a row in what the side panel leaves visible, unless it is already in plain view */
-function revealRow(table: string, column: string): void {
+function revealRow(table: string, column: string, animate = true): void {
   const row = rowEl(table, column);
   if (!row) return;
   const area = viewport.getBoundingClientRect();
@@ -359,7 +389,7 @@ function revealRow(table: string, column: string): void {
   if (r.left >= area.left + 8 && r.right <= area.right - covered - 8 && r.top >= area.top + 8 && r.bottom <= area.bottom - 8) return;
   const cx = (r.left + r.width / 2 - area.left - panzoom.x) / panzoom.scale;
   const cy = (r.top + r.height / 2 - area.top - panzoom.y) / panzoom.scale;
-  panzoom.centerOn(cx, cy, covered);
+  panzoom.centerOn(cx, cy, covered, animate);
 }
 
 // ---- the side panel's width, and the canvas it leaves ----
@@ -465,6 +495,7 @@ function placePop(): void {
   const seen = r.bottom > area.top && r.top < area.bottom && r.right > area.left && r.left - area.left < right;
   pop.style.visibility = seen ? "" : "hidden";
   pop.style.transformOrigin = above ? "bottom left" : "top left";
+  top = Math.max(8, Math.min(top, area.height - h - 8));
   pop.style.translate = `${Math.round(left)}px ${Math.round(top)}px`;
 }
 
@@ -502,12 +533,12 @@ async function render(): Promise<void> {
     const look = canvasLook();
     // Comparing with a base version (from a link): draw what changed since it. A base that does not
     // compile cannot be compared, and the document is drawn alone
-    const base = state.base ? compile(state.base).model : null;
+    const base = state.base !== null && state.base !== undefined ? compile(state.base).model : null;
     const compared = base ? diff(base, result.model) : null;
     const full = compared ? compared.model : result.model;
     showCompare(compared?.changes ?? null);
     // The related view needs its table; when the table is renamed or removed, every table comes back
-    if (state.related && !full.tables.some((t) => t.name === state.related!.table)) {
+    if (state.related && !full.tables.some((t) => t.name === state.related!.table && (state.audit === "expand" || t.origin !== "audit"))) {
       state.related = null;
       save();
       scheduleHash();
@@ -550,9 +581,10 @@ async function render(): Promise<void> {
     const relations = shown.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
     const tablesText = state.related ? `${counted(shown)} of ${tables} tables` : `${tables} ${tables === 1 ? "table" : "tables"}`;
     byId("stats").textContent = empty ? "" : `${tablesText}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
-    showRelated(counted(shown) - 1);
+    showRelated(Math.max(0, counted(shown) - 1));
     setStale(false);
   } catch (e) {
+    if (seq !== renderSeq) return;
     console.error(e);
     setStale(true);
   }
@@ -560,6 +592,7 @@ async function render(): Promise<void> {
 
 let renderTimer = 0;
 function scheduleRender(): void {
+  renderSeq++; // Invalidate a pending layout as soon as the document changes.
   clearTimeout(renderTimer);
   renderTimer = window.setTimeout(render, 120);
 }
@@ -580,13 +613,13 @@ function syncControls(): void {
   select.value = match ? match[0] : "";
 }
 
-function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): void {
+function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): Promise<void> {
   Object.assign(state, change);
   fitNext = true;
   syncControls();
   save();
   scheduleHash();
-  render();
+  return render();
 }
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-columns]"))
   b.addEventListener("click", () => setView({ columns: b.dataset.columns === "keys" || b.dataset.columns === "none" ? b.dataset.columns : "all" }));
@@ -728,7 +761,7 @@ function showHits(): void {
       meta.append(...marked(h.meta, h.column));
       row.append(name, desc, meta);
       // A press, not the hover, picks: the hover only lights the row
-      row.addEventListener("click", (e) => choose(h.table, e.shiftKey));
+      row.addEventListener("click", (e) => void choose(h.table, e.shiftKey, e.detail !== 0));
       li.append(row);
       return li;
     }),
@@ -739,7 +772,9 @@ function showHits(): void {
 
 function openPalette(animate: boolean): void {
   if (!palette.hidden) return paletteInput.focus();
-  paletteReturn = document.activeElement as HTMLElement | null;
+  const activeElement = document.activeElement;
+  // Safari does not focus buttons on pointer clicks.
+  paletteReturn = activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : findButton;
   palette.classList.toggle("is-instant", !animate);
   palette.hidden = false;
   findButton.setAttribute("aria-expanded", "true");
@@ -756,14 +791,17 @@ function closePalette(returnFocus: boolean): void {
   if (returnFocus) paletteReturn?.focus();
 }
 
-async function choose(table: string, related: boolean): Promise<void> {
+async function choose(table: string, related: boolean, animate = false): Promise<void> {
+  const returnTo = paletteReturn;
   closePalette(false);
   if (related) {
     await setRelated({ table, steps: state.related?.steps ?? 1 });
     showInspector(table);
     focus?.table(table);
     glass?.refresh();
-  } else openTable(table);
+  } else await openTable(table, animate);
+  inspectorReturn = returnTo;
+  byId("inspector-close").focus();
 }
 
 findButton.addEventListener("click", () => (palette.hidden ? openPalette(true) : closePalette(true)));
@@ -772,6 +810,7 @@ paletteInput.addEventListener("input", () => {
   showHits();
 });
 paletteInput.addEventListener("keydown", (e) => {
+  if (e.isComposing) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
     if (!hits.length) return;
@@ -837,10 +876,10 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-stage]"))
     render();
   });
 syncStage();
-byId("zoom-in").addEventListener("click", () => panzoom.zoomBy(1.25, undefined, undefined, true));
-byId("zoom-out").addEventListener("click", () => panzoom.zoomBy(0.8, undefined, undefined, true));
-byId("zoom-level").addEventListener("click", () => panzoom.actualSize());
-byId("zoom-fit").addEventListener("click", () => panzoom.fit(true));
+byId("zoom-in").addEventListener("click", (e) => panzoom.zoomBy(1.25, undefined, undefined, e.detail !== 0));
+byId("zoom-out").addEventListener("click", (e) => panzoom.zoomBy(0.8, undefined, undefined, e.detail !== 0));
+byId("zoom-level").addEventListener("click", (e) => panzoom.actualSize(e.detail !== 0));
+byId("zoom-fit").addEventListener("click", (e) => panzoom.fit(e.detail !== 0));
 /** Keyboard actions never animate: the change lands at once, glass included */
 function instantly(change: () => void): void {
   diagramPanel.classList.add("is-instant");
@@ -862,16 +901,30 @@ document.addEventListener("keydown", (e) => {
 });
 
 byId("share").addEventListener("click", async () => {
-  await writeHash();
+  if (!(await writeHash())) return toast("Could not create a link. Please try again");
   await copy(location.href, "Link copied");
 });
 
 /** Files are plain (graphite) by default: no background, so they sit on any page. A glass look carries
  *  its background with it, as a still picture */
 async function exportSvg(look: SvgLook): Promise<string | null> {
-  if (!drawnModel) return null;
-  const { svg } = await toSvg(drawnModel, elk, { columns: state.columns, audit: state.audit, edges: state.edges, look, standalone: true });
-  return svg + "\n";
+  // Export one snapshot of the current document and options, even while the canvas is laying out.
+  const snapshot = { ...state, related: state.related ? { ...state.related } : null };
+  const model = compile(snapshot.code).model;
+  if (!model) {
+    toast("Fix the errors before exporting the diagram");
+    return null;
+  }
+  const base = snapshot.base !== null && snapshot.base !== undefined ? compile(snapshot.base).model : null;
+  const full = base ? diff(base, model).model : model;
+  const shown = snapshot.related ? neighbors(full, snapshot.related.table, snapshot.related.steps) : full;
+  try {
+    const { svg } = await toSvg(shown, elk, { columns: snapshot.columns, audit: snapshot.audit, edges: snapshot.edges, look, standalone: true });
+    return svg + "\n";
+  } catch {
+    toast("Could not export the diagram. Please try again");
+    return null;
+  }
 }
 
 byId("copy-svg").addEventListener("click", async () => {
@@ -1178,12 +1231,15 @@ async function adopt(shared: Partial<typeof state> | null): Promise<void> {
   fitNext = true;
   if (editor.getText() !== state.code) editor.setText(state.code);
   syncControls();
+  save();
   await render();
 }
 
 window.addEventListener("hashchange", async () => {
+  clearTimeout(hashTimer);
+  const generation = ++hashGeneration;
   const shared = upgraded(await decode(location.hash));
-  if (shared && shared.code !== state.code) await adopt(shared);
+  if (generation === hashGeneration && shared) await adopt(shared);
 });
 
 (async () => {

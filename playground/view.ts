@@ -23,7 +23,7 @@ export class PanZoom {
   private width = 0;
   private height = 0;
   private readonly pointers = new Map<number, { x: number; y: number }>();
-  private pinch: { dist: number; scale: number } | null = null;
+  private pinch: { dist: number; scale: number; x: number; y: number } | null = null;
   private press: { x: number; y: number; target: Element; dragged: boolean } | null = null;
   /** Still fitted: keep fitting when the viewport resizes, until the user pans or zooms */
   private auto = true;
@@ -43,6 +43,7 @@ export class PanZoom {
     viewport.addEventListener("pointermove", (e) => this.move(e));
     viewport.addEventListener("pointerup", (e) => this.up(e));
     viewport.addEventListener("pointercancel", (e) => this.up(e, true));
+    viewport.addEventListener("lostpointercapture", (e) => this.up(e, true));
     viewport.addEventListener("dblclick", (e) => {
       if (!isControl(e.target)) this.fit(true);
     });
@@ -63,7 +64,7 @@ export class PanZoom {
     // Hidden (another tab) or empty: fit as soon as there is room; the resize observer calls back
     this.auto = true;
     if (!this.width || !this.height || !vw || !vh) return;
-    this.scale = clamp(Math.min((vw - 48) / this.width, (vh - 48) / this.height, 1.25));
+    this.scale = this.fitScale();
     this.x = (vw - this.width * this.scale) / 2;
     this.y = (vh - this.height * this.scale) / 2;
     this.apply(animate);
@@ -72,7 +73,7 @@ export class PanZoom {
   /** Zoom by a factor around a point in viewport coordinates (the center by default) */
   zoomBy(factor: number, px = this.viewport.clientWidth / 2, py = this.viewport.clientHeight / 2, animate = false): void {
     this.auto = false;
-    const next = clamp(this.scale * factor);
+    const next = this.clamp(this.scale * factor);
     const k = next / this.scale;
     this.x = px - (px - this.x) * k;
     this.y = py - (py - this.y) * k;
@@ -80,16 +81,26 @@ export class PanZoom {
     this.apply(animate);
   }
 
-  actualSize(): void {
-    this.zoomBy(1 / this.scale, undefined, undefined, true);
+  actualSize(animate = true): void {
+    this.zoomBy(1 / this.scale, undefined, undefined, animate);
   }
 
   /** Bring a point of the drawing to the middle of what is visible, leaving `right` pixels covered */
-  centerOn(cx: number, cy: number, right = 0): void {
+  centerOn(cx: number, cy: number, right = 0, animate = true): void {
     this.auto = false;
     this.x = (this.viewport.clientWidth - right) / 2 - cx * this.scale;
     this.y = this.viewport.clientHeight / 2 - cy * this.scale;
-    this.apply(true);
+    this.apply(animate);
+  }
+
+  /** Large drawings can need less than ten percent; later zooms must not jump back to that limit */
+  private fitScale(): number {
+    if (!this.width || !this.height) return MIN;
+    return Math.min(Math.max(1, this.viewport.clientWidth - 48) / this.width, Math.max(1, this.viewport.clientHeight - 48) / this.height, 1.25);
+  }
+
+  private clamp(scale: number): number {
+    return Math.min(MAX, Math.max(Math.min(MIN, this.fitScale()), scale));
   }
 
   private apply(animate = false): void {
@@ -122,8 +133,7 @@ export class PanZoom {
     this.pointers.set(e.pointerId, p);
     if (this.pointers.size === 1) this.press = { ...p, target: e.target as Element, dragged: false };
     if (this.pointers.size === 2) {
-      const [a, b] = [...this.pointers.values()];
-      this.pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale: this.scale };
+      this.startPinch();
       if (this.press) this.press.dragged = true;
     }
     this.viewport.setPointerCapture(e.pointerId);
@@ -133,12 +143,16 @@ export class PanZoom {
     const prev = this.pointers.get(e.pointerId);
     if (!prev) return;
     const p = this.local(e);
-    if (this.pinch && this.pointers.size === 2) {
+    if (this.pinch && this.pointers.size >= 2) {
       this.pointers.set(e.pointerId, p);
       const [a, b] = [...this.pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      const target = clamp(this.pinch.scale * (dist / this.pinch.dist));
-      this.zoomBy(target / this.scale, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      this.auto = false;
+      this.scale = this.clamp(this.pinch.scale * (Math.max(1, dist) / this.pinch.dist));
+      // Keep the original drawing point under the moving midpoint, so a pinch also pans
+      this.x = (a.x + b.x) / 2 - this.pinch.x * this.scale;
+      this.y = (a.y + b.y) / 2 - this.pinch.y * this.scale;
+      this.apply();
       return;
     }
     if (this.press && !this.press.dragged) {
@@ -155,7 +169,8 @@ export class PanZoom {
 
   private up(e: PointerEvent, cancelled = false): void {
     if (!this.pointers.delete(e.pointerId)) return;
-    if (this.pointers.size < 2) this.pinch = null;
+    if (this.pointers.size >= 2) this.startPinch();
+    else this.pinch = null;
     if (this.pointers.size === 0) {
       this.viewport.classList.remove("is-panning");
       const press = this.press;
@@ -163,9 +178,19 @@ export class PanZoom {
       if (press && !press.dragged && !cancelled) this.onTap(press.target, press.x, press.y);
     }
   }
+
+  /** Rebase when a finger leaves, without moving the drawing or admitting a third finger as a drag */
+  private startPinch(): void {
+    const [a, b] = [...this.pointers.values()];
+    this.pinch = {
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      scale: this.scale,
+      x: ((a.x + b.x) / 2 - this.x) / this.scale,
+      y: ((a.y + b.y) / 2 - this.y) / this.scale,
+    };
+  }
 }
 
-const clamp = (s: number): number => Math.min(MAX, Math.max(MIN, s));
 /** Buttons and other controls floating over the canvas handle their own events */
 const isControl = (target: EventTarget | null): boolean => target instanceof Element && target.closest("button, a, input, select, label") !== null;
 
@@ -200,6 +225,7 @@ export function createFocus(svg: SVGSVGElement): Focus {
     [...t.querySelectorAll<SVGGElement>(".rz-c")].find((r) => r.dataset.c === column)?.classList.add("is-on");
   };
   const focusTable = (name: string) => {
+    if (!tableEl(name)) return;
     svg.classList.add("is-focus");
     const on = new Set([name]);
     for (const r of rels)
@@ -230,6 +256,7 @@ export function createFocus(svg: SVGSVGElement): Focus {
     },
     row(table, column) {
       clear();
+      if (!tableEl(table)) return;
       if (!focusRow(table, column)) focusTable(table);
       markRow(table, column);
     },

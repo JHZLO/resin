@@ -7,6 +7,8 @@ pnpm-debug.log*
 node_modules
 dist
 coverage
+playwright-report
+test-results
 *.local
 
 # Playground build output

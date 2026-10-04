@@ -16,6 +16,8 @@ The playground runs the [lint rules](lint.md) on every change. The status bar un
 
 Click a table's name for a side panel that lists its columns, indexes and references as tables. Its left edge resizes it. Click a column, on the diagram or in the panel, for a small card with its details; its text can be selected and copied. A column that holds or receives a reference also highlights that reference.
 
+Clicking the same table name again keeps the panel open. Close it with its Close button or Esc. Selecting a column from the panel reveals it even when Keys or Names has hidden it.
+
 The wheel zooms around the pointer, dragging pans, and a double click fits the drawing to the screen.
 
 ## Finding a table
@@ -44,7 +46,9 @@ A link can carry two versions of a document, as the one in a [pull request comme
 
 ## Sharing and exporting
 
-Copy link puts the whole document in the address, with the view options and the related view, so the link opens exactly what you see. Copy SVG and the SVG menu export the drawing as it is shown, related view included: plain by default, with no background, or the current background as a still image.
+Copy link puts the document, column visibility, audit setting, connector style, related view and comparison base in the address. Theme, grid, zoom and panel size remain local browser preferences. A link with an unchanged document can still apply different view options.
+
+Copy SVG and the SVG menu export the current document with its display filters, related view and comparison included: plain by default, with no background, or the current background as a still image. Export checks the current source. If it has errors, correct them before exporting the drawing.
 
 ## Keyboard
 

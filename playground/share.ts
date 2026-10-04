@@ -15,6 +15,22 @@ export interface SharedState {
   base?: string | null;
 }
 
+/** Links and local storage are untrusted input. Keep only fields the editor understands. */
+export function readState(value: unknown): SharedState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (typeof input.code !== "string") return null;
+  const related = input.related as Partial<NonNullable<SharedState["related"]>> | null;
+  return {
+    code: input.code,
+    columns: input.columns === "keys" || input.columns === "none" ? input.columns : "all",
+    audit: input.audit === "expand" ? "expand" : "collapse",
+    edges: input.edges === "curved" ? "curved" : "angular",
+    related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
+    base: typeof input.base === "string" ? input.base : null,
+  };
+}
+
 export async function encode(state: SharedState): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(state));
   const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
@@ -31,17 +47,7 @@ export async function decode(hash: string): Promise<SharedState | null> {
     const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
     const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-    const value = JSON.parse(await new Response(stream).text()) as Partial<SharedState>;
-    if (typeof value.code !== "string") return null;
-    const related = value.related;
-    return {
-      code: value.code,
-      columns: value.columns === "keys" || value.columns === "none" ? value.columns : "all",
-      audit: value.audit === "expand" ? "expand" : "collapse",
-      edges: value.edges === "curved" ? "curved" : "angular",
-      related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
-      base: typeof value.base === "string" ? value.base : null,
-    };
+    return readState(JSON.parse(await new Response(stream).text()));
   } catch {
     return null;
   }

@@ -24,20 +24,20 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string | null, ..
 }
 
 /** Following a table name: the page decides what that does (open it in the panel, show it) */
-export type OpenTable = (name: string) => void;
+export type OpenTable = (name: string, animate?: boolean) => void;
 /** Picking a column from the panel */
-export type PickColumn = (table: string, column: string) => void;
+export type PickColumn = (table: string, column: string, animate?: boolean) => void;
 
 type Key = "PK" | "UK" | "FK" | "IX";
 /** A column's strongest role: primary key, unique, reference, or just indexed */
-const keyOf = (c: ModelColumn, refs: Relation[]): Key | null => (c.pk ? "PK" : c.uk ? "UK" : refs.length ? "FK" : c.index ? "IX" : null);
+const keyOf = (c: ModelColumn, refs: Relation[]): Key | null => (c.pk ? "PK" : c.uk ? "UK" : c.ref || refs.length ? "FK" : c.index ? "IX" : null);
 const kindOf = (r: Relation): string => (r.kind === "physical" ? "foreign key" : "logical");
 
 function link(name: string, open: OpenTable): HTMLButtonElement {
   const b = h("button", "d-link", name);
   b.type = "button";
   b.title = `Show ${name}`;
-  b.addEventListener("click", () => open(name));
+  b.addEventListener("click", (event) => open(name, event.detail !== 0));
   return b;
 }
 
@@ -53,7 +53,11 @@ function list(title: string, ...items: Child[]): HTMLElement {
 
 /** One of the panel's tables. Narrow panels scroll it sideways rather than squeeze it */
 function table(title: string, cls: string, heads: [string, string | null][], rows: HTMLTableRowElement[]): HTMLElement {
-  const head = h("tr", null, ...heads.map(([label, c]) => h("th", c, label)));
+  const head = h("tr", null, ...heads.map(([label, c]) => {
+    const cell = h("th", c, label);
+    cell.scope = "col";
+    return cell;
+  }));
   return h(
     "section",
     "d-section",
@@ -106,9 +110,10 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
     );
     row.dataset.c = c.name;
     // The whole row picks the column (the name is its button, for the keyboard). Selecting text in it does not
-    row.addEventListener("click", () => {
-      if (String(getSelection() ?? "").length) return;
-      pick(t.name, c.name);
+    row.addEventListener("click", (event) => {
+      const selection = getSelection();
+      if (event.detail !== 0 && selection && !selection.isCollapsed && selection.containsNode(row, true)) return;
+      pick(t.name, c.name, event.detail !== 0);
     });
     return row;
   });

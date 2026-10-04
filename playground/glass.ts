@@ -436,7 +436,21 @@ export class LiveGlass {
     });
     this.canvas.addEventListener("webglcontextrestored", () => {
       this.init();
+      // Restoring creates new textures: allocate them even when the viewport size did not change
+      this.resize();
       this.upload(true);
+      this.last = 0;
+      this.kick();
+    });
+    this.reduce.addEventListener("change", () => {
+      if (this.reduce.matches) {
+        this.tween = null;
+        this.shown = { ...this.view };
+        this.ripples = [];
+        this.upload(true);
+      }
+      this.last = 0;
+      this.skip = false;
       this.kick();
     });
     viewport.addEventListener("pointermove", (e) => this.point(e), { passive: true });
@@ -645,7 +659,8 @@ export class LiveGlass {
     this.last = now;
     // Idle for a while: keep the stage moving, at half the frame rate
     const idle = now - this.lastInput > 4000;
-    this.skip = idle ? !this.skip : false;
+    // A still stage gets only one requested frame; skipping it would leave its changes invisible
+    this.skip = idle && !still ? !this.skip : false;
     if (!still) this.time += dt;
     const k = still ? 1 : 1 - Math.exp(-FOLLOW * dt);
     this.pos.x += (this.target.x - this.pos.x) * k;

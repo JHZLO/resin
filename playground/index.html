@@ -487,6 +487,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   z-index: 5;
   width: max-content;
   max-width: min(320px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  overflow: auto;
   padding: 10px 12px;
   border: 1px solid var(--rule);
   border-radius: 8px;
@@ -679,6 +681,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44vh 1px minmax(340px, 1fr); }
   .work.is-folded { grid-template-columns: minmax(0, 1fr); grid-template-rows: 0vh 0px minmax(340px, 1fr); }
   .splitter { cursor: default; pointer-events: none; }
+  .splitter::after { display: none; }
 }
 @media (max-width: 600px) {
   .brand-sub, .stats, #copy-svg, .bar-actions .link-docs, .link-source .link-label, .find-label, .find-btn .kbd { display: none; }
