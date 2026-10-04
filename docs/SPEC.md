@@ -11,7 +11,7 @@ it, the implementation is wrong.
 
 ```erd
 %% Orders
-group accounts "Accounts service" {
+service accounts "Accounts service" {
   external table users "People who sign in" {
     id  bigint  pk
   }
@@ -50,7 +50,7 @@ table order_items "Order lines" {
 | Reference arrows | `->` `~>` | Physical FK / logical reference |
 | Newline | `\n` | **Ends a statement.** Ignored inside parentheses |
 
-Keywords (`group` `table` `external` `pk` `uk` `enc` `enum` `index` `unique` `as` `audit`) are
+Keywords (`service` `table` `external` `pk` `uk` `enc` `enum` `index` `unique` `as` `audit`) are
 **contextual**: they are not reserved, so a column may be called `index`; the position decides.
 A backtick name is never a keyword. `` `users` `` and `users` are the same name.
 
@@ -60,8 +60,8 @@ once and suggests the backticks.
 ## 3. Grammar (EBNF)
 
 ```ebnf
-document    = { NL | group | table } EOF ;
-group       = "group" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
+document    = { NL | service | table } EOF ;
+service     = "service" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
 table       = [ "external" ] "table" name [ STRING ] "{" { member | NL } "}" [ audit ] ( NL | EOF ) ;
 member      = constraint | column ;
 
@@ -157,21 +157,26 @@ Declares audit tables in one line. `audit` is followed by a **method**; the only
   Declaring `revinfo` or `<table>_aud` yourself is therefore an error.
 - Not allowed on tables without a primary key, nor on external tables.
 
-### 4.7 Groups (`group`)
+### 4.7 Services (`service`)
 
-`group name ["description"] { tables }` puts the tables written inside it in a named group: a
-service, a domain, any part of a schema that belongs together. The description is for people.
+resin is written for schemas split across services. `service name ["description"] { tables }` says
+that the tables written inside it belong to one service, which owns them and keeps them in its own
+database. The description is for people.
 
-- A group holds `table` and `external table` blocks and nothing else. An external table in a group
-  says which outside service owns it.
-- Groups do not nest, and a table belongs to at most one group. Tables outside every group belong to
-  none.
-- Group names are unique within a document. They are names of their own: a group may share its
+- A service holds `table` and `external table` blocks and nothing else. Write the tables of every
+  service the document describes in that service's block; an `external table` is a table of a
+  service the document does not describe, and putting it in a block names that service.
+- Services do not nest, and a table belongs to at most one service. Tables outside every service
+  belong to none, as in a document about a single service.
+- Service names are unique within a document. They are names of their own: a service may share its
   name with a table.
-- Grouping changes nothing else: table names stay unique across the whole document, and references
-  cross groups freely.
-- A group with no tables is reported as a warning.
-- When audit tables are drawn, `<table>_aud` belongs to the group of its table; `revinfo` belongs
+- Table names stay unique across the whole document, and references reach across services.
+- **A physical reference (`->`) from a table of one service to a table of another is reported as a
+  warning**: a `FOREIGN KEY` ties the data of two services together, and cannot span two databases
+  at all. Write `~>`, a logical reference, instead. A reference to or from a table outside every
+  service is not checked.
+- A service with no tables is reported as a warning.
+- When audit tables are drawn, `<table>_aud` belongs to the service of its table; `revinfo` belongs
   to none.
 
 ## 5. SVG rendering
@@ -193,13 +198,14 @@ the primary key row it points at.
   rather than at the chevron, because many relations can share one primary key. `edges: "curved"`
   draws S-bends with level ends instead, and keeps the routed path, with wide bends, wherever an
   S-bend would cross another card.
-- **Groups** are areas around their tables, laid out by ELK as nodes that hold the cards, so a group
-  keeps its tables together and connectors cross from one group to another. An area has a faint
+- **Services** are areas around their tables, laid out by ELK as nodes that hold the cards, so a
+  service keeps its tables together and connectors cross from one service to another. An area has a faint
   tint, an even edge with corners of 12 units, and its name and description at the top left. The
   tint stops at the cards, so glass painted below the SVG is never tinted. In a glass look the
-  groups take hues in the order they are declared: teal, violet, amber, rose, sky, lime, then again;
-  the hue is the group's place among all the groups of the model, so a part of a model keeps the
-  colors of the whole. `graphite` draws groups in ink alone. A group is `g.rz-g[data-g]`.
+  services take hues in the order they are declared: teal, violet, amber, rose, sky, lime, then
+  again; the hue is the service's place among all the services of the model, so a part of a model
+  keeps the colors of the whole. `graphite` draws services in ink alone. A service is
+  `g.rz-svc[data-svc]`.
 - **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
   an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
@@ -245,6 +251,7 @@ The parser recognizes v0.1 syntax and says how to write it in v0.2.
 | `unique name(a, b)` / `index name(a, b)` | `unique(a, b) as name` / `index(a, b) as name` |
 | `} audit(a, b)` / `} audit` | `} audit envers(a, b)` / `} audit envers` |
 | An outside reference written as a description | Declare an `external table` and use `~>` |
+| `group name { ... }`, which lasted a day before 0.2 | `service name { ... }` |
 
 ## 8. Importing SQL
 
@@ -270,9 +277,11 @@ resin.
   then `ALTER TABLE`, `CREATE INDEX` and `COMMENT ON`, in order. References are resolved last.
 - Table and column names match without regard to case or schema. The `CREATE TABLE` spelling is
   written. Two tables of one name in different schemas are written `` `schema.name` ``.
-- When the tables come from two or more schemas, each schema's tables are written in a `group`
-  named after the schema, in the order the schemas first appear; tables of no schema stay outside.
-  One schema (all `public`, say) makes no group.
+- When the tables come from two or more schemas, each schema's tables are written in a `service`
+  named after the schema, as a schema per service is a common way to split one database; in the
+  order the schemas first appear, tables of no schema outside. One schema (all `public`, say) makes
+  no service. A foreign key from one schema into another stays `->`, as written, so the checker
+  warns about it.
 
 ### 8.2 Mapping
 
@@ -355,7 +364,7 @@ playground draws it when a link carries both versions.
   key, unique (and its name), encryption, enum values, index (and its name), reference (target and
   kind), description.
 - A table **changes** when one of its columns is added, removed or changed, or when any of these
-  differ: external or not, description, group, its `unique(...)` and `index(...)` constraints,
+  differ: external or not, description, service, its `unique(...)` and `index(...)` constraints,
   audit.
 - A relation changes when its kind changes (`->` to `~>`).
 
@@ -363,7 +372,7 @@ playground draws it when a link carries both versions.
 
 It is the newer model with everything that is gone put back: a removed table after the table that
 came before it in the older model, a removed column after the column that came before it, removed
-relations after the rest, and the group of a removed table when no newer table keeps it. Every added,
+relations after the rest, and the service of a removed table when no newer table keeps it. Every added,
 removed or changed table, column and relation carries `change: { kind, details }`, where `details`
 says in words what changed (`now NOT NULL`, `type int → bigint`, `values A, B → A, B, C`).
 

@@ -19,7 +19,7 @@
 // ELK is passed in, so the core does not depend on elkjs (zero runtime dependencies). Callers pass `new ELK()`.
 
 import type { ChangeKind } from "./diff.ts";
-import type { Model, ModelColumn, ModelGroup, ModelTable, Relation } from "./model.ts";
+import type { Model, ModelColumn, ModelService, ModelTable, Relation } from "./model.ts";
 
 export type SvgLook = "graphite" | "aurora-dark" | "aurora-light" | "silk-dark" | "silk-light" | "caustic-dark" | "caustic-light";
 
@@ -80,7 +80,7 @@ interface ElkNodeIn {
   height?: number;
   ports?: ElkPortIn[];
   layoutOptions: Record<string, string>;
-  /** A group: its tables, laid out inside it */
+  /** A service: its tables, laid out inside it */
   children?: ElkNodeIn[];
 }
 interface ElkGraphIn {
@@ -91,7 +91,7 @@ interface ElkGraphIn {
 }
 interface ElkEdgeOut {
   id: string;
-  /** The node whose coordinates the sections are in: the root, or the group both ends are inside */
+  /** The node whose coordinates the sections are in: the root, or the service both ends are inside */
   container?: string;
   sections?: { startPoint: Point; endPoint: Point; bendPoints?: Point[] }[];
 }
@@ -858,17 +858,17 @@ function stageSvg(S: Stage, G: Glass, id: (name: string) => string, W: number, H
   return { defs: d.join(""), under, frost };
 }
 
-// ---- groups ----
+// ---- services ----
 
-/** ELK ids of group nodes: a prefix no table name can start with, since names never hold a NUL */
-const GROUP = "\u0000group:";
-/** Room inside a group's edge, and above its tables for the label */
-const GROUP_PAD = 24;
-const GROUP_HEAD = 52;
-const GROUP_RX = 12;
-/** Group hues, in the order groups are declared: the key colors first (teal, violet, amber), then
- *  rose, sky and lime. Graphite draws groups in ink alone */
-const GROUP_HUES = {
+/** ELK ids of service nodes: a prefix no table name can start with, since names never hold a NUL */
+const SERVICE = "\u0000service:";
+/** Room inside a service's edge, and above its tables for the label */
+const SERVICE_PAD = 24;
+const SERVICE_HEAD = 52;
+const SERVICE_RX = 12;
+/** Service hues, in the order services are declared: the key colors first (teal, violet, amber), then
+ *  rose, sky and lime. Graphite draws services in ink alone */
+const SERVICE_HUES = {
   dark: ["#5EEAD4", "#C4B5FD", "#FCD34D", "#FDA4AF", "#7DD3FC", "#BEF264"],
   light: ["#0F766E", "#6D28D9", "#B45309", "#BE123C", "#0369A1", "#4D7C0F"],
 };
@@ -884,9 +884,9 @@ const DIFF_LABEL: Record<ChangeKind, string> = { added: "NEW", removed: "REMOVED
 const diffHue = (L: Look, kind: ChangeKind): string => DIFF_HUES[L.stage ? (L.stage.dark ? "dark" : "light") : "ink"][kind];
 
 interface Area {
-  group: ModelGroup;
-  /** Index into the hues: the group's place among every group of the model, so a part of a model
-   *  draws a group in the same color as the whole */
+  service: ModelService;
+  /** Index into the hues: the service's place among every service of the model, so a part of a model
+   *  draws a service in the same color as the whole */
   hue: number;
   x: number;
   y: number;
@@ -894,25 +894,25 @@ interface Area {
   h: number;
 }
 
-const groupLabelW = (gr: ModelGroup): number => sansW(gr.name, 13) * 1.04 + (gr.description ? 10 + sansW(gr.description, 12) : 0);
+const serviceLabelW = (sv: ModelService): number => sansW(sv.name, 13) * 1.04 + (sv.description ? 10 + sansW(sv.description, 12) : 0);
 
 /** Areas under the cards: a faint tint, an even edge and the name at the top left. The tint is masked
  *  out where the cards are, because on a live canvas the glass is painted below this SVG */
-function groupAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string) => string): string {
+function serviceAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string) => string): string {
   const s: string[] = [];
   const holes = boxes.map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="black"/>`).join("");
   s.push(`<mask id="${id("areas")}" maskUnits="userSpaceOnUse"><rect x="-1e5" y="-1e5" width="2e5" height="2e5" fill="white"/>${holes}</mask>`);
-  s.push('<g class="rz-groups">');
+  s.push('<g class="rz-services">');
   for (const a of areas) {
-    const hues = L.stage ? (L.stage.dark ? GROUP_HUES.dark : GROUP_HUES.light) : null;
+    const hues = L.stage ? (L.stage.dark ? SERVICE_HUES.dark : SERVICE_HUES.light) : null;
     const hue = hues ? hues[a.hue % hues.length] : C;
     const [fillA, lineA] = hues ? (L.stage!.dark ? [0.07, 0.42] : [0.07, 0.38]) : [0.035, 0.22];
-    s.push(`<g class="rz-g" data-g="${esc(a.group.name)}">`);
-    s.push(`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${GROUP_RX}" fill="${hue}" fill-opacity="${fillA}" mask="url(#${id("areas")})"/>`);
-    s.push(`<rect x="${f(a.x + 0.5)}" y="${f(a.y + 0.5)}" width="${f(a.w - 1)}" height="${f(a.h - 1)}" rx="${GROUP_RX - 0.5}" fill="none" stroke="${hue}" stroke-opacity="${lineA}"/>`);
+    s.push(`<g class="rz-svc" data-svc="${esc(a.service.name)}">`);
+    s.push(`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${SERVICE_RX}" fill="${hue}" fill-opacity="${fillA}" mask="url(#${id("areas")})"/>`);
+    s.push(`<rect x="${f(a.x + 0.5)}" y="${f(a.y + 0.5)}" width="${f(a.w - 1)}" height="${f(a.h - 1)}" rx="${SERVICE_RX - 0.5}" fill="none" stroke="${hue}" stroke-opacity="${lineA}"/>`);
     s.push(
-      `<text x="${f(a.x + GROUP_PAD)}" y="${f(a.y + 31)}" font-size="13" font-weight="600" letter-spacing="-0.01em" ${hues ? `fill="${hue}"` : fill(L.ink.text)}>${esc(a.group.name)}` +
-        (a.group.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(L.ink.muted)}>${esc(a.group.description)}</tspan>` : "") +
+      `<text x="${f(a.x + SERVICE_PAD)}" y="${f(a.y + 31)}" font-size="13" font-weight="600" letter-spacing="-0.01em" ${hues ? `fill="${hue}"` : fill(L.ink.text)}>${esc(a.service.name)}` +
+        (a.service.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(L.ink.muted)}>${esc(a.service.description)}</tspan>` : "") +
         "</text>",
     );
     s.push("</g>");
@@ -957,30 +957,30 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
         })),
     ),
   });
-  // A group with a drawn table is a node of its own, holding its tables, placed where its first table
-  // comes in the document. Connectors run between groups as freely as inside them
-  const drawnGroups = model.groups.filter((gr) => vs.some((v) => v.table.group === gr.name));
-  const groupOf = (v: View): ModelGroup | null => drawnGroups.find((gr) => gr.name === v.table.group) ?? null;
+  // A service with a drawn table is a node of its own, holding its tables, placed where its first
+  // table comes in the document. Connectors run between services as freely as inside them
+  const drawnServices = model.services.filter((sv) => vs.some((v) => v.table.service === sv.name));
+  const serviceOf = (v: View): ModelService | null => drawnServices.find((sv) => sv.name === v.table.service) ?? null;
   const children: ElkNodeIn[] = [];
   for (const v of vs) {
-    const gr = groupOf(v);
-    if (!gr) children.push(tableNode(v));
-    else if (!children.some((n) => n.id === GROUP + gr.name))
+    const sv = serviceOf(v);
+    if (!sv) children.push(tableNode(v));
+    else if (!children.some((n) => n.id === SERVICE + sv.name))
       children.push({
-        id: GROUP + gr.name,
+        id: SERVICE + sv.name,
         layoutOptions: {
-          "elk.padding": `[top=${GROUP_HEAD},left=${GROUP_PAD},bottom=${GROUP_PAD},right=${GROUP_PAD}]`,
+          "elk.padding": `[top=${SERVICE_HEAD},left=${SERVICE_PAD},bottom=${SERVICE_PAD},right=${SERVICE_PAD}]`,
           "elk.nodeSize.constraints": "MINIMUM_SIZE",
-          "elk.nodeSize.minimum": `(${Math.ceil(groupLabelW(gr) + GROUP_PAD * 2)}, 0)`,
+          "elk.nodeSize.minimum": `(${Math.ceil(serviceLabelW(sv) + SERVICE_PAD * 2)}, 0)`,
         },
-        children: vs.filter((x) => groupOf(x) === gr).map(tableNode),
+        children: vs.filter((x) => serviceOf(x) === sv).map(tableNode),
       });
   }
 
   const graph: ElkGraphIn = {
     id: "root",
     layoutOptions: {
-      ...(drawnGroups.length ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
+      ...(drawnServices.length ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
       "elk.algorithm": "layered",
       "elk.direction": "RIGHT",
       "elk.edgeRouting": "ORTHOGONAL",
@@ -1003,19 +1003,19 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   };
 
   const g = await elk.layout(graph);
-  // A table inside a group is placed relative to it, and so is a connector that stays inside one
+  // A table inside a service is placed relative to it, and so is a connector that stays inside one
   const pos = new Map<string, Point>();
   const offsets = new Map<string, Point>([["root", { x: 0, y: 0 }]]);
   const areas: Area[] = [];
   for (const n of g.children ?? []) {
     const at = { x: n.x ?? 0, y: n.y ?? 0 };
-    if (!n.id.startsWith(GROUP)) {
+    if (!n.id.startsWith(SERVICE)) {
       pos.set(n.id, at);
       continue;
     }
     offsets.set(n.id, at);
-    const gr = drawnGroups.find((x) => GROUP + x.name === n.id)!;
-    areas.push({ group: gr, hue: model.groups.indexOf(gr), x: f(at.x), y: f(at.y), w: f(n.width ?? 0), h: f(n.height ?? 0) });
+    const sv = drawnServices.find((x) => SERVICE + x.name === n.id)!;
+    areas.push({ service: sv, hue: model.services.indexOf(sv), x: f(at.x), y: f(at.y), w: f(n.width ?? 0), h: f(n.height ?? 0) });
     for (const c of n.children ?? []) pos.set(c.id, { x: at.x + (c.x ?? 0), y: at.y + (c.y ?? 0) });
   }
   const routes = new Map<string, { sections: ElkEdgeOut["sections"]; offset: Point }>();
@@ -1050,7 +1050,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     s.push("</g>");
   }
   if (stage) s.push(stage.frost);
-  if (areas.length) s.push(groupAreas(areas, boxes, L, id));
+  if (areas.length) s.push(serviceAreas(areas, boxes, L, id));
 
   s.push('<g class="rz-rels">');
   relations.forEach((r, i) => {

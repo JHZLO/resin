@@ -1,9 +1,9 @@
 // resin source to highlighted HTML, for the site's code blocks. The rules are the playground editor's
 // (playground/editor.ts), so code reads the same on every page.
 
-const KEYWORDS = new Set(["group", "table", "external", "pk", "uk", "enc", "enum", "index", "unique", "as", "audit"]);
+const KEYWORDS = new Set(["service", "table", "external", "pk", "uk", "enc", "enum", "index", "unique", "as", "audit"]);
 /** Keywords that open a line where no column type follows */
-const LINE_KEYWORDS = new Set(["group", "table", "external", "unique", "index", "audit"]);
+const LINE_KEYWORDS = new Set(["service", "table", "external", "unique", "index", "audit"]);
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const span = (cls: string, text: string): string => `<span class="${cls}">${esc(text)}</span>`;

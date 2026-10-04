@@ -69,18 +69,18 @@ describe("diff", () => {
     ]);
   });
 
-  it("reports changes to a table itself: group, constraints, audit, description", () => {
+  it("reports changes to a table itself: service, constraints, audit, description", () => {
     const before = 'table t "Things" {\n  id  bigint  pk\n  a   int\n  b   int\n}';
-    const after = 'group g {\n  table t "Items" {\n    id  bigint  pk\n    a   int\n    b   int\n    unique(a, b)\n  } audit envers\n}';
-    expect(changesOf(before, after)).toEqual([["t", null, "changed", ["description changed", "now in group g", "unique (a, b) added", "audit added"]]]);
+    const after = 'service g {\n  table t "Items" {\n    id  bigint  pk\n    a   int\n    b   int\n    unique(a, b)\n  } audit envers\n}';
+    expect(changesOf(before, after)).toEqual([["t", null, "changed", ["description changed", "now in service g", "unique (a, b) added", "audit added"]]]);
   });
 
-  it("marks relations that appear, go and change kind, and keeps the group of a removed table", () => {
-    const before = 'group crm {\n  table customers {\n    id  bigint  pk\n  }\n}\ntable orders {\n  id  bigint  pk\n  customer_id  bigint  -> customers  index\n}';
+  it("marks relations that appear, go and change kind, and keeps the service of a removed table", () => {
+    const before = 'service crm {\n  table customers {\n    id  bigint  pk\n  }\n}\ntable orders {\n  id  bigint  pk\n  customer_id  bigint  -> customers  index\n}';
     const after = "table orders {\n  id  bigint  pk\n  customer_id  bigint  index\n}";
     const d = diff(model(before), model(after));
     expect(d.model.relations.map((r) => [r.parent, r.child, r.change?.kind])).toEqual([["customers", "orders", "removed"]]);
-    expect(d.model.groups.map((g) => g.name)).toEqual(["crm"]);
+    expect(d.model.services.map((g) => g.name)).toEqual(["crm"]);
     const kind = diff(model(after.replace("customer_id  bigint  index", "customer_id  bigint  -> orders.id  index")), model(after.replace("customer_id  bigint  index", "customer_id  bigint  ~> orders.id  index")));
     expect(kind.model.relations.map((r) => r.change?.kind)).toEqual(["changed"]);
   });

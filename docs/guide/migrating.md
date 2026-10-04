@@ -9,6 +9,7 @@ Version 0.2 changed a few forms. The parser still recognizes every v0.1 form and
 | `unique name(a, b)`, `index name(a, b)` | `unique(a, b) as name`, `index(a, b) as name` |
 | `} audit(a, b)`, `} audit` | `} audit envers(a, b)`, `} audit envers` |
 | A reference to another service written in a description | Declare an [external table](external-tables.md) and use `~>` |
+| `group name { ... }`, which lasted a day before 0.2 | `service name { ... }` (see [Services](services.md)) |
 
 ## Why the changes
 

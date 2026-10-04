@@ -69,15 +69,41 @@ describe("check", () => {
     expect(run("table a {\n x int\n unique(x) as uk_x\n}")).toEqual(["warning: `unique(...)` over a single column"]);
   });
 
-  it("rejects a group declared twice and warns about an empty one", () => {
-    expect(run("group a {\n table t {\n  id int pk\n }\n}\ngroup a {\n table u {\n  id int pk\n }\n}\ngroup b {\n}")).toEqual([
-      "error: group `a` is declared twice",
-      "warning: group `b` has no tables",
+  it("rejects a service declared twice and warns about an empty one", () => {
+    expect(run("service a {\n table t {\n  id int pk\n }\n}\nservice a {\n table u {\n  id int pk\n }\n}\nservice b {\n}")).toEqual([
+      "error: service `a` is declared twice",
+      "warning: service `b` has no tables",
     ]);
   });
 
-  it("lets a group share its name with a table", () => {
-    expect(run("group orders {\n table orders {\n  id int pk\n }\n}")).toEqual([]);
+  it("lets a service share its name with a table", () => {
+    expect(run("service orders {\n table orders {\n  id int pk\n }\n}")).toEqual([]);
+  });
+
+  it("warns about a foreign key from one service into another, and not about logical references", () => {
+    const src = `service accounts {
+  table users {
+    id bigint pk
+  }
+}
+service ordering {
+  table orders {
+    id bigint pk
+    user_id bigint -> users
+    buyer_id bigint ~> users
+  }
+  table lines {
+    id bigint pk
+    order_id bigint -> orders
+  }
+}
+table notes {
+  id bigint pk
+  user_id bigint -> users
+}`;
+    expect(run(src)).toEqual(["warning: foreign key `orders.user_id` crosses from service `ordering` into `accounts`"]);
+    const [d] = check(parse(src).doc);
+    expect(d.span).toEqual({ line: 9, col: 20, len: 2 });
+    expect(d.hint).toBe("a FOREIGN KEY ties the data of two services together; write `~>` for a logical reference");
   });
 });
-

@@ -16,11 +16,11 @@ export interface Model {
   tables: ModelTable[];
   /** In document order of the child table and column, followed by audit relations */
   relations: Relation[];
-  /** Named sets of tables, drawn as areas: a service, a domain. In document order */
-  groups: ModelGroup[];
+  /** The services that own the tables, each drawn as an area. In document order */
+  services: ModelService[];
 }
 
-export interface ModelGroup {
+export interface ModelService {
   name: string;
   description: string | null;
 }
@@ -34,8 +34,8 @@ export interface ModelTable {
   constraints: ModelConstraint[];
   /** The audit attached to this table, for outputs that fold audit tables away */
   audit: { method: string; columns: string[] } | null;
-  /** The group the table belongs to, or null */
-  group: string | null;
+  /** The service the table belongs to, or null */
+  service: string | null;
   /** Set by `diff` only: how the table changed */
   change?: Change;
 }
@@ -106,7 +106,7 @@ export function lower(doc: Document): Model {
       columns: t.columns.map((c) => column(doc, c)),
       constraints: t.constraints.map((k) => ({ kind: k.kind, name: k.name?.text ?? null, columns: k.columns.map((i) => i.text) })),
       audit: t.audit ? { method: t.audit.method.text, columns: auditedColumns(t).map((c) => c.name.text) } : null,
-      group: t.group?.text ?? null,
+      service: t.service?.text ?? null,
     });
     for (const c of t.columns) {
       const target = resolveRef(doc, c);
@@ -133,7 +133,7 @@ export function lower(doc: Document): Model {
       columns: [plain("rev", "int", { pk: true }), plain("revtstmp", "bigint")],
       constraints: [],
       audit: null,
-      group: null,
+      service: null,
     });
     for (const t of audited) tables.push(envers(t));
     for (const t of audited)
@@ -148,8 +148,8 @@ export function lower(doc: Document): Model {
         origin: "audit",
       });
   }
-  // A group declared twice is an error, so names are unique here
-  return { tables, relations, groups: doc.groups.map((g) => ({ name: g.name.text, description: g.description })) };
+  // A service declared twice is an error, so names are unique here
+  return { tables, relations, services: doc.services.map((s) => ({ name: s.name.text, description: s.description })) };
 }
 
 function column(doc: Document, c: Column): ModelColumn {
@@ -185,7 +185,7 @@ function envers(t: Table): ModelTable {
     constraints: [],
     audit: null,
     // An audit table sits with the table it audits
-    group: t.group?.text ?? null,
+    service: t.service?.text ?? null,
   };
 }
 
@@ -207,7 +207,7 @@ export function neighbors(model: Model, table: string, steps: number): Model {
   return {
     tables,
     relations: model.relations.filter((r) => keep.has(r.parent) && keep.has(r.child)),
-    // Every group stays: a group's place among them picks its color, which a part should not change
-    groups: model.groups,
+    // Every service stays: a service's place among them picks its color, which a part should not change
+    services: model.services,
   };
 }

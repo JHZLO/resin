@@ -58,7 +58,8 @@ function tableDetails(a: ModelTable, b: ModelTable): string[] {
   const out: string[] = [];
   if (a.origin !== b.origin) out.push(b.origin === "external" ? "now external" : "no longer external");
   if (a.description !== b.description) out.push("description changed");
-  if (a.group !== b.group) out.push(!a.group ? `now in group ${b.group}` : !b.group ? `no longer in group ${a.group}` : `moved from group ${a.group} to ${b.group}`);
+  if (a.service !== b.service)
+    out.push(!a.service ? `now in service ${b.service}` : !b.service ? `no longer in service ${a.service}` : `moved from service ${a.service} to ${b.service}`);
   const before = a.constraints.map(constraintText);
   const after = b.constraints.map(constraintText);
   for (const k of after) if (!before.includes(k)) out.push(`${k} added`);
@@ -135,9 +136,12 @@ export function diff(before: Model, after: Model): ModelDiff {
   });
   for (const [key, r] of beforeRelations) if (!afterKeys.has(key) && tables.some((t) => t.name === r.child) && tables.some((t) => t.name === r.parent)) relations.push({ ...r, change: marked("removed") });
 
-  // A removed table may take its group with it: keep the group so the table is drawn where it was
-  const groups = [...after.groups, ...before.groups.filter((g) => !after.groups.some((x) => x.name === g.name) && tables.some((t) => t.group === g.name))];
-  return { model: { tables, relations, groups }, changes };
+  // A removed table may take its service with it: keep the service so the table is drawn where it was
+  const services = [
+    ...after.services,
+    ...before.services.filter((s) => !after.services.some((x) => x.name === s.name) && tables.some((t) => t.service === s.name)),
+  ];
+  return { model: { tables, relations, services }, changes };
 }
 
 /** The changes as Markdown: a line per table, its column changes under it */

@@ -15,13 +15,13 @@ The grammar of resin v0.2. The [specification](https://github.com/JHZLO/resin/bl
 | Reference arrows | `->` `~>` | Foreign key, logical reference |
 | Newline | `\n` | Ends a statement. Ignored inside parentheses |
 
-The keywords `group`, `table`, `external`, `pk`, `uk`, `enc`, `enum`, `index`, `unique`, `as` and `audit` are contextual: they are not reserved, and the position decides.
+The keywords `service`, `table`, `external`, `pk`, `uk`, `enc`, `enum`, `index`, `unique`, `as` and `audit` are contextual: they are not reserved, and the position decides.
 
 ## Syntax
 
 ```ebnf
-document    = { NL | group | table } EOF ;
-group       = "group" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
+document    = { NL | service | table } EOF ;
+service     = "service" name [ STRING ] "{" { table | NL } "}" ( NL | EOF ) ;
 table       = [ "external" ] "table" name [ STRING ] "{" { member | NL } "}" [ audit ] ( NL | EOF ) ;
 member      = constraint | column ;
 
@@ -46,7 +46,7 @@ name        = IDENT | QUOTED ;
 
 ```erd example file=orders.erd "Every construct of the language"
 %% Orders
-group accounts "Accounts service" {
+service accounts "Accounts service" {
   external table users "People who sign in" {
     id  bigint  pk
   }

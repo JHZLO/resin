@@ -8,7 +8,7 @@
 // v0.1 syntax (the `erd` header, `index(name)`, `unique name(a, b)`, `audit` without a method) is
 // recognized and answered with a hint on how to write it now (SPEC §7).
 
-import type { Audit, Column, Document, EnumValue, Group, Ident, Ref, Span, Table, TableConstraint, TypeRef } from "./ast.ts";
+import type { Audit, Column, Document, EnumValue, Ident, Ref, Service, Span, Table, TableConstraint, TypeRef } from "./ast.ts";
 import { type Diagnostic, error } from "./diagnostics.ts";
 import { type Token, type TokenKind, lex } from "./lexer.ts";
 
@@ -79,27 +79,27 @@ class Parser {
 
   document(): Document {
     const tables: Table[] = [];
-    const groups: Group[] = [];
+    const services: Service[] = [];
     for (;;) {
       this.skipNewlines();
       if (this.at("eof")) break;
       try {
-        if (this.atWord("group")) groups.push(this.group(tables));
+        if (this.atService()) services.push(this.service(tables));
         else if (this.atTable()) tables.push(this.tableOrExternal(null));
         else if (this.atWord("erd")) this.fail("the `erd` header was removed in v0.2", this.peek().span, "delete this line");
-        else this.fail(`unexpected ${describe(this.peek())}`, this.peek().span, "only `group`, `table` and `external table` can appear at the top level");
+        else this.fail(`unexpected ${describe(this.peek())}`, this.peek().span, "only `service`, `table` and `external table` can appear at the top level");
       } catch (e) {
         if (!(e instanceof LineError)) throw e;
         this.recoverTopLevel();
       }
     }
-    return { tables, groups };
+    return { tables, services };
   }
 
-  /** After a top-level error: skip to the next line that starts with `group`, `table` or `external` */
+  /** After a top-level error: skip to the next line that starts with `service`, `table` or `external` */
   private recoverTopLevel(): void {
     while (!this.at("eof")) {
-      if (this.at("newline") && (this.atWord("group", 1) || this.atWord("table", 1) || this.atWord("external", 1))) return;
+      if (this.at("newline") && (this.atService(1) || this.atWord("table", 1) || this.atWord("external", 1))) return;
       this.next();
     }
   }
@@ -108,35 +108,45 @@ class Parser {
     return this.atWord("table") || this.atWord("external");
   }
 
-  private tableOrExternal(group: Ident | null): Table {
-    if (this.atWord("table")) return this.table(null, group);
-    const ext = this.next();
-    if (!this.atWord("table")) this.fail("expected `table` after `external`", this.peek().span, "write `external table name { ... }`");
-    return this.table(ext, group);
+  /** `group` was the name of `service` for a day; it is still read as one, with an error that says so */
+  private atService(offset = 0): boolean {
+    return this.atWord("service", offset) || this.atWord("group", offset);
   }
 
-  // ---- groups ----
+  private tableOrExternal(service: Ident | null): Table {
+    if (this.atWord("table")) return this.table(null, service);
+    const ext = this.next();
+    if (!this.atWord("table")) this.fail("expected `table` after `external`", this.peek().span, "write `external table name { ... }`");
+    return this.table(ext, service);
+  }
 
-  /** `group name ["description"] { tables }`. Its tables go into `tables` in document order, each
-   *  knowing its group. A line that is not a table is skipped; a nested group is skipped whole */
-  private group(tables: Table[]): Group {
-    const kw = this.next(); // group
-    const name = this.name("a group name");
+  // ---- services ----
+
+  /** `service name ["description"] { tables }`. Its tables go into `tables` in document order, each
+   *  knowing its service. A line that is not a table is skipped; a nested service is skipped whole */
+  private service(tables: Table[]): Service {
+    const kw = this.next(); // service
+    if (kw.value === "group") {
+      const next = this.peek();
+      const hint = next.kind === "ident" ? `write \`service ${next.value} { ... }\`` : "write `service name { ... }`";
+      this.diagnostics.push(error("`group` is now `service`", kw.span, hint));
+    }
+    const name = this.name("a service name");
     const description = this.at("string") ? this.next().value : null;
     this.expect("lbrace", "`{`");
     for (;;) {
       this.skipNewlines();
       if (this.at("rbrace")) break;
       if (this.at("eof")) {
-        this.diagnostics.push(error(`group \`${name.text}\` is missing its closing \`}\``, name.span));
+        this.diagnostics.push(error(`service \`${name.text}\` is missing its closing \`}\``, name.span));
         return { name, description, span: kw.span };
       }
       try {
         if (this.atTable()) tables.push(this.tableOrExternal(name));
-        else if (this.atWord("group")) {
-          this.diagnostics.push(error("groups cannot be nested", this.peek().span, `close \`${name.text}\` before opening another group`));
+        else if (this.atService()) {
+          this.diagnostics.push(error("services cannot be nested", this.peek().span, `close \`${name.text}\` before opening another service`));
           this.skipBlock();
-        } else this.fail(`expected \`table\` or \`external table\` in group \`${name.text}\`, found ${describe(this.peek())}`, this.peek().span);
+        } else this.fail(`expected \`table\` or \`external table\` in service \`${name.text}\`, found ${describe(this.peek())}`, this.peek().span);
       } catch (e) {
         if (!(e instanceof LineError)) throw e;
         this.skipLine();
@@ -165,7 +175,7 @@ class Parser {
 
   // ---- tables ----
 
-  private table(external: Token | null, group: Ident | null): Table {
+  private table(external: Token | null, service: Ident | null): Table {
     const kw = this.next(); // table
     const span = external ? external.span : kw.span;
     const name = this.name("a table name");
@@ -181,7 +191,7 @@ class Parser {
       columns,
       constraints,
       audit,
-      group,
+      service,
       span,
     });
     for (;;) {

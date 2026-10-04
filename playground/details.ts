@@ -8,9 +8,9 @@
 
 import type { Model, ModelColumn, ModelTable, Relation } from "../src/index.ts";
 
-/** ", Order service": a group's description after its name, when it has one */
-const groupDescription = (model: Model, name: string): string => {
-  const d = model.groups.find((g) => g.name === name)?.description;
+/** ", Order service": a service's description after its name, when it has one */
+const serviceDescription = (model: Model, name: string): string => {
+  const d = model.services.find((s) => s.name === name)?.description;
   return d ? `, ${d}` : "";
 };
 
@@ -167,7 +167,7 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
       tags.length ? h("span", "d-tags", ...tags.map((x) => h("span", "d-chip", x))) : null,
       t.description ? h("p", "d-desc", t.description) : null,
       h("p", "d-meta", `${plural(t.columns.length, "column")}, ${plural(outgoing.length, "reference")}, referenced by ${incoming.length}`),
-      t.group ? h("p", "d-meta", `In group ${t.group}${groupDescription(model, t.group)}`) : null,
+      t.service ? h("p", "d-meta", `In service ${t.service}${serviceDescription(model, t.service)}`) : null,
     ),
     table(
       "Columns",

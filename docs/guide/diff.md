@@ -68,7 +68,7 @@ The drawing is the newer version with what is gone put back where it was.
 | A new, removed or changed column | A bar at the left of its row in the same colors; a removed column is struck through. Its tooltip says what changed: `now NOT NULL`, `type int → bigint` |
 | A new, removed or changed connector | Drawn in the same colors, a removed one faded |
 
-A column changes when its type, nullability, keys, encryption, enum values, index, reference or description changes. A table changes when one of its columns does, or its description, group, composite constraints or audit. Generated audit tables are not compared on their own.
+A column changes when its type, nullability, keys, encryption, enum values, index, reference or description changes. A table changes when one of its columns does, or its description, service, composite constraints or audit. Generated audit tables are not compared on their own.
 
 ## On pull requests
 

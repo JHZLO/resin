@@ -173,20 +173,20 @@ describe("table names only", () => {
 describe("a part of a model", () => {
   it("keeps a column a foreign key when the table it points at is left out", async () => {
     const m = modelOf("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n a_id bigint -> a index\n}");
-    const part = { tables: m.tables.filter((t) => t.name === "b"), relations: [], groups: [] };
+    const part = { tables: m.tables.filter((t) => t.name === "b"), relations: [], services: [] };
     const { svg } = await toSvg(part, elk);
     expect(svg).toMatch(/>FK<\/text><text[^>]*>a_id</);
   });
 });
 
-describe("groups", () => {
-  const SRC = `group ordering "Order service" {
+describe("services", () => {
+  const SRC = `service ordering "Order service" {
   table orders {
     id       bigint  pk
     user_id  bigint  ~> users  index
   }
 }
-group accounts "Accounts service" {
+service accounts "Accounts service" {
   external table users {
     id  bigint  pk
   }
@@ -196,15 +196,15 @@ table shipments {
   order_id  bigint  -> orders  index
 }`;
 
-  it("draws an area around each group, with its name, and keeps the cards inside it", async () => {
+  it("draws an area around each service, with its name, and keeps the cards inside it", async () => {
     const { svg, boxes } = await toSvg(modelOf(SRC), elk, { look: "aurora-dark" });
-    expect(count(svg, 'class="rz-g"')).toBe(2);
-    expect(svg).toContain('data-g="ordering"');
+    expect(count(svg, 'class="rz-svc"')).toBe(2);
+    expect(svg).toContain('data-svc="ordering"');
     expect(svg).toContain(">ordering<tspan");
     // Hues follow the order of declaration; the tint is masked out where the cards are
-    expect(svg).toMatch(/data-g="ordering"><rect[^>]*fill="#5EEAD4"[^>]*mask="url\(#rz-areas\)"/);
-    expect(svg).toMatch(/data-g="accounts"><rect[^>]*fill="#C4B5FD"/);
-    const area = /data-g="ordering"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(svg)!.slice(1).map(Number);
+    expect(svg).toMatch(/data-svc="ordering"><rect[^>]*fill="#5EEAD4"[^>]*mask="url\(#rz-areas\)"/);
+    expect(svg).toMatch(/data-svc="accounts"><rect[^>]*fill="#C4B5FD"/);
+    const area = /data-svc="ordering"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(svg)!.slice(1).map(Number);
     const orders = boxes.find((b) => b.table === "orders")!;
     expect(orders.x).toBeGreaterThan(area[0]);
     expect(orders.y).toBeGreaterThan(area[1]);
@@ -213,12 +213,12 @@ table shipments {
     expect(count(svg, 'class="rz-r"')).toBe(2);
   });
 
-  it("draws groups in ink alone in graphite, and leaves out a group with no drawn table", async () => {
+  it("draws services in ink alone in graphite, and leaves out a service with no drawn table", async () => {
     const m = modelOf(SRC);
     const { svg } = await toSvg(m, elk);
-    expect(svg).toMatch(/data-g="ordering"><rect[^>]*fill="currentColor"/);
+    expect(svg).toMatch(/data-svc="ordering"><rect[^>]*fill="currentColor"/);
     const part = { ...m, tables: m.tables.filter((t) => t.name !== "users"), relations: m.relations.filter((r) => r.parent !== "users") };
-    expect(count((await toSvg(part, elk)).svg, 'class="rz-g"')).toBe(1);
+    expect(count((await toSvg(part, elk)).svg, 'class="rz-svc"')).toBe(1);
   });
 });
 

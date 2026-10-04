@@ -26,9 +26,9 @@ A card has the table's name and description in its header, then one row per colu
 
 External tables have a dashed border and an `EXTERNAL` tag. Audit tables are folded into an `ENVERS` tag unless they are expanded.
 
-## Groups
+## Services
 
-A [group](groups.md) is an area around its tables, with a faint tint, an even edge and its name and description at the top left. ELK lays a group out as a node that holds its cards, so the tables of a group stay together and connectors cross from one group to another. With a glass look, groups take hues in the order they are declared (teal, violet, amber, rose, sky, lime, then again); `graphite` draws them in ink alone. The tint stops at the cards, so glass painted under the SVG is never tinted.
+A [service](services.md) is an area around its tables, with a faint tint, an even edge and its name and description at the top left. ELK lays a service out as a node that holds its cards, so the tables of a service stay together and connectors cross from one service to another. With a glass look, services take hues in the order they are declared (teal, violet, amber, rose, sky, lime, then again); `graphite` draws them in ink alone. The tint stops at the cards, so glass painted under the SVG is never tinted.
 
 ## Changes
 
@@ -63,7 +63,7 @@ With a glass look the cards are frosted glass over the background, which the SVG
 
 ## Hooks for viewers
 
-A table is `g.rz-t[data-t]`, a group `g.rz-g[data-g]`, a table's header `g.rz-head`, a column row `g.rz-c[data-c]`, and a connector `g.rz-r`, with `data-a` and `data-ac` for its primary key side and `data-b` and `data-bc` for its foreign key side. A page can fade or highlight parts of the drawing with CSS alone.
+A table is `g.rz-t[data-t]`, a service `g.rz-svc[data-svc]`, a table's header `g.rz-head`, a column row `g.rz-c[data-c]`, and a connector `g.rz-r`, with `data-a` and `data-ac` for its primary key side and `data-b` and `data-bc` for its foreign key side. A page can fade or highlight parts of the drawing with CSS alone.
 
 ## Deterministic
 

@@ -125,10 +125,10 @@ describe("neighbors", () => {
   });
 });
 
-describe("groups", () => {
-  it("keeps groups in document order, and puts an audit table in the group of its table", () => {
+describe("services", () => {
+  it("keeps services in document order, and puts an audit table in the service of its table", () => {
     const m = model(`
-group ordering "Order service" {
+service ordering "Order service" {
   table orders {
     id      bigint   pk
     status  varchar
@@ -137,8 +137,8 @@ group ordering "Order service" {
 table shipments {
   id  bigint  pk
 }`);
-    expect(m.groups).toEqual([{ name: "ordering", description: "Order service" }]);
-    expect(m.tables.map((t) => [t.name, t.group])).toEqual([
+    expect(m.services).toEqual([{ name: "ordering", description: "Order service" }]);
+    expect(m.tables.map((t) => [t.name, t.service])).toEqual([
       ["orders", "ordering"],
       ["shipments", null],
       ["revinfo", null],

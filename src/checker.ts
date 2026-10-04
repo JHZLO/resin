@@ -61,13 +61,13 @@ export function check(doc: Document): Diagnostic[] {
         );
   }
 
-  // Groups: names of their own, unique among groups; a group with no table draws nothing
-  const groups = new Set<string>();
-  for (const g of doc.groups) {
-    if (groups.has(g.name.text)) out.push(error(`group \`${g.name.text}\` is declared twice`, g.name.span));
-    else groups.add(g.name.text);
-    if (!doc.tables.some((t) => t.group?.text === g.name.text))
-      out.push(warning(`group \`${g.name.text}\` has no tables`, g.name.span, "put tables inside it, or remove it"));
+  // Services: names of their own, unique among services; a service with no table draws nothing
+  const services = new Set<string>();
+  for (const s of doc.services) {
+    if (services.has(s.name.text)) out.push(error(`service \`${s.name.text}\` is declared twice`, s.name.span));
+    else services.add(s.name.text);
+    if (!doc.tables.some((t) => t.service?.text === s.name.text))
+      out.push(warning(`service \`${s.name.text}\` has no tables`, s.name.span, "put tables inside it, or remove it"));
   }
 
   for (const t of doc.tables) checkTable(doc, t, out);
@@ -96,7 +96,7 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
           "external tables only receive references; declare it as `table` to draw this relation",
         ),
       );
-    else if (c.ref) checkRef(doc, c, out);
+    else if (c.ref) checkRef(doc, t, c, out);
   }
 
   for (const k of t.constraints) {
@@ -145,7 +145,7 @@ function checkTable(doc: Document, t: Table, out: Diagnostic[]): void {
   }
 }
 
-function checkRef(doc: Document, c: Column, out: Diagnostic[]): void {
+function checkRef(doc: Document, t: Table, c: Column, out: Diagnostic[]): void {
   const ref = c.ref!;
   const target = doc.tables.find((t) => t.name.text === ref.table.text);
   if (!target) {
@@ -179,6 +179,15 @@ function checkRef(doc: Document, c: Column, out: Diagnostic[]): void {
       warning(
         `type mismatch: \`${c.name.text}\` is ${c.type.name.text} but \`${resolved.table.name.text}.${resolved.column.name.text}\` is ${resolved.column.type.name.text}`,
         c.type.span,
+      ),
+    );
+  // Each service has a database of its own, and a FOREIGN KEY cannot reach into another database
+  if (ref.kind === "physical" && t.service && target.service && t.service.text !== target.service.text)
+    out.push(
+      warning(
+        `foreign key \`${t.name.text}.${c.name.text}\` crosses from service \`${t.service.text}\` into \`${target.service.text}\``,
+        ref.span,
+        "a FOREIGN KEY ties the data of two services together; write `~>` for a logical reference",
       ),
     );
 }

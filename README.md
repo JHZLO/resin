@@ -29,7 +29,7 @@ references.
 </p>
 
 ```erd
-group accounts "Accounts service" {
+service accounts "Accounts service" {
   external table users "People who sign in" {
     id  bigint  pk
   }
@@ -167,7 +167,7 @@ expanded audit tables.
 | `enum(A, B)`, `enc` | Allowed values; stored encrypted |
 | `unique(a, b) as uk_ab`, `index(a, b)` | Composite constraints |
 | `external table t { ... }` | A table owned elsewhere that you can reference |
-| `group g "Order service" { tables }` | Tables that belong together, drawn as an area |
+| `service s "Order service" { tables }` | The tables one service owns, drawn as an area; a `->` into another service is a warning |
 | `} audit envers(a, b)` | Hibernate Envers audit tables for the listed columns |
 | `` `order-items` `` | A name with characters outside `[A-Za-z0-9_]` |
 

@@ -1,5 +1,5 @@
 %% Orders: every construct of the language appears at least once.
-group accounts "Accounts service" {
+service accounts "Accounts service" {
   external table users "People who sign in" {
     id  bigint  pk
   }

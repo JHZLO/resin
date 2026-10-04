@@ -21,9 +21,9 @@ import {
 import { tags as t } from "@lezer/highlight";
 import type { Diagnostic } from "../src/index.ts";
 
-const KEYWORDS = new Set(["group", "table", "external", "pk", "uk", "enc", "enum", "index", "unique", "as", "audit"]);
+const KEYWORDS = new Set(["service", "table", "external", "pk", "uk", "enc", "enum", "index", "unique", "as", "audit"]);
 /** Keywords that open a line where no column type follows */
-const LINE_KEYWORDS = new Set(["group", "table", "external", "unique", "index", "audit"]);
+const LINE_KEYWORDS = new Set(["service", "table", "external", "unique", "index", "audit"]);
 
 interface TokState {
   /** Identifiers seen on this line so far */

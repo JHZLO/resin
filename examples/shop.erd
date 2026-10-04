@@ -1,13 +1,14 @@
 %% A small shop, made up to show layout with more tables: several relations
 %% meet at one primary key (users.id, orders.id) and categories references itself.
-%% Groups split it by service; shipments belongs to none.
-group accounts "Accounts service" {
+%% Each service owns its tables, so references between services are logical (~>);
+%% shipments belongs to none.
+service accounts "Accounts service" {
   external table users "People who sign in" {
     id  bigint  pk
   }
 }
 
-group catalog "Catalog service" {
+service catalog "Catalog service" {
   table categories "Categories" {
     id         bigint       pk
     parent_id  bigint?      -> categories  index  "Parent category"
@@ -32,7 +33,7 @@ group catalog "Catalog service" {
   }
 }
 
-group ordering "Order service" {
+service ordering "Order service" {
   table carts "Carts" {
     id          bigint    pk
     user_id     bigint    uk as uk_user_id ~> users
@@ -42,7 +43,7 @@ group ordering "Order service" {
   table cart_items "Cart items" {
     id         bigint  pk
     cart_id    bigint  -> carts
-    option_id  bigint  -> product_options  index
+    option_id  bigint  ~> product_options  index
     quantity   int
     unique(cart_id, option_id) as uk_cart_option
   }
@@ -80,7 +81,7 @@ group ordering "Order service" {
   }
 }
 
-group payments "Payment service" {
+service payments "Payment service" {
   table payments "Payments" {
     id        bigint         pk
     order_id  bigint         uk ~> orders

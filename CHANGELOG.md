@@ -35,10 +35,12 @@ The first public version of the language, grammar v0.2.
   (`diff`, `diffMarkdown`). A GitHub Action (`uses: JHZLO/resin@main`) keeps a comment on pull
   requests that change `.erd` files, with the list, the drawing and a link that opens both versions
   in the playground, which then compares them.
-- Groups: `group name "description" { tables }` puts tables in a named group, a service or a
-  domain, drawn as a tinted area with its name around them; hues follow the order of declaration,
-  and graphite draws them in ink. SQL import writes the tables of each schema in a group when there
-  are several schemas. The side panel says which group a table is in.
+- Services: `service name "description" { tables }` says which tables a service owns, drawn as a
+  tinted area with its name around them; hues follow the order of declaration, and graphite draws
+  them in ink. A `->` from one service into another is a warning, as a FOREIGN KEY cannot tie two
+  services' databases together; write `~>`. SQL import writes the tables of each schema in a service
+  when there are several schemas. The side panel says which service a table is in. (For a day this
+  was `group`; the parser points `group` at `service`.)
 - Exploring a large schema in the playground: All, Keys and Names (table names only, also
   `columns: "none"` and `--names`), Find a table (Ctrl or Cmd + K, over names, descriptions and
   columns), and Related only, which draws a table with its neighbors one or two steps away
