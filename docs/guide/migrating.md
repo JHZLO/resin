@@ -11,6 +11,8 @@ Version 0.2 changed a few forms. The parser still recognizes every v0.1 form and
 | A reference to another service written in a description | Declare an [external table](external-tables.md) and use `~>` |
 | `group name { ... }`, which lasted a day before 0.2 | `service name { ... }` (see [Services](services.md)) |
 
+The [playground](playground.md) makes the `group` change by itself when it opens a document it saved or a link made that day.
+
 ## Why the changes
 
 Parentheses now only ever hold lists, and a name always follows `as`, so `index(a, b)` is always a composite index and `index as name` always names one. `audit` names its method, `envers`, so other kinds of audit can come later without changing the meaning of existing files.

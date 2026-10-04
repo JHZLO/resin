@@ -1152,6 +1152,26 @@ const editor = createEditor(
   convertSql,
 );
 
+/** `service` was `group` for a day: rewrite that keyword in a saved document or an old link, at the
+ *  places the parser points at, so a table or column called `group` stays as it is */
+function upgrade(code: string): string {
+  const spans = parse(code)
+    .diagnostics.filter((d) => d.message === "`group` is now `service`")
+    .map((d) => d.span);
+  if (!spans.length) return code;
+  const lines = code.split("\n");
+  for (const { line, col, len } of spans) {
+    const text = lines[line - 1];
+    lines[line - 1] = text.slice(0, col - 1) + "service" + text.slice(col - 1 + len);
+  }
+  return lines.join("\n");
+}
+
+function upgraded(shared: Partial<typeof state> | null): Partial<typeof state> | null {
+  if (!shared) return null;
+  return { ...shared, ...(shared.code ? { code: upgrade(shared.code) } : {}), ...(shared.base ? { base: upgrade(shared.base) } : {}) };
+}
+
 async function adopt(shared: Partial<typeof state> | null): Promise<void> {
   if (!shared) return;
   Object.assign(state, shared);
@@ -1162,12 +1182,12 @@ async function adopt(shared: Partial<typeof state> | null): Promise<void> {
 }
 
 window.addEventListener("hashchange", async () => {
-  const shared = await decode(location.hash);
+  const shared = upgraded(await decode(location.hash));
   if (shared && shared.code !== state.code) await adopt(shared);
 });
 
 (async () => {
-  const shared = (await decode(location.hash)) ?? load();
+  const shared = upgraded((await decode(location.hash)) ?? load());
   if (shared) {
     Object.assign(state, shared);
     if (editor.getText() !== state.code) editor.setText(state.code);
