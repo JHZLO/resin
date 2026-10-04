@@ -18,6 +18,7 @@
 //
 // ELK is passed in, so the core does not depend on elkjs (zero runtime dependencies). Callers pass `new ELK()`.
 
+import type { ChangeKind } from "./diff.ts";
 import type { Model, ModelColumn, ModelGroup, ModelTable, Relation } from "./model.ts";
 
 export type SvgLook = "graphite" | "aurora-dark" | "aurora-light" | "silk-dark" | "silk-light" | "caustic-dark" | "caustic-light";
@@ -485,6 +486,7 @@ function rowTitle(c: ModelColumn, t: ModelTable): string {
   if (c.ukName) parts.push(`unique ${c.ukName}`);
   if (c.index) parts.push(`index${c.index.name ? " " + c.index.name : ""}`);
   if (c.ref) parts.push(`${c.ref.kind === "physical" ? "->" : "~>"} ${c.ref.table}.${c.ref.column}`);
+  if (c.change) parts.push([c.change.kind, ...c.change.details].join(": "));
   return parts.join("\n");
 }
 
@@ -499,7 +501,13 @@ function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "na
   const chipW_ = maxOf(v.shown.map((c) => chipsW(chips(c, v))));
   const nullW = v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
   const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW + nullW;
-  const headW = PAD * 2 + sansW(t.name, 13.5) * 1.04 + 10 + (t.description ? sansW(t.description, 12) : 0) + (v.tag ? 14 + chipW(v.tag) : 0);
+  const headW =
+    PAD * 2 +
+    sansW(t.name, 13.5) * 1.04 +
+    10 +
+    (t.description ? sansW(t.description, 12) : 0) +
+    (v.tag ? 14 + chipW(v.tag) : 0) +
+    (t.change ? 14 + chipW(DIFF_LABEL[t.change.kind]) : 0);
   const footW = PAD * 2 + maxOf(v.foot.map((s) => monoW(s, 9.5)));
   // A header alone is as wide as its name needs: names only is for seeing many tables at once
   if (bare(v)) return { w: up8(Math.max(headW, 120)), h: HEAD, nameW };
@@ -523,6 +531,15 @@ function chip(text: string, x: number, y: number, I: Inks): string {
   return (
     `<g transform="translate(${f(x)},${f(y)})"><rect width="${f(w)}" height="14" rx="3" ${fill(I.tag)} ${stroke(I.tagRim)}/>` +
     `<text x="${f(w / 2)}" y="10" text-anchor="middle" font-family="${MONO}" font-size="8.5" font-weight="500" ${fill(I.tagText)}>${esc(text)}</text></g>`
+  );
+}
+
+/** A tag in a diff color: what happened to a table */
+function diffChip(text: string, x: number, y: number, hue: string): string {
+  const w = chipW(text);
+  return (
+    `<g transform="translate(${f(x)},${f(y)})"><rect width="${f(w)}" height="14" rx="3" fill="${hue}" fill-opacity="0.14" stroke="${hue}" stroke-opacity="0.6"/>` +
+    `<text x="${f(w / 2)}" y="10" text-anchor="middle" font-family="${MONO}" font-size="8.5" font-weight="600" fill="${hue}">${esc(text)}</text></g>`
   );
 }
 
@@ -566,6 +583,10 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
       "</text>",
   );
   if (v.tag) s.push(chip(v.tag, w - PAD - chipW(v.tag), 15, I));
+  if (t.change) {
+    const label = DIFF_LABEL[t.change.kind];
+    s.push(diffChip(label, w - PAD - (v.tag ? chipW(v.tag) + 6 : 0) - chipW(label), 15, diffHue(L, t.change.kind)));
+  }
   s.push("</g>");
   if (!bare(v)) s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
@@ -574,12 +595,19 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   v.shown.forEach((c, i) => {
     const cy = rowY(i);
     const by = cy + 4.2;
-    s.push(`<g class="rz-c" data-c="${esc(c.name)}"><title>${esc(rowTitle(c, t))}</title>`);
+    s.push(`<g class="rz-c" data-c="${esc(c.name)}"${c.change?.kind === "removed" ? ' opacity="0.55"' : ""}><title>${esc(rowTitle(c, t))}</title>`);
     s.push(`<rect class="rz-hit" x="1" y="${f(cy - ROW / 2)}" width="${w - 2}" height="${ROW}" fill="currentColor" fill-opacity="0"/>`);
+    if (c.change) {
+      const hue = diffHue(L, c.change.kind);
+      s.push(`<rect x="1" y="${f(cy - ROW / 2)}" width="${w - 2}" height="${ROW}" fill="${hue}" fill-opacity="0.09"/>`);
+      s.push(`<rect x="1" y="${f(cy - ROW / 2 + 3)}" width="3" height="${ROW - 6}" rx="1" fill="${hue}"/>`);
+    }
     if (i > 0) s.push(`<rect x="${PAD}" y="${f(cy - ROW / 2)}" width="${w - PAD * 2}" height="1" ${fill(I.sep)} opacity=".7"/>`);
     const key = keyLabel(c, v, I);
     if (key) s.push(`<text x="${PAD}" y="${f(by - 0.6)}" font-family="${MONO}" font-size="8.5" font-weight="600" ${fill(key[1])}>${key[0]}</text>`);
-    s.push(`<text x="${PAD + KEY}" y="${f(by)}" font-size="12.5" ${fill(I.text)}${c.pk ? ' font-weight="600"' : ""}>${esc(c.name)}</text>`);
+    s.push(
+      `<text x="${PAD + KEY}" y="${f(by)}" font-size="12.5" ${fill(I.text)}${c.pk ? ' font-weight="600"' : ""}${c.change?.kind === "removed" ? ' text-decoration="line-through"' : ""}>${esc(c.name)}</text>`,
+    );
     if (c.description) s.push(`<text x="${f(PAD + KEY + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
     const right = w - PAD - nullW;
     s.push(`<text x="${f(right)}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
@@ -845,6 +873,16 @@ const GROUP_HUES = {
   light: ["#0F766E", "#6D28D9", "#B45309", "#BE123C", "#0369A1", "#4D7C0F"],
 };
 
+/** Diff marks (a model from `diff`): added, removed, changed. Graphite takes middle tones that read on
+ *  light and dark pages alike */
+const DIFF_HUES: Record<"dark" | "light" | "ink", Record<ChangeKind, string>> = {
+  dark: { added: "#3FB950", removed: "#F97066", changed: "#E3B341" },
+  light: { added: "#1A7F37", removed: "#B42318", changed: "#9A6700" },
+  ink: { added: "#2DA44E", removed: "#E5534B", changed: "#C69026" },
+};
+const DIFF_LABEL: Record<ChangeKind, string> = { added: "NEW", removed: "REMOVED", changed: "CHANGED" };
+const diffHue = (L: Look, kind: ChangeKind): string => DIFF_HUES[L.stage ? (L.stage.dark ? "dark" : "light") : "ink"][kind];
+
 interface Area {
   group: ModelGroup;
   /** Index into the hues: the group's place among every group of the model, so a part of a model
@@ -1029,7 +1067,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const path = clean([start, ...bends, end]);
     const d = edges === "curved" ? curved(path, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(path, 3);
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
-    const ink = L.ink.line;
+    const ink: Ink = r.change ? [diffHue(L, r.change.kind), r.change.kind === "removed" ? 0.6 : 1] : L.ink.line;
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}">`);
     s.push(`<path d="${d}" fill="none" ${stroke(ink)} stroke-width="1.2"${dash}/>`);
     // Primary key end: a chevron, like resin's `->`. Foreign key end: a square port and N (many) or 1 (one)
@@ -1043,7 +1081,10 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   s.push("</g>", '<g class="rz-tables">');
   vs.forEach((v, i) => {
     const b = boxes[i];
-    s.push(`<g class="rz-t" data-t="${esc(v.table.name)}" transform="translate(${b.x},${b.y})">${card(v, L, id, painted)}</g>`);
+    const change = v.table.change;
+    const fade = change?.kind === "removed" ? ' opacity="0.6"' : "";
+    const edge = change ? `<rect x="0.75" y="0.75" width="${f(b.w - 1.5)}" height="${f(b.h - 1.5)}" rx="${RX - 0.75}" fill="none" stroke="${diffHue(L, change.kind)}" stroke-width="1.5"/>` : "";
+    s.push(`<g class="rz-t" data-t="${esc(v.table.name)}" transform="translate(${b.x},${b.y})"${fade}>${card(v, L, id, painted)}${edge}</g>`);
   });
   s.push("</g></svg>");
   return { svg: s.join(""), width: W, height: H, background: L.stage?.base ?? null, boxes };

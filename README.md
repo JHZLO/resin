@@ -87,6 +87,11 @@ Lint rules go further than compiling: they point at a reference column without a
 without a primary key or one nothing joins, a column name typed two ways, and an index another one
 covers. `pnpm resin schema.erd --lint` fails a CI step on any of them.
 
+Schema changes can be reviewed as pictures. `pnpm resin diff old.erd new.erd` draws the newer
+version with added, removed and changed tables and columns marked, and as a GitHub Action
+(`uses: JHZLO/resin@main`) resin keeps a comment with that drawing on every pull request that
+changes a `.erd` file.
+
 An existing schema does not have to be written by hand. Paste a `CREATE TABLE` script into the
 playground, or run `pnpm resin schema.sql --from-sql`, and it comes back as resin: keys, indexes,
 foreign keys, enum values and comments carry over, from MySQL, PostgreSQL, SQLite, SQL Server or

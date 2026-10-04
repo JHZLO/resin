@@ -1,0 +1,44 @@
+name: resin diff
+description: Comment on a pull request with the changes to its resin (.erd) files, drawn
+author: JHZLO
+branding:
+  icon: git-pull-request
+  color: purple
+
+inputs:
+  files:
+    description: Git pathspecs of the files to compare, separated by spaces
+    default: "*.erd"
+  look:
+    description: The look of the drawings (graphite, aurora-dark, aurora-light, ...)
+    default: graphite
+  branch:
+    description: The branch the drawings are committed to, so the comment can show them
+    default: resin-diff
+  playground:
+    description: The playground the comment links to
+    default: https://jhzlo.github.io/resin/playground/
+  token:
+    description: A token that can write the drawings branch and comment on the pull request
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+    # The drawing needs elkjs and nothing else; install it beside the action instead of every
+    # development dependency
+    - shell: bash
+      run: |
+        npm install --silent --no-audit --no-fund --prefix "$RUNNER_TEMP/resin-deps" elkjs@0.12.0
+        ln -sfn "$RUNNER_TEMP/resin-deps/node_modules" "$GITHUB_ACTION_PATH/node_modules"
+    - shell: bash
+      run: node "$GITHUB_ACTION_PATH/scripts/diff-action.ts"
+      env:
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_LOOK: ${{ inputs.look }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        INPUT_PLAYGROUND: ${{ inputs.playground }}
+        INPUT_TOKEN: ${{ inputs.token }}

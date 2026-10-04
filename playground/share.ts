@@ -10,6 +10,9 @@ export interface SharedState {
   edges: "angular" | "curved";
   /** Only this table and the tables within `steps` references of it, or null for every table */
   related: { table: string; steps: 1 | 2 } | null;
+  /** An older version of the document: the diagram then marks what changed since it. Optional, so
+   *  links made before it existed still open */
+  base?: string | null;
 }
 
 export async function encode(state: SharedState): Promise<string> {
@@ -37,6 +40,7 @@ export async function decode(hash: string): Promise<SharedState | null> {
       audit: value.audit === "expand" ? "expand" : "collapse",
       edges: value.edges === "curved" ? "curved" : "angular",
       related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
+      base: typeof value.base === "string" ? value.base : null,
     };
   } catch {
     return null;

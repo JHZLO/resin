@@ -5,7 +5,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, compile, fromSql, lint, looksLikeSql, neighbors, parse, toSvg } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, compile, diff, fromSql, lint, looksLikeSql, neighbors, parse, toSvg } from "../src/index.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { columnDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
@@ -29,7 +29,7 @@ type StageName = keyof typeof STAGES;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", related: null, grid: true };
+const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", related: null, base: null, grid: true };
 const elk = new ELK();
 
 /** The whole model, which the side panel and the column card describe */
@@ -73,7 +73,7 @@ function scheduleHash(): void {
   hashTimer = window.setTimeout(writeHash, 400);
 }
 async function writeHash(): Promise<void> {
-  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related });
+  const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null });
   if (location.hash !== hash) history.replaceState(null, "", hash);
 }
 
@@ -500,13 +500,19 @@ async function render(): Promise<void> {
   try {
     // With the live canvas the SVG carries only what sits on the glass; the canvas paints the rest
     const look = canvasLook();
+    // Comparing with a base version (from a link): draw what changed since it. A base that does not
+    // compile cannot be compared, and the document is drawn alone
+    const base = state.base ? compile(state.base).model : null;
+    const compared = base ? diff(base, result.model) : null;
+    const full = compared ? compared.model : result.model;
+    showCompare(compared?.changes ?? null);
     // The related view needs its table; when the table is renamed or removed, every table comes back
-    if (state.related && !result.model.tables.some((t) => t.name === state.related!.table)) {
+    if (state.related && !full.tables.some((t) => t.name === state.related!.table)) {
       state.related = null;
       save();
       scheduleHash();
     }
-    const shown = state.related ? neighbors(result.model, state.related.table, state.related.steps) : result.model;
+    const shown = state.related ? neighbors(full, state.related.table, state.related.steps) : full;
     const { svg, width, height, background, boxes } = await toSvg(shown, elk, {
       columns: state.columns,
       audit: state.audit,
@@ -518,9 +524,9 @@ async function render(): Promise<void> {
     if (seq !== renderSeq) return; // a newer render has started
     viewport.style.backgroundColor = background ?? "";
     glass?.setLook(stageOf(look), glassOf(look));
-    lastModel = result.model;
+    lastModel = full;
     drawnModel = shown;
-    const empty = result.model.tables.length === 0;
+    const empty = full.tables.length === 0;
     byId("empty").hidden = !empty;
     content.innerHTML = empty ? "" : svg;
     panzoom.setSize(width, height);
@@ -540,7 +546,7 @@ async function render(): Promise<void> {
     else if (inspected) focus?.table(inspected);
     glass?.setBoxes(lastBoxes, drawn);
     const counted = (m: Model) => m.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
-    const tables = counted(result.model);
+    const tables = counted(full);
     const relations = shown.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
     const tablesText = state.related ? `${counted(shown)} of ${tables} tables` : `${tables} ${tables === 1 ? "table" : "tables"}`;
     byId("stats").textContent = empty ? "" : `${tablesText}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
@@ -584,6 +590,28 @@ function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): void
 }
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-columns]"))
   b.addEventListener("click", () => setView({ columns: b.dataset.columns === "keys" || b.dataset.columns === "none" ? b.dataset.columns : "all" }));
+
+// ---- comparing with a base version ----
+
+/** The line under the editor's header while a link compares this document with an older version */
+function showCompare(changes: ReturnType<typeof diff>["changes"] | null): void {
+  const bar = byId("compare-bar");
+  bar.hidden = changes === null;
+  if (!changes) return;
+  const tables = changes.filter((c) => c.column === null);
+  const count = (kind: string) => tables.filter((c) => c.kind === kind).length;
+  const n = (k: number, word: string) => `${k} ${k === 1 ? "table" : "tables"} ${word}`;
+  const parts = [n(count("added"), "added"), n(count("removed"), "removed"), n(count("changed"), "changed")];
+  byId("compare-text").textContent = tables.length ? `Compared with the base version: ${parts.join(", ")}` : "No changes since the base version";
+}
+
+byId("compare-stop").addEventListener("click", () => {
+  state.base = null;
+  fitNext = true;
+  save();
+  scheduleHash();
+  void render();
+});
 
 // ---- related tables only ----
 

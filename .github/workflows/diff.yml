@@ -1,0 +1,18 @@
+name: Schema diff
+
+# On a pull request that changes a resin file, comment with what changed, drawn. This repository
+# runs its own action (action.yml); another repository uses `JHZLO/resin@main` the same way.
+on:
+  pull_request:
+    paths: ["**/*.erd"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./

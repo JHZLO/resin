@@ -44,6 +44,16 @@ const result = compile(source);
 const findings = result.model ? lint(result.doc) : [];
 ```
 
+## diff(before, after)
+
+Compares two models. Returns `model`, the newer model with what is gone put back and every added, removed or changed table, column and relation marked with `change: { kind, details }`, which `toSvg` draws in color; and `changes`, the list of them. `diffMarkdown(changes)` writes the list as Markdown. See [Comparing versions](diff.md).
+
+```ts
+const { model, changes } = diff(compile(older).model!, compile(newer).model!);
+const { svg } = await toSvg(model, new ELK());
+console.log(diffMarkdown(changes));
+```
+
 ## fromSql(sql, options)
 
 Converts SQL DDL to resin source, as the playground does on paste; [Importing SQL](sql.md) lists the rules. It returns:

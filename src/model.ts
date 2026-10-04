@@ -7,6 +7,7 @@
 
 import { type Column, type Document, type Table, typeText } from "./ast.ts";
 import { AUDIT_SUFFIX, REVINFO, auditedColumns, resolveRef } from "./checker.ts";
+import type { Change } from "./diff.ts";
 
 export type TableOrigin = "table" | "external" | "audit";
 
@@ -35,6 +36,8 @@ export interface ModelTable {
   audit: { method: string; columns: string[] } | null;
   /** The group the table belongs to, or null */
   group: string | null;
+  /** Set by `diff` only: how the table changed */
+  change?: Change;
 }
 
 export interface ModelColumn {
@@ -50,6 +53,8 @@ export interface ModelColumn {
   index: { name: string | null } | null;
   description: string | null;
   ref: { table: string; column: string; kind: "physical" | "logical" } | null;
+  /** Set by `diff` only: how the column changed */
+  change?: Change;
 }
 
 export interface ModelConstraint {
@@ -69,6 +74,8 @@ export interface Relation {
   /** The parent may be absent: the referencing column is nullable */
   optional: boolean;
   origin: "table" | "audit";
+  /** Set by `diff` only: how the relation changed */
+  change?: Change;
 }
 
 const plain = (name: string, type: string, extra: Partial<ModelColumn> = {}): ModelColumn => ({

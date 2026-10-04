@@ -30,6 +30,10 @@ External tables have a dashed border and an `EXTERNAL` tag. Audit tables are fol
 
 A [group](groups.md) is an area around its tables, with a faint tint, an even edge and its name and description at the top left. ELK lays a group out as a node that holds its cards, so the tables of a group stay together and connectors cross from one group to another. With a glass look, groups take hues in the order they are declared (teal, violet, amber, rose, sky, lime, then again); `graphite` draws them in ink alone. The tint stops at the cards, so glass painted under the SVG is never tinted.
 
+## Changes
+
+A model from [`diff`](diff.md) carries what changed, and the drawing marks it: added in green, removed in red and faded, changed in amber, on the card's border and a tag in its header, at the left of a column's row, and on connectors.
+
 ## Connectors
 
 Solid for foreign keys, dashed for logical references. A chevron marks the primary key end, as in `->`; a square port and `N` or `1` mark the foreign key end. Connectors are right-angled by default, or S-bends with `edges: "curved"`, which keep the routed path wherever an S-bend would cross another card.

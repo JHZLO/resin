@@ -30,6 +30,11 @@ The first public version of the language, grammar v0.2.
   status bar, and folds away for a wide diagram (Ctrl or Cmd + `\`). Downloads are plain SVG by
   default, or a still of the glass theme.
 - Angular or curved connectors (`edges: "curved"`, `--curved`).
+- Comparing versions: `resin diff <before.erd> <after.erd>` draws the newer version with added,
+  removed and changed tables, columns and connectors marked, or lists them with `--markdown`
+  (`diff`, `diffMarkdown`). A GitHub Action (`uses: JHZLO/resin@main`) keeps a comment on pull
+  requests that change `.erd` files, with the list, the drawing and a link that opens both versions
+  in the playground, which then compares them.
 - Groups: `group name "description" { tables }` puts tables in a named group, a service or a
   domain, drawn as a tinted area with its name around them; hues follow the order of declaration,
   and graphite draws them in ink. SQL import writes the tables of each schema in a group when there

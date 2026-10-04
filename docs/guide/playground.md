@@ -28,6 +28,10 @@ Related only, in a table's side panel, draws just that table and the tables its 
 
 Following a reference in the side panel to a table the view leaves out moves the view to that table, so you can walk a large schema one table at a time. The header counts what is shown, as in `7 of 13 tables`.
 
+## Comparing versions
+
+A link can carry two versions of a document, as the one in a [pull request comment](diff.md#on-pull-requests) does. The playground then marks on the diagram what changed since the older one, a line under the editor counts the tables added, removed and changed, and the side panel tags each table and says what happened to each column. The editor holds the newer version, and edits are compared as you type. Stop comparing, on that line, draws the document alone.
+
 ## View options
 
 | Option | What it does |

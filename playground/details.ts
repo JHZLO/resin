@@ -80,7 +80,8 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
   if (!t) return null;
   const outgoing = model.relations.filter((r) => r.child === name);
   const incoming = model.relations.filter((r) => r.parent === name);
-  const tags = [t.origin === "external" && "EXTERNAL", t.origin === "audit" && "GENERATED", t.audit && t.audit.method.toUpperCase()].filter(
+  const changed = { added: "NEW", removed: "REMOVED", changed: "CHANGED" } as const;
+  const tags = [t.change && changed[t.change.kind], t.origin === "external" && "EXTERNAL", t.origin === "audit" && "GENERATED", t.audit && t.audit.method.toUpperCase()].filter(
     (x): x is string => typeof x === "string",
   );
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -92,6 +93,8 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
     const notes: Child[] = [];
     if (c.enumValues) notes.push(h("span", "t-note", h("span", "t-lab", "values"), " ", ...slashed(c.enumValues)));
     if (c.enc) notes.push(h("span", "t-note", h("span", "t-lab", "stored"), " encrypted"));
+    // Comparing with an older version: what happened to the column
+    if (c.change) notes.push(h("span", "t-note", h("span", "t-lab", c.change.kind), c.change.details.length ? ` ${c.change.details.join("; ")}` : ""));
     const row = h(
       "tr",
       null,

@@ -339,3 +339,48 @@ column is the first in its list.
 
 Every finding has a hint on how to fix it. In compiler format the rule follows the message in
 brackets: ``schema.erd:28:3: warning: reference column `payer_user_id` has no index [ref-index]``.
+
+## 10. Diff
+
+`diff(before, after)` compares two models and returns a **merged model**, which draws what changed,
+and the **list of changes**. The command line runs it as `resin diff <before.erd> <after.erd>`; the
+playground draws it when a link carries both versions.
+
+### 10.1 What is compared
+
+- Tables by name, columns by name within their table, relations by their child column and parent
+  column. Generated audit tables are not compared; a change to them shows as a change to the
+  `audit` of their table.
+- A column **changes** when any of these differ: type (with its arguments), nullability, primary
+  key, unique (and its name), encryption, enum values, index (and its name), reference (target and
+  kind), description.
+- A table **changes** when one of its columns is added, removed or changed, or when any of these
+  differ: external or not, description, group, its `unique(...)` and `index(...)` constraints,
+  audit.
+- A relation changes when its kind changes (`->` to `~>`).
+
+### 10.2 The merged model
+
+It is the newer model with everything that is gone put back: a removed table after the table that
+came before it in the older model, a removed column after the column that came before it, removed
+relations after the rest, and the group of a removed table when no newer table keeps it. Every added,
+removed or changed table, column and relation carries `change: { kind, details }`, where `details`
+says in words what changed (`now NOT NULL`, `type int → bigint`, `values A, B → A, B, C`).
+
+### 10.3 Drawing
+
+`toSvg` marks the changes it finds in a model. Colors: added green, removed red, changed amber, the
+same values as the playground's status colors in the glass looks, and middle tones that read on
+light and dark pages in `graphite`.
+
+- A changed table has a 1.5 unit border in its color and a tag in the header: `NEW`, `REMOVED` or
+  `CHANGED`. A removed table is drawn at 60% opacity.
+- A changed column row has a bar at its left edge and a faint tint; a removed column is struck
+  through and drawn at 55% opacity. Its tooltip ends with what changed.
+- An added or changed connector is drawn in its color; a removed one in red at 60% opacity.
+
+### 10.4 The list
+
+In the order of the merged model: each added, removed or changed table, and under a changed table
+each added, removed or changed column, with the details. `diffMarkdown(changes)` writes it as a
+Markdown list, `+` for added, `-` for removed and `~` for changed.

@@ -4,6 +4,7 @@ From a clone of the repository, `pnpm resin` compiles one file; see [Quick start
 
 ```text
 usage: resin <file.erd> [options]
+       resin diff <before.erd> <after.erd> [--markdown] [drawing options]
        resin <file.sql> --from-sql [--infer-refs]
 
   (no option)      print the diagram as SVG (needs elkjs)
@@ -20,6 +21,10 @@ usage: resin <file.erd> [options]
                    exit with 1 when there is an error or a lint finding
   --from-sql       read SQL DDL and print it as resin
     --infer-refs   also read <table>_id columns as logical references (~>)
+
+  diff             draw <after.erd> with what changed since <before.erd>
+                   marked: added, removed, changed. The drawing options apply
+    --markdown     print the list of changes as Markdown instead
 ```
 
 ## Output
@@ -40,6 +45,14 @@ The SVG is ready to embed with `<img>`: with the default look it picks its ink c
 
 ```bash
 pnpm resin schema.erd --lint
+```
+
+## Diff
+
+`diff` compares two versions of a file and draws the newer one with the changes marked, or lists them with `--markdown`. See [Comparing versions](diff.md).
+
+```bash
+pnpm resin diff old.erd new.erd > diff.svg
 ```
 
 ## From SQL
