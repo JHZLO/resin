@@ -34,7 +34,7 @@ export function demoTheme(video: HTMLVideoElement | null): (dark: boolean) => vo
 
     restore?.abort();
     // Retain the last position through repeated switches before metadata arrives.
-    pending ??= video.readyState > 0 || !video.paused
+    pending ??= video.currentTime > 0 || !video.paused || video.ended
       ? { time: video.currentTime, playing: !video.paused && !video.ended, rate: video.playbackRate }
       : null;
     if (pending) {
@@ -46,12 +46,16 @@ export function demoTheme(video: HTMLVideoElement | null): (dark: boolean) => vo
         if (!playback) return;
         video.playbackRate = playback.rate;
         video.currentTime = Math.min(playback.time, Number.isFinite(video.duration) ? video.duration : playback.time);
-        if (playback.playing) void video.play().catch(() => { /* Native controls remain available if playback is blocked. */ });
       }, { once: true, signal: restore.signal });
     }
     if (!video.paused) loadPauses++;
     source.src = src;
-    // Setting src honors preload="none"; load() can force an early download.
+    // Keep preload as a hint until playback starts. Some browsers fetch metadata anyway.
     video.src = src;
+    if (pending) {
+      video.load();
+      // Start within the theme button's user gesture, before asynchronous metadata.
+      if (pending.playing) void video.play().catch(() => { /* Native controls remain available if playback is blocked. */ });
+    }
   };
 }

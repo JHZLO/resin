@@ -40,10 +40,8 @@ test.beforeEach(async ({ page }) => {
   await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
 });
 
-test("matches automatic and saved themes without loading either video before play", async ({ page }) => {
-  const videos: string[] = [];
+test("matches automatic and saved themes with one source and a preload hint", async ({ page }) => {
   const errors: string[] = [];
-  page.on("request", request => { if (/resin-demo.*\.mp4/.test(request.url())) videos.push(request.url()); });
   page.on("pageerror", error => errors.push(error.message));
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/#demo");
@@ -59,7 +57,8 @@ test("matches automatic and saved themes without loading either video before pla
   await page.reload();
   await expect(page.locator(videoSelector)).toHaveAttribute("data-demo-theme", "dark");
   await expect(page.locator(`${videoSelector} a`)).toHaveAttribute("href", dark);
-  expect(videos).toEqual([]);
+  await expect(page.locator(`${videoSelector} source`)).toHaveCount(1);
+  await expect(page.locator(videoSelector)).toHaveAttribute("preload", "none");
   await page.goto("/docs/");
   await page.locator("#theme").click();
   expect(errors).toEqual([]);
@@ -87,15 +86,19 @@ test("keeps a paused position through rapid theme changes while a video is loadi
 });
 
 test("continues playback at the same point when changing the theme", async ({ page }) => {
+  test.setTimeout(45_000);
   await openLight(page);
-  await preparePlayback(page, 20);
-  await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.play());
+  await preparePlayback(page, 4);
+  // Leave time for software decoders in CI before the movie reaches its end.
+  await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => { video.playbackRate = 0.5; return video.play(); });
+  const before = await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => ({ time: video.currentTime, wall: performance.now() }));
   await page.locator("#theme").click();
   await expectLoaded(page, "resin-demo-dark.mp4");
   await expect.poll(() => page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.paused)).toBe(false);
-  const time = await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.currentTime);
-  expect(time).toBeGreaterThanOrEqual(20);
-  expect(time).toBeLessThan(24);
+  const after = await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => ({ time: video.currentTime, wall: performance.now(), rate: video.playbackRate }));
+  expect(after.time).toBeGreaterThanOrEqual(before.time);
+  expect(after.time).toBeLessThan(before.time + (after.wall - before.wall) / 1000 + 1);
+  expect(after.rate).toBe(0.5);
   await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.pause());
   await page.locator("#theme").click();
   await expectLoaded(page, "resin-demo.mp4");
