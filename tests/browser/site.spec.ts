@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const videoSelector = "#demo video";
-const light = "assets/resin-demo.mp4?v=20261006";
-const dark = "assets/resin-demo-dark.mp4?v=20261006";
+const light = "assets/resin-demo.mp4?v=20261006-2";
+const dark = "assets/resin-demo-dark.mp4?v=20261006-2";
 
 async function openLight(page: Page) {
   await page.emulateMedia({ colorScheme: "light" });
@@ -108,12 +108,12 @@ test("continues playback at the same point when changing the theme", async ({ pa
 
 test("does not restart a finished video when the theme changes", async ({ page }) => {
   await openLight(page);
-  await preparePlayback(page, 31.95);
+  await preparePlayback(page, 15.95);
   await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.play());
   await expect.poll(() => page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.ended)).toBe(true);
   await page.locator("#theme").click();
   await expectLoaded(page, "resin-demo-dark.mp4");
   const state = await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => ({ time: video.currentTime, paused: video.paused }));
-  expect(state.time).toBeCloseTo(32, 1);
+  expect(state.time).toBeCloseTo(16, 1);
   expect(state.paused).toBe(true);
 });

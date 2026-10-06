@@ -2,7 +2,7 @@
 
 resin is a small language for entity-relationship diagrams. You describe a schema the way you would read its DDL, and resin checks what you wrote and draws it as an SVG where every reference runs from the column that holds it to the column it points at.
 
-The [32-second demo](https://jhzlo.github.io/resin/#demo) shows the workflow from pasted DDL to an ERD. Its video follows the site's light or dark theme, including your system setting in Auto mode. Changing the theme keeps your playback position.
+The [16-second demo](https://jhzlo.github.io/resin/#demo) shows the workflow from pasted DDL to an ERD. Its video follows the site's light or dark theme, including your system setting in Auto mode. Changing the theme keeps your playback position.
 
 ## A first diagram
 
