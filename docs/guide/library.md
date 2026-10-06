@@ -63,6 +63,14 @@ const { text, diagnostics } = format(source);
 if (text !== null) await writeFile("schema.erd", text);
 ```
 
+## toSql(model, options)
+
+Writes a model as SQL DDL; [Generating SQL](generating-sql.md) describes it. `options.dialect` is one of `SQL_DIALECTS` (`mysql`, `postgres`, `sqlite`, `sqlserver`, `oracle`), and `options.service` limits it to one service's tables, for that service's own database. Returns `sql` and `notes`, the lines that say what was written in an unexpected way. Throws when the document has no such service.
+
+```ts
+const { sql, notes } = toSql(compile(source).model!, { dialect: "postgres" });
+```
+
 ## fromSql(sql, options)
 
 Converts SQL DDL to resin source, as the playground does on paste; [Importing SQL](sql.md) lists the rules. It returns:

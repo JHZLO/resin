@@ -7,6 +7,7 @@ usage: resin <file.erd> [options]
        resin diff <before.erd> <after.erd> [--markdown] [drawing options]
        resin fmt <file.erd>... [--check]
        resin <file.sql> --from-sql [--infer-refs]
+       resin <file.erd> --to-sql <db> [--service <s>]
 
   (no option)      print the diagram as SVG (needs elkjs)
     --look <look>  graphite (default, no background), or a glass theme:
@@ -22,6 +23,9 @@ usage: resin <file.erd> [options]
                    exit with 1 when there is an error or a lint finding
   --from-sql       read SQL DDL and print it as resin
     --infer-refs   also read <table>_id columns as logical references (~>)
+  --to-sql <db>    print the schema as SQL DDL for mysql, postgres, sqlite,
+                   sqlserver or oracle; notes go to stderr
+    --service <s>  only the tables of service <s>, for its own database
 
   diff             draw <after.erd> with what changed since <before.erd>
                    marked: added, removed, changed. The drawing options apply
@@ -50,7 +54,7 @@ The SVG is ready to embed with `<img>`: with the default look it picks its ink c
 
 An error leaves standard output empty, including with `--model` and `--ast`. `--help` prints the usage to standard output and exits successfully without a file. Use `--` before a file name that starts with `-`.
 
-Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint` or `--from-sql`, or omit them for SVG. Drawing options require SVG output; `--keys` and `--names` cannot be combined. `--markdown` requires `diff`, `--check` requires `fmt`, and `--infer-refs` requires `--from-sql`.
+Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint`, `--from-sql` or `--to-sql`, or omit them for SVG. Drawing options require SVG output; `--keys` and `--names` cannot be combined. `--markdown` requires `diff`, `--check` requires `fmt`, `--service` requires `--to-sql`, and `--infer-refs` requires `--from-sql`.
 
 ## Lint
 
@@ -93,6 +97,15 @@ examples/sql/postgres.sql:68:5: note: table `order_items`: not converted: compos
 ```
 
 [Importing SQL](sql.md) describes what converts.
+
+## To SQL
+
+`--to-sql <db>` prints the schema as SQL DDL for `mysql`, `postgres`, `sqlite`, `sqlserver` or `oracle`, with notes on standard error. `--service <s>` writes only one service's tables, for its own database. See [Generating SQL](generating-sql.md).
+
+```bash
+pnpm resin schema.erd --to-sql postgres > schema.sql
+pnpm resin schema.erd --to-sql mysql --service ordering > ordering.sql
+```
 
 ## Exit status
 

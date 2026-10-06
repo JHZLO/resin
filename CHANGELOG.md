@@ -76,6 +76,11 @@ The first public version of the language, grammar v0.2.
   `columns: "none"` and `--names`), Find a table (Ctrl or Cmd + K, over names, descriptions and
   columns), and Related only, which draws a table with its neighbors one or two steps away
   (`neighbors(model, table, steps)`). Links carry the view.
+- SQL generation: `toSql(model, { dialect, service })` and `resin --to-sql <db> [--service <s>]`
+  write the schema as DDL for MySQL, PostgreSQL, SQLite, SQL Server or Oracle: keys, unique
+  constraints, indexes, enum checks, descriptions, foreign keys added at the end, audit tables, a
+  schema per service, or one service's own database. Importing it gives the same document back,
+  apart from logical references and `enc`, which are SQL comments.
 - Formatting: `format(source)`, `resin fmt <file.erd>...` and the playground's Format (Shift + Alt +
   F) write a document in resin's one layout: one statement per line, two spaces per block, columns
   lined up within each table, comments kept. Only whitespace changes, and the result is checked to

@@ -1,6 +1,6 @@
 # Importing SQL
 
-resin reads the DDL of a schema you already have and writes it as resin. Paste a `CREATE TABLE` script into the playground, or convert a file on the command line.
+resin reads the DDL of a schema you already have and writes it as resin. Paste a `CREATE TABLE` script into the playground, or convert a file on the command line. The other way, from resin to DDL, is [Generating SQL](generating-sql.md).
 
 ## From SQL to resin
 

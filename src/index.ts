@@ -23,6 +23,8 @@ export { fromSql, looksLikeSql } from "./sql.ts";
 export { LINT_RULES, lint } from "./lint.ts";
 export { diff, diffMarkdown } from "./diff.ts";
 export { format } from "./format.ts";
+export { SQL_DIALECTS, toSql } from "./ddl.ts";
+export type { SqlDdl, SqlDialect, ToSqlOptions } from "./ddl.ts";
 export type { FormatResult } from "./format.ts";
 export type { Change, ChangeEntry, ChangeKind, ModelDiff } from "./diff.ts";
 export type { LintRule } from "./lint.ts";

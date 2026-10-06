@@ -443,3 +443,67 @@ and the playground's Format use it.
   that starts with `)` lines up with the statement.
 - Lines end with `\n`, tabs become spaces, trailing spaces are removed, and a document that is not
   empty ends with exactly one newline.
+
+## 12. Generating SQL
+
+`toSql(model, { dialect, service })` (`resin --to-sql <dialect>`) writes a model as SQL DDL for one
+of the five dialects §8 reads: `mysql`, `postgres`, `sqlite`, `sqlserver` and `oracle`. It is §8
+run backwards: importing what it writes gives the same document back, apart from what SQL cannot
+hold (§12.4).
+
+### 12.1 What is written
+
+| resin | SQL |
+|---|---|
+| A `table` | `CREATE TABLE`, in document order. External tables are not created: they live elsewhere |
+| `audit envers` | `revinfo` and `<t>_aud`, created after the other tables, as Envers creates them |
+| A column | Its name and its type as written, then `NOT NULL` unless it has `?` |
+| `pk` | `PRIMARY KEY (...)`, its columns in column order |
+| `uk`, `unique(...)` | `UNIQUE (...)`, or `CONSTRAINT name UNIQUE (...)` when named |
+| `index`, `index(...)` | `CREATE INDEX name ON t (...)` after the table. Without a name: PostgreSQL writes `CREATE INDEX ON t (...)`, MySQL an `INDEX (...)` in the table; SQLite, SQL Server and Oracle need a name, so `ix_<table>_<columns>` is made up and noted |
+| `enum(...)` | `CHECK (c IN (...))` on the column: numbers bare, other values as strings |
+| `-> t.c`, `foreign(...) -> t(...)` | `FOREIGN KEY (...) REFERENCES t (...)`, with `CONSTRAINT name` when named. Added after every table with `ALTER TABLE ... ADD`, so tables may refer to one another in any order; on SQLite, which cannot add one later, inside `CREATE TABLE` |
+| A description | MySQL `COMMENT`, PostgreSQL and Oracle `COMMENT ON`, SQL Server `sp_addextendedproperty` with `MS_Description`; SQLite has none, so an SQL comment |
+
+- **Types** are written as they are in resin, with their arguments. resin does not translate
+  types between databases: a document meant for one database names that database's types. Two
+  exceptions keep enum types working: MySQL's type `enum` with `enum(A, B)` is written
+  `enum('A', 'B')`, and on PostgreSQL a column with `enum(...)` whose type is not a built-in type
+  gets `CREATE TYPE type AS ENUM (...)` once, before the first table that uses it, instead of a
+  check. On other dialects the type `enum` is written `varchar(255)` with the check, and noted.
+- On SQL Server a table outside every schema is written in `dbo`, the schema its descriptions name.
+- **Names** are quoted with the dialect's quotes (`` ` `` on MySQL, `[ ]` on SQL Server, `"`
+  otherwise) when they are not plain identifiers or are reserved words, and on PostgreSQL also when
+  they hold capitals, whose case it would otherwise lose. In strings, `'` is doubled.
+- Within a `CREATE TABLE`, names and types line up as in resin. Statements end with `;`. The first
+  line is a comment naming the dialect. The output is deterministic.
+
+### 12.2 Services
+
+- **Without `service`**, the whole document is written for one database in which each service is
+  a schema: `CREATE SCHEMA` and tables named `service.table`, so foreign keys between services can
+  be created. This is how §8 reads a document back. Oracle's schemas are users, so `CREATE SCHEMA`
+  is left out and noted. SQLite has no schemas: names are not qualified, and two tables of the same
+  name are noted.
+- **With `service`**, only that service's tables, its audit tables and, when one of them is
+  audited, `revinfo`, with names not qualified: the DDL of the service's own database. A foreign key
+  into another service cannot exist there; it is written as a comment and noted. Tables outside
+  every service are not written.
+
+### 12.3 Notes
+
+Everything written in an unexpected way, and everything left out, is listed in the notes, one line
+each: made-up index names, enum types, foreign keys into other services, unqualified names on
+SQLite, schemas on Oracle.
+
+### 12.4 What SQL cannot hold
+
+- Logical references (`~>`) and `enc` have nothing to stand for them in SQL: they are written as an
+  SQL comment after the column (`-- ~> users.id`, `-- encrypted`), which importing does not read.
+  Importing with `inferReferences` finds most logical references again.
+- On SQLite, descriptions are SQL comments, which importing does not read.
+- An index whose name was made up comes back with that name.
+- An external table that only logical references point at has no foreign key to bring it back.
+- From SQLite, services do not come back: it has no schemas to keep them in.
+- A document with a single service and tables outside it comes back without the service, since
+  one schema is not read as a service.

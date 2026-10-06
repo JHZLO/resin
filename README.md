@@ -97,6 +97,10 @@ version with added, removed and changed tables and columns marked, and as a GitH
 (`uses: JHZLO/resin@main`) resin keeps a comment with that drawing on every pull request that
 changes a `.erd` file.
 
+The other way works too: `pnpm resin schema.erd --to-sql postgres` writes the DDL for MySQL,
+PostgreSQL, SQLite, SQL Server or Oracle, a schema per service, or one service's own database with
+`--service`. Importing that DDL gives the same document back.
+
 An existing schema does not have to be written by hand. Paste a `CREATE TABLE` script into the
 playground, or run `pnpm resin schema.sql --from-sql`, and it comes back as resin: keys, indexes,
 foreign keys, enum values and comments carry over, from MySQL, PostgreSQL, SQLite, SQL Server or

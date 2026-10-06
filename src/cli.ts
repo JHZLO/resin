@@ -1,16 +1,17 @@
 // Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys | --names] [--expand-audit] | --model | --ast | --lint`,
 // `pnpm resin diff <before.erd> <after.erd> [--markdown]`, `pnpm resin fmt <file.erd>... [--check]`, or
-// `pnpm resin <file.sql> --from-sql [--infer-refs]`.
+// `pnpm resin <file.sql> --from-sql [--infer-refs]`, or `pnpm resin <file.erd> --to-sql <db> [--service <s>]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
 // from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { type Model, type SvgLook, compile, diff, diffMarkdown, format, formatDiagnostic, fromSql, lint, toSvg } from "./index.ts";
+import { type Model, type SqlDialect, type SvgLook, SQL_DIALECTS, compile, diff, diffMarkdown, format, formatDiagnostic, fromSql, lint, toSql, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
        resin diff <before.erd> <after.erd> [--markdown] [drawing options]
        resin fmt <file.erd>... [--check]
        resin <file.sql> --from-sql [--infer-refs]
+       resin <file.erd> --to-sql <db> [--service <s>]
 
   (no option)      print the diagram as SVG (needs elkjs)
     --look <look>  graphite (default, no background), or a glass theme:
@@ -26,6 +27,9 @@ const USAGE = `usage: resin <file.erd> [options]
                    exit with 1 when there is an error or a lint finding
   --from-sql       read SQL DDL and print it as resin
     --infer-refs   also read <table>_id columns as logical references (~>)
+  --to-sql <db>    print the schema as SQL DDL for mysql, postgres, sqlite,
+                   sqlserver or oracle; notes go to stderr
+    --service <s>  only the tables of service <s>, for its own database
 
   diff             draw <after.erd> with what changed since <before.erd>
                    marked: added, removed, changed. The drawing options apply
@@ -45,8 +49,10 @@ const args = process.argv.slice(2);
 const flags = new Set<string>();
 const files: string[] = [];
 let look = "graphite";
+let dialect = "";
+let service: string | undefined;
 let positional = false;
-const OPTIONS = new Set(["--look", "--curved", "--keys", "--names", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check"]);
+const OPTIONS = new Set(["--look", "--curved", "--keys", "--names", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check", "--to-sql", "--service"]);
 function usageError(message: string): never {
   console.error(`resin: ${message}\n\n${USAGE}`);
   process.exit(2);
@@ -65,6 +71,12 @@ for (let i = 0; i < args.length; i++) {
     if (arg === "--look") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) usageError("--look needs a look name");
       look = args[++i];
+    } else if (arg === "--to-sql") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) usageError("--to-sql needs a database");
+      dialect = args[++i];
+    } else if (arg === "--service") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) usageError("--service needs a service name");
+      service = args[++i];
     }
   } else files.push(arg);
 }
@@ -76,8 +88,10 @@ if (command === "fmt") {
 } else if (!file || files.length !== (command ? 3 : 1)) usageError(command ? "diff needs exactly two files" : "expected exactly one file");
 if (command !== "fmt" && flags.has("--check")) usageError("--check needs the fmt command");
 if (!LOOKS.includes(look as SvgLook)) usageError(`--look takes ${LOOKS.join(", ")}`);
-const modes = ["--model", "--ast", "--lint", "--from-sql"].filter((flag) => flags.has(flag));
-if (modes.length > 1) usageError("choose only one output mode: --model, --ast, --lint or --from-sql");
+const modes = ["--model", "--ast", "--lint", "--from-sql", "--to-sql"].filter((flag) => flags.has(flag));
+if (modes.length > 1) usageError("choose only one output mode: --model, --ast, --lint, --from-sql or --to-sql");
+if (flags.has("--to-sql") && !SQL_DIALECTS.includes(dialect as SqlDialect)) usageError(`--to-sql takes ${SQL_DIALECTS.join(", ")}`);
+if (flags.has("--service") && !flags.has("--to-sql")) usageError("--service needs --to-sql");
 if (command && modes.length) usageError("diff accepts --markdown and drawing options only");
 if (!command && flags.has("--markdown")) usageError("--markdown needs the diff command");
 if (flags.has("--infer-refs") && !flags.has("--from-sql")) usageError("--infer-refs needs --from-sql");
@@ -146,6 +160,15 @@ try {
   }
 
   const result = compile(source);
+
+  if (flags.has("--to-sql")) {
+    for (const d of result.diagnostics) console.error(formatDiagnostic(d, source, file) + "\n");
+    if (!result.model) process.exit(1);
+    const ddl = toSql(result.model, { dialect: dialect as SqlDialect, service });
+    for (const n of ddl.notes) console.error(`${file}: note: ${n}`);
+    process.stdout.write(ddl.sql);
+    process.exit(0);
+  }
 
   if (flags.has("--lint")) {
     // Lint needs a document that compiled; with errors there is nothing to lint yet
