@@ -344,9 +344,9 @@ ${siteHead("", "home", false)}
 <p id="demo-description">Copy DDL from DataGrip or another database tool. Paste it into resin, focus on connected entities, and trace key references.</p>
 <span class="demo-duration">32-second demo</span>
 </figcaption>
-<video controls playsinline preload="none" width="1920" height="1080" poster="assets/resin-demo-poster.jpg" aria-labelledby="demo-title" aria-describedby="demo-description">
-<source src="assets/resin-demo.mp4" type="video/mp4">
-<a href="assets/resin-demo.mp4">Watch the 32-second resin demo (MP4)</a>
+<video controls playsinline preload="none" width="1920" height="1080" poster="assets/resin-demo-poster.jpg?v=20261006" aria-labelledby="demo-title" aria-describedby="demo-description">
+<source src="assets/resin-demo.mp4?v=20261006" type="video/mp4">
+<a href="assets/resin-demo.mp4?v=20261006">Watch the 32-second resin demo (MP4)</a>
 </video>
 </figure>
 <div class="showcase glass">

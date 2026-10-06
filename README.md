@@ -15,9 +15,9 @@ Paste DDL from DataGrip or another database tool. Focus on connected entities an
 references. Save named documents locally, review import notes, add logical relations, compare DDL
 versions, and export a diagram or an editable `.erd` file.
 
-[![Preview: focus on connected entities and trace key references. Click to watch the full resin demo.](website/media/resin-demo-preview.webp)](https://jhzlo.github.io/resin/#demo)
+[![Preview: focus on connected entities and trace key references. Click to watch the full resin demo.](website/media/resin-demo-preview.webp?v=20261006)](https://jhzlo.github.io/resin/#demo)
 
-**[Watch the 32-second demo](https://jhzlo.github.io/resin/#demo)** | [Download MP4 (8.9 MB)](https://jhzlo.github.io/resin/assets/resin-demo.mp4)
+**[Watch the 32-second demo](https://jhzlo.github.io/resin/#demo)** | [Download MP4 (11.7 MB)](https://jhzlo.github.io/resin/assets/resin-demo.mp4?v=20261006)
 
 <details>
 <summary>Example schema and diagram</summary>
