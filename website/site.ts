@@ -5,6 +5,7 @@
 import { LiveGlass } from "../playground/glass.ts";
 import { showStars } from "../playground/stars.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
+import { demoTheme } from "./demo.ts";
 
 const $ = <T extends Element = HTMLElement>(s: string, root: ParentNode = document): T | null => root.querySelector<T>(s);
 const $$ = <T extends Element = HTMLElement>(s: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(s)];
@@ -25,6 +26,7 @@ try {
 }
 const systemDark = matchMedia("(prefers-color-scheme: dark)");
 const isDark = () => (theme === "auto" ? systemDark.matches : theme === "dark");
+const syncDemo = demoTheme($<HTMLVideoElement>("#demo video"));
 
 function applyTheme(): void {
   if (theme === "auto") delete document.documentElement.dataset.theme;
@@ -36,6 +38,7 @@ function applyTheme(): void {
     button.title = `Theme: ${theme}`;
   }
   paintStage();
+  syncDemo(isDark());
 }
 
 $("#theme")?.addEventListener("click", () => {
@@ -49,7 +52,7 @@ $("#theme")?.addEventListener("click", () => {
   applyTheme();
 });
 systemDark.addEventListener("change", () => {
-  if (theme === "auto") paintStage();
+  if (theme === "auto") applyTheme();
 });
 
 // ---- the aurora: the playground's own WebGL stage, with no cards on it ----

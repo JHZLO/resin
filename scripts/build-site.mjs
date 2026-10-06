@@ -344,7 +344,10 @@ ${siteHead("", "home", false)}
 <p id="demo-description">Copy DDL from DataGrip or another database tool. Paste it into resin, focus on connected entities, and trace key references.</p>
 <span class="demo-duration">32-second demo</span>
 </figcaption>
-<video controls playsinline preload="none" width="1920" height="1080" poster="assets/resin-demo-poster.jpg?v=20261006" aria-labelledby="demo-title" aria-describedby="demo-description">
+<video controls playsinline preload="none" width="1920" height="1080" poster="assets/resin-demo-poster.jpg?v=20261006"
+data-light-src="assets/resin-demo.mp4?v=20261006" data-dark-src="assets/resin-demo-dark.mp4?v=20261006"
+data-light-poster="assets/resin-demo-poster.jpg?v=20261006" data-dark-poster="assets/resin-demo-dark-poster.jpg?v=20261006"
+aria-labelledby="demo-title" aria-describedby="demo-description">
 <source src="assets/resin-demo.mp4?v=20261006" type="video/mp4">
 <a href="assets/resin-demo.mp4?v=20261006">Watch the 32-second resin demo (MP4)</a>
 </video>
@@ -408,7 +411,7 @@ async function renderAssets() {
   await writeFile("site/assets/site.js", result.outputFiles[0].text);
   await writeFile("site/assets/site.css", await readFile("website/site.css", "utf8"));
   await writeFile("site/assets/mark.svg", MARK_FILE);
-  for (const file of ["resin-demo.mp4", "resin-demo-poster.jpg"]) {
+  for (const file of ["resin-demo.mp4", "resin-demo-poster.jpg", "resin-demo-dark.mp4", "resin-demo-dark-poster.jpg"]) {
     await copyFile(`website/media/${file}`, `site/assets/${file}`);
   }
 }
