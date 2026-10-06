@@ -80,7 +80,8 @@ The first public version of the language, grammar v0.2.
   write the schema as DDL for MySQL, PostgreSQL, SQLite, SQL Server or Oracle: keys, unique
   constraints, indexes, enum checks, descriptions, foreign keys added at the end, audit tables, a
   schema per service, or one service's own database. Importing it gives the same document back,
-  apart from logical references and `enc`, which are SQL comments.
+  apart from logical references and `enc`, which are SQL comments. In the playground, Export, then
+  SQL DDL shows it in the side panel with a choice of database and service, Copy and Download.
 - Formatting: `format(source)`, `resin fmt <file.erd>...` and the playground's Format (Shift + Alt +
   F) write a document in resin's one layout: one statement per line, two spaces per block, columns
   lined up within each table, comments kept. Only whitespace changes, and the result is checked to

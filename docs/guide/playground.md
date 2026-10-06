@@ -89,6 +89,8 @@ Copy reading link in Documents opens with the source editor hidden. Recipients c
 
 Copy SVG and the Export menu export the current document with its display filters, related view and comparison included: plain by default, with no background, or the current background as a still image. The menu also exports a PNG in the current theme, up to 2x resolution, with a maximum side of 8192 pixels and 32 million pixels total. Export checks the current source. If it has errors, correct them before exporting the drawing.
 
+SQL DDL, at the end of the Export menu, shows the document as SQL in the side panel: choose the database (MySQL, PostgreSQL, SQLite, SQL Server or Oracle) and, when the document has services, all of them or one, then Copy or Download. The SQL follows your edits while the panel is open, and the notes under it say what was written in an unexpected way. The playground remembers the database. See [Generating SQL](generating-sql.md).
+
 ## Keyboard
 
 | Keys | Action |

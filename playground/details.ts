@@ -6,7 +6,7 @@
 // cells (key, name, type, NULL or NOT NULL, description), so the eye runs straight down them; facts
 // that belong to one column only (its enum values, that it is encrypted) sit under its description.
 
-import type { Model, ModelColumn, ModelTable, Relation } from "../src/index.ts";
+import { type Model, type ModelColumn, type ModelTable, type Relation, type SqlDdl, type SqlDialect, SQL_DIALECTS } from "../src/index.ts";
 
 /** ", Order service": a service's description after its name, when it has one */
 const serviceDescription = (model: Model, name: string): string => {
@@ -253,3 +253,67 @@ export function columnDetails(model: Model, table: string, column: string, open:
     h("dl", "d-facts", ...facts.flatMap(([k, v]) => [h("dt", null, k), h("dd", null, ...v)])),
   );
 }
+
+const DIALECT_NAMES: Record<SqlDialect, string> = { mysql: "MySQL", postgres: "PostgreSQL", sqlite: "SQLite", sqlserver: "SQL Server", oracle: "Oracle" };
+const SQL_WORDS = /^(CREATE|TABLE|SCHEMA|TYPE|AS|ENUM|INDEX|ON|NOT|NULL|PRIMARY|KEY|UNIQUE|CONSTRAINT|FOREIGN|REFERENCES|ALTER|ADD|CHECK|IN|COMMENT|IS|EXEC)$/;
+
+/** SQL with the editor's colors: keywords, strings and comments */
+function sqlCode(sql: string): HTMLElement {
+  const code = h("code", null);
+  for (const part of sql.split(/(--[^\n]*|N?'(?:[^']|'')*'|\b[A-Z]+\b)/)) {
+    if (!part) continue;
+    if (part.startsWith("--")) code.append(h("span", "sql-cm", part));
+    else if (part.endsWith("'")) code.append(h("span", "sql-str", part));
+    else if (SQL_WORDS.test(part)) code.append(h("span", "sql-kw", part));
+    else code.append(part);
+  }
+  return h("pre", "sql-code", code);
+}
+
+/** The side panel's SQL: which database and which service, the DDL, and its notes. `ddl` is null
+ *  when the document has errors */
+export function sqlDetails(
+  model: Model | null,
+  ddl: SqlDdl | null,
+  dialect: SqlDialect,
+  service: string | null,
+  setDialect: (d: SqlDialect) => void,
+  setService: (s: string | null) => void,
+): HTMLElement {
+  const dialects = h(
+    "span",
+    "seg sql-dialects",
+    ...SQL_DIALECTS.map((d) => {
+      const b = h("button", null, DIALECT_NAMES[d]);
+      b.type = "button";
+      b.dataset.dialect = d;
+      b.setAttribute("aria-pressed", String(d === dialect));
+      b.addEventListener("click", () => setDialect(d));
+      return b;
+    }),
+  );
+  dialects.setAttribute("role", "group");
+  dialects.setAttribute("aria-label", "Database");
+  let picker: HTMLElement | null = null;
+  if (model?.services.length) {
+    const select = h("select", null, h("option", null, "All services"), ...model.services.map((s) => h("option", null, s.name)));
+    select.setAttribute("aria-label", "Service");
+    (select.options[0] as HTMLOptionElement).value = "";
+    for (const o of [...select.options].slice(1)) o.value = o.textContent!;
+    select.value = service ?? "";
+    select.addEventListener("change", () => setService(select.value || null));
+    picker = h("label", "picker sql-service", select);
+    picker.insertAdjacentHTML("beforeend", '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>');
+  }
+  // What SQL cannot hold, said where it happens rather than in the docs only
+  const lossy = model?.tables.some((t) => t.columns.some((c) => c.enc || c.ref?.kind === "logical") || t.foreignKeys?.some((fk) => fk.kind === "logical"));
+  const notes = [...(ddl?.notes ?? []), ...(ddl && lossy ? ["Logical references (~>) and enc are written as SQL comments: importing does not bring them back"] : [])];
+  return h(
+    "div",
+    "sql-view",
+    h("div", "sql-controls", dialects, picker),
+    ddl ? sqlCode(ddl.sql) : h("p", "d-note", "Fix the errors first: SQL is written from a document without errors."),
+    notes.length ? h("section", "d-section", h("h3", null, "Notes"), h("ul", "sql-notes", ...notes.map((n) => h("li", "d-note", n)))) : null,
+  );
+}
+

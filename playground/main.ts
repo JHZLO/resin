@@ -4,14 +4,14 @@
 
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, type SvgResult, compile, diff, format, fromSql, looksLikeSql, parse } from "../src/index.ts";
+import { type Diagnostic, type Model, type SqlDdl, type SqlDialect, type SvgLook, type SvgResult, SQL_DIALECTS, compile, diff, format, fromSql, looksLikeSql, parse, toSql } from "../src/index.ts";
 import { Documents, type LocalDocument } from "./documents.ts";
 import { AnalysisClient } from "./analysis-client.ts";
 import { RenderClient } from "./render-client.ts";
 import { createWorkspace, saveFile, fileName } from "./workspace.ts";
 import { relatedModel, relationPath, subset } from "./schema-tools.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
-import { columnDetails, tableDetails } from "./details.ts";
+import { columnDetails, sqlDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
@@ -356,6 +356,8 @@ function showInspector(name: string): void {
   }
   const activeColumn = inspectorBody.contains(document.activeElement) ? (document.activeElement as HTMLElement).closest<HTMLElement>("tr[data-c]")?.dataset.c : null;
   inspected = name;
+  sqlOpen = false;
+  setInspectorMode(false);
   inspectorBody.replaceChildren(view);
   byId("inspector-title").textContent = name;
   byId("inspector-related").setAttribute("aria-pressed", String(state.related?.table === name));
@@ -369,6 +371,7 @@ function showInspector(name: string): void {
 function closeInspector(): void {
   const restoreFocus = inspector.contains(document.activeElement);
   inspected = null;
+  sqlOpen = false;
   inspector.hidden = true;
   diagramPanel.classList.remove("has-inspector");
   fitFloats();
@@ -377,6 +380,76 @@ function closeInspector(): void {
     target.focus();
   }
 }
+
+/** The panel shows a table or the SQL: its label, its name and its buttons follow */
+function setInspectorMode(sql: boolean): void {
+  byId("inspector-label").textContent = sql ? "SQL" : "Table";
+  inspector.setAttribute("aria-label", sql ? "SQL" : "Table details");
+  byId("inspector-related").hidden = sql;
+  byId("sql-copy").hidden = !sql;
+  byId("sql-download").hidden = !sql;
+}
+
+// ---- SQL in the side panel ----
+
+const SQL_STORE = "resin.sql";
+let sqlOpen = false;
+let sqlDialect: SqlDialect = "postgres";
+try {
+  const saved = localStorage.getItem(SQL_STORE);
+  if (saved && (SQL_DIALECTS as readonly string[]).includes(saved)) sqlDialect = saved as SqlDialect;
+} catch {
+  /* PostgreSQL */
+}
+let sqlService: string | null = null;
+
+/** The DDL of the document as it is now, or null while it has errors */
+function currentSql(): { model: Model | null; ddl: SqlDdl | null } {
+  const model = compile(state.code).model;
+  if (!model) return { model: null, ddl: null };
+  if (sqlService && !model.services.some((s) => s.name === sqlService)) sqlService = null;
+  return { model, ddl: toSql(model, { dialect: sqlDialect, service: sqlService ?? undefined }) };
+}
+const sqlFileName = () => `${fileName(documents.activeInfo.title)}${sqlService ? `.${sqlService}` : ""}.${sqlDialect}.sql`;
+
+function showSql(): void {
+  const { model, ddl } = currentSql();
+  // Rebuilding the view keeps the keyboard where it was: on the database switch or the service
+  const active = document.activeElement as HTMLElement | null;
+  const refocus = inspectorBody.contains(active) ? (active?.tagName === "SELECT" ? "select" : active?.dataset.dialect ? `[data-dialect="${sqlDialect}"]` : null) : null;
+  inspected = null;
+  sqlOpen = true;
+  setInspectorMode(true);
+  inspectorBody.replaceChildren(sqlDetails(model, ddl, sqlDialect, sqlService, (d) => {
+    sqlDialect = d;
+    try {
+      localStorage.setItem(SQL_STORE, d);
+    } catch {
+      /* the choice lasts for this visit */
+    }
+    showSql();
+  }, (s) => {
+    sqlService = s;
+    showSql();
+  }));
+  byId("inspector-title").textContent = sqlFileName();
+  inspector.hidden = false;
+  diagramPanel.classList.add("has-inspector");
+  markPicked();
+  fitFloats();
+  if (refocus) inspectorBody.querySelector<HTMLElement>(refocus)?.focus();
+}
+
+byId("sql-copy").addEventListener("click", () => {
+  const { ddl } = currentSql();
+  if (ddl) copy(ddl.sql, "SQL copied");
+  else toast("Fix the errors first: SQL is written from a document without errors");
+});
+byId("sql-download").addEventListener("click", () => {
+  const { ddl } = currentSql();
+  if (ddl) saveFile(ddl.sql, sqlFileName(), "application/sql");
+  else toast("Fix the errors first: SQL is written from a document without errors");
+});
 
 function showPop(table: string, column: string): void {
   const view = lastModel ? columnDetails(lastModel, table, column, openTable) : null;
@@ -648,6 +721,7 @@ async function render(): Promise<void> {
     lastBoxes = empty ? [] : boxes;
     // Keep what was open, as long as it still exists
     if (inspected) showInspector(inspected);
+    else if (sqlOpen) showSql();
     if (popped) showPop(popped.table, popped.column);
     if (popped) focus?.row(popped.table, popped.column);
     else if (inspected) focus?.table(inspected);
@@ -1027,10 +1101,12 @@ async function download(look: SvgLook): Promise<void> {
 // Download menu: plain, or the current background theme in its dark or light version
 const downloadButton = byId("download");
 const downloadMenu = byId("download-menu");
-const menuItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>("[data-variant]")];
+const variantItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>("[data-variant]")];
+/** Every item, for the arrow keys */
+const menuItems = [...downloadMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
 const lookOf = (variant: string): SvgLook => (variant === "plain" ? "graphite" : canvasLook(variant as "dark" | "light"));
 function labelMenu(): void {
-  for (const item of menuItems) {
+  for (const item of variantItems) {
     const variant = item.dataset.variant!;
     if (variant === "plain") continue;
     item.querySelector(".menu-title")!.textContent = `${STAGES[stageName]}, ${variant}`;
@@ -1045,11 +1121,19 @@ function setMenu(open: boolean, returnFocus = false): void {
   else if (returnFocus) downloadButton.focus();
 }
 downloadButton.addEventListener("click", () => setMenu(downloadMenu.hidden));
-for (const item of menuItems)
+for (const item of variantItems)
   item.addEventListener("click", () => {
     setMenu(false, true);
     download(lookOf(item.dataset.variant!));
   });
+byId("download-sql").addEventListener("click", () => {
+  setMenu(false);
+  closePop();
+  focus?.clear();
+  if (inspector.hidden) inspectorReturn = downloadButton;
+  showSql();
+  inspectorBody.querySelector<HTMLElement>(`[data-dialect="${sqlDialect}"]`)?.focus();
+});
 downloadMenu.addEventListener("keydown", (e) => {
   const i = menuItems.indexOf(document.activeElement as HTMLButtonElement);
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {

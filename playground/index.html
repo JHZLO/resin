@@ -401,8 +401,10 @@ button { cursor: pointer; }
 /* where the floating controls drop their labels, the pill says "orders +6" */
 .float.related .label-short { display: none; }
 .panel:is([data-room="snug"], [data-room="tight"]) .float.related .label-short { display: inline; }
-.ins-bar .ins-related { margin-left: auto; height: 26px; padding: 0 8px; font-size: 12px; }
-.ins-bar .ins-related + .btn { margin-left: 0; }
+.ins-bar .ins-related, .ins-bar .ins-sql { margin-left: auto; height: 26px; padding: 0 8px; font-size: 12px; }
+.ins-bar .ins-related + .btn, .ins-bar .ins-sql + .btn { margin-left: 0; }
+/* in the SQL view Related only is hidden, and Copy takes its place at the right */
+.ins-bar .ins-related[hidden] + .ins-sql { margin-left: auto; }
 .ins-related svg { width: 14px; height: 14px; }
 .ins-related[aria-pressed="true"] { background: var(--control-on); }
 
@@ -538,7 +540,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .menu button:active { transform: scale(0.97); }
 .menu button:focus-visible { background: var(--control-on); outline: none; }
 @media (hover: hover) and (pointer: fine) { .menu button:hover { background: var(--control-on); } }
-.menu-title { font-size: 13px; line-height: 1.35; }
+/* text keeps to the second column, so items without a swatch line up with the rest */
+.menu-title { grid-column: 2; font-size: 13px; line-height: 1.35; }
 .menu-sub { grid-column: 2; font-size: 12px; line-height: 1.35; color: var(--muted); }
 .swatch { position: relative; grid-row: span 2; width: 30px; height: 22px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--rule); }
 .swatch::after { content: ""; position: absolute; left: 7px; top: 6px; width: 16px; height: 10px; border-radius: 3px; }
@@ -598,7 +601,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .float.view { left: 12px; top: 12px; }
 .float.stages { left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 .float.zoom { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
-.float button {
+.float button, .sql-dialects button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -614,13 +617,23 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   font-variant-numeric: tabular-nums;
   transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
 }
-.float button:active { transform: scale(0.97); }
-@media (hover: hover) and (pointer: fine) { .float button:hover { background: var(--control-on); color: var(--ink); } }
+.float button:active, .sql-dialects button:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .float button:hover, .sql-dialects button:hover { background: var(--control-on); color: var(--ink); } }
 .float button svg { width: 15px; height: 15px; }
 .float .sep { width: 1px; height: 18px; background: var(--rule); margin: 0 3px; }
 .float button[aria-pressed="true"] { background: var(--control-on); color: var(--ink); }
-.float .seg { display: inline-flex; gap: 2px; }
-.float .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.float .seg, .sql-dialects { display: inline-flex; gap: 2px; }
+.float .seg button[aria-pressed="true"], .sql-dialects button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+/* SQL in the side panel: the database switch sits in a quiet frame, the DDL in the editor's colors */
+.sql-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.sql-dialects { flex-wrap: wrap; padding: 2px; border: 1px solid var(--rule); border-radius: 7px; background: var(--bg); }
+.sql-dialects button { height: 26px; }
+.sql-service { margin-left: 0; border: 1px solid var(--rule); }
+.sql-code { margin: 0; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 8px; background: var(--code); overflow-x: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; tab-size: 2; }
+.sql-kw { color: var(--syn-kw); font-weight: 500; }
+.sql-str { color: var(--syn-str); }
+.sql-cm { color: var(--faint); font-style: italic; }
+.sql-notes .d-note { color: var(--warn); }
 #zoom-level { min-width: 48px; }
 
 /* switch inside a toggle button: neutral track, filled when on */
@@ -846,6 +859,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
             <button type="button" role="menuitem" data-variant="plain"><span class="swatch graphite" aria-hidden="true"></span><span class="menu-title">Plain</span><span class="menu-sub">No background, fits any page</span></button>
             <button type="button" role="menuitem" data-variant="dark"><span class="swatch sw-aurora-dark" aria-hidden="true"></span><span class="menu-title">Aurora, dark</span><span class="menu-sub">Glass on its background, as a still</span></button>
             <button type="button" role="menuitem" data-variant="light"><span class="swatch sw-aurora-light" aria-hidden="true"></span><span class="menu-title">Aurora, light</span><span class="menu-sub">Glass on its background, as a still</span></button>
+            <button type="button" role="menuitem" id="download-sql"><span class="menu-title">SQL DDL</span><span class="menu-sub">CREATE TABLE for five databases</span></button>
           </div>
         </span>
       </span>
@@ -903,9 +917,11 @@ body.is-resizing { cursor: col-resize; user-select: none; }
       <aside class="inspector" id="inspector" aria-label="Table details" hidden>
         <div class="ins-resize" id="inspector-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" title="Drag to resize" tabindex="0"></div>
         <div class="ins-bar">
-          <span class="ins-label">Table</span>
+          <span class="ins-label" id="inspector-label">Table</span>
           <span class="ins-title" id="inspector-title"></span>
           <button type="button" class="btn ins-related" id="inspector-related" aria-pressed="false" title="Show this table and the tables it is joined to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="6" height="6" rx="1.5"/><rect x="2" y="3" width="5" height="5" rx="1.2"/><rect x="17" y="3" width="5" height="5" rx="1.2"/><rect x="17" y="16" width="5" height="5" rx="1.2"/><path d="M7 6.5 9.5 9.5M17 6.5 14.5 9.5M17 18.5l-2.5-3"/></svg>Related only</button>
+          <button type="button" class="btn ins-sql" id="sql-copy" title="Copy the SQL" hidden>Copy</button>
+          <button type="button" class="btn ins-sql" id="sql-download" title="Download the SQL as a file" hidden>Download</button>
           <button type="button" class="btn ghost icon" id="inspector-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
         <div class="ins-body" id="inspector-body"></div>

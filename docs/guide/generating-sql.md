@@ -131,6 +131,10 @@ Importing the SQL gives the same document, except for what SQL has no place for:
 - An index whose name resin made up comes back with that name.
 - A document with one service and tables outside it comes back without the service.
 
+## In the playground
+
+Export, then SQL DDL, shows the SQL in the side panel, with the database, the service, Copy, Download and the notes. See [Playground](playground.md).
+
 ## In code
 
 `toSql(model, { dialect, service })` returns `{ sql, notes }`; `SQL_DIALECTS` lists the dialects. See [Library](library.md).
