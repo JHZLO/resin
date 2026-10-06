@@ -90,7 +90,8 @@ test("continues playback at the same point when changing the theme", async ({ pa
   await openLight(page);
   await preparePlayback(page, 4);
   // Leave time for software decoders in CI before the movie reaches its end.
-  await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => { video.playbackRate = 0.5; return video.play(); });
+  await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => { video.playbackRate = 0.5; void video.play(); });
+  await expect.poll(() => page.locator(videoSelector).evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(4);
   const before = await page.locator(videoSelector).evaluate((video: HTMLVideoElement) => ({ time: video.currentTime, wall: performance.now() }));
   await page.locator("#theme").click();
   await expectLoaded(page, "resin-demo-dark.mp4");
