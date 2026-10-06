@@ -43,7 +43,7 @@ table orders {
 
 table payments "Payments" {
   id        bigint  pk
-  order_id  bigint  uk -> orders  "One payment per order"
+  order_id  bigint  uk  -> orders  "One payment per order"
 }
 ```
 
@@ -68,13 +68,14 @@ A NOT NULL referencing column means every row has exactly one parent. Make it nu
 
 ```erd example file=composite.erd "A tenant and product id form one foreign key"
 table products {
-  tenant_id bigint pk
-  id bigint pk
+  tenant_id  bigint  pk
+  id         bigint  pk
 }
+
 table order_items {
-  id bigint pk
-  tenant_id bigint
-  product_id bigint
+  id          bigint  pk
+  tenant_id   bigint
+  product_id  bigint
   foreign(tenant_id, product_id) -> products(tenant_id, id) as fk_product
   index(tenant_id, product_id)
 }

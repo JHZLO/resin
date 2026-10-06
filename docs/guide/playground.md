@@ -94,6 +94,7 @@ Copy SVG and the Export menu export the current document with its display filter
 | Keys | Action |
 |---|---|
 | Ctrl or Cmd + `\` | Hide or show the editor |
+| Shift + Alt + F | Format the document, as `resin fmt` does ([Formatting](formatting.md)) |
 | Ctrl or Cmd + K | Find a table |
 | Up, Down, Enter, Shift Enter | In the search: move, go to the table, show it with its related tables only |
 | Esc | Close the search, the column card, the side panel, then the related view |

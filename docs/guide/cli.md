@@ -5,6 +5,7 @@ From a clone of the repository, `pnpm resin` compiles one file; see [Quick start
 ```text
 usage: resin <file.erd> [options]
        resin diff <before.erd> <after.erd> [--markdown] [drawing options]
+       resin fmt <file.erd>... [--check]
        resin <file.sql> --from-sql [--infer-refs]
 
   (no option)      print the diagram as SVG (needs elkjs)
@@ -26,6 +27,11 @@ usage: resin <file.erd> [options]
                    marked: added, removed, changed. The drawing options apply
     --markdown     print the list of changes as Markdown instead
 
+  fmt              rewrite each file in resin's one layout, and print the
+                   names of the files it changed
+    --check        change nothing: print the files that are not formatted,
+                   and exit with 1 when there is one
+
   --help           print this help and exit
   --               treat the remaining arguments as file names
 ```
@@ -44,7 +50,7 @@ The SVG is ready to embed with `<img>`: with the default look it picks its ink c
 
 An error leaves standard output empty, including with `--model` and `--ast`. `--help` prints the usage to standard output and exits successfully without a file. Use `--` before a file name that starts with `-`.
 
-Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint` or `--from-sql`, or omit them for SVG. Drawing options require SVG output; `--keys` and `--names` cannot be combined. `--markdown` requires `diff`, and `--infer-refs` requires `--from-sql`.
+Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint` or `--from-sql`, or omit them for SVG. Drawing options require SVG output; `--keys` and `--names` cannot be combined. `--markdown` requires `diff`, `--check` requires `fmt`, and `--infer-refs` requires `--from-sql`.
 
 ## Lint
 
@@ -52,6 +58,15 @@ Unknown options, extra files and conflicting output modes are errors. Choose one
 
 ```bash
 pnpm resin schema.erd --lint
+```
+
+## Format
+
+`fmt` rewrites files in resin's one layout and prints the names of the files it changed. With `--check` it changes nothing, prints the files that are not formatted and exits with status 1 when there is one, for CI. A file with syntax errors is left as it is, and its errors are printed. See [Formatting](formatting.md).
+
+```bash
+pnpm resin fmt schema.erd
+pnpm resin fmt --check schemas/*.erd
 ```
 
 ## Diff

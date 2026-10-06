@@ -113,6 +113,8 @@ export interface Editor {
   getText(): string;
   setText(text: string): void;
   resetText(text: string): void;
+  /** Replace the text with the same text laid out differently, as one step to undo, keeping the cursor */
+  reformat(text: string): void;
   undo(): void;
   showDiagnostics(ds: Diagnostic[]): void;
   focusAt(line: number, col: number): void;
@@ -202,6 +204,17 @@ export function createEditor(
     resetText(next) {
       view.setState(EditorState.create({ doc: next, extensions }));
       onCursor(1, 1);
+    },
+    reformat(next) {
+      const doc = view.state.doc.toString();
+      if (doc === next) return;
+      // Formatting only moves whitespace, so the cursor stays after the same visible character
+      const head = view.state.selection.main.head;
+      let seen = 0;
+      for (let i = 0; i < head; i++) if (!/\s/.test(doc[i])) seen++;
+      let pos = 0;
+      for (let n = 0; pos < next.length && n < seen; pos++) if (!/\s/.test(next[pos])) n++;
+      view.dispatch({ changes: { from: 0, to: doc.length, insert: next }, selection: { anchor: pos }, scrollIntoView: true, userEvent: "input.format" });
     },
     showDiagnostics(ds) {
       view.dispatch(setDiagnostics(view.state, ds.map((d) => toCm(view.state.doc, d))));

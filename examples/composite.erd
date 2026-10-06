@@ -1,15 +1,15 @@
 %% A tenant and product id identify one product together.
 table products "Tenant catalog" {
-  tenant_id bigint pk
-  id bigint pk
-  name varchar(120)
+  tenant_id  bigint        pk
+  id         bigint        pk
+  name       varchar(120)
 }
 
 table order_items "Items in an order" {
-  id bigint pk
-  tenant_id bigint
-  product_id bigint
-  quantity int
+  id          bigint  pk
+  tenant_id   bigint
+  product_id  bigint
+  quantity    int
   foreign(tenant_id, product_id) -> products(tenant_id, id) as fk_product
   index(tenant_id, product_id)
 }

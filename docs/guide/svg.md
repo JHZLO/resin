@@ -15,7 +15,7 @@ table orders "Customer orders" {
 
 table payments {
   id        bigint  pk
-  order_id  bigint  uk -> orders
+  order_id  bigint  uk  -> orders
   memo      text?
 }
 ```

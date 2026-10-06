@@ -20,6 +20,7 @@
 import { AUDIT_SKIP } from "./checker.ts";
 import { tokenize } from "./sql-lexer.ts";
 import { type SqlColumn, type SqlConstraint, type SqlName, type SqlRef, type SqlTable, type SqlType, columnsOf, keysOf, objectKey, objectName, parseStatement, schemaKey, schemaName } from "./sql-parser.ts";
+import { cells } from "./format.ts";
 
 export interface SqlNote {
   message: string;
@@ -591,7 +592,6 @@ function writeTable(t: Tbl, refs: Map<Col, () => string>, note: (message: string
 /** Columns as the examples write them: names, types and modifiers each lined up. A wide character
  *  (Hangul, CJK) takes two cells of a monospace editor */
 function align(rows: string[][]): string[] {
-  const cells = (s: string) => s.length + (s.match(/[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/g)?.length ?? 0);
   const pad = (s: string, width: number) => s + " ".repeat(Math.max(0, width - cells(s)));
   const name = Math.max(0, ...rows.map((r) => cells(r[0])));
   const type = Math.max(0, ...rows.map((r) => cells(r[1])));

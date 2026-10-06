@@ -54,6 +54,15 @@ const { svg } = await toSvg(model, new ELK());
 console.log(diffMarkdown(changes));
 ```
 
+## format(source)
+
+Writes a document in resin's one layout, as `resin fmt` does; [Formatting](formatting.md) describes it. Returns `text`, the formatted document, and `diagnostics`, empty unless the source has syntax errors, in which case `text` is `null`. Only whitespace changes, and the result parses to the same document.
+
+```ts
+const { text, diagnostics } = format(source);
+if (text !== null) await writeFile("schema.erd", text);
+```
+
 ## fromSql(sql, options)
 
 Converts SQL DDL to resin source, as the playground does on paste; [Importing SQL](sql.md) lists the rules. It returns:

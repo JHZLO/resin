@@ -76,6 +76,10 @@ The first public version of the language, grammar v0.2.
   `columns: "none"` and `--names`), Find a table (Ctrl or Cmd + K, over names, descriptions and
   columns), and Related only, which draws a table with its neighbors one or two steps away
   (`neighbors(model, table, steps)`). Links carry the view.
+- Formatting: `format(source)`, `resin fmt <file.erd>...` and the playground's Format (Shift + Alt +
+  F) write a document in resin's one layout: one statement per line, two spaces per block, columns
+  lined up within each table, comments kept. Only whitespace changes, and the result is checked to
+  parse to the same document. `resin fmt --check` exits with 1 on a file that is not formatted.
 - Lint rules for schema design: a reference column without an index (`ref-index`), a table without a
   primary key (`no-pk`), a table no reference joins (`unrelated`), a column name typed two ways
   (`type-drift`) and an index another one covers (`dup-index`). `lint(doc)`, `resin --lint` (exits

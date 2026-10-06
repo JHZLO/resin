@@ -29,7 +29,7 @@ describe("the command line", () => {
     expect(result.stdout.trim()).toBe(/```text\n([\s\S]*?)\n```/.exec(docs)![1]);
   });
 
-  it.each([[], [valid, "--unknown"], [valid, "--look"], [valid, "--look", "wrong"], [valid, "extra.erd"], ["diff", valid], [valid, "--model", "--ast"], [valid, "--keys", "--names"], [valid, "--infer-refs"], [valid, "--markdown"], [valid, "--from-sql", "--curved"], ["diff", valid, valid, "--lint"], [valid, "--look", "graphite", "--look", "silk-dark"]])("rejects invalid arguments: %j", (...args) => {
+  it.each([[], [valid, "--unknown"], [valid, "--look"], [valid, "--look", "wrong"], [valid, "extra.erd"], ["diff", valid], [valid, "--model", "--ast"], [valid, "--keys", "--names"], [valid, "--infer-refs"], [valid, "--markdown"], [valid, "--from-sql", "--curved"], ["diff", valid, valid, "--lint"], [valid, "--look", "graphite", "--look", "silk-dark"], ["fmt"], ["fmt", valid, "--model"], ["fmt", valid, "--curved"], [valid, "--check"], ["diff", valid, valid, "--check"]])("rejects invalid arguments: %j", (...args) => {
     const result = run(...args);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe("");
@@ -90,5 +90,41 @@ describe("the command line", () => {
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("error:");
     }
+  });
+
+  it("rewrites files in the layout, prints the ones it changed, and leaves formatted ones alone", () => {
+    const messy = join(dir, "messy.erd");
+    const tidy = join(dir, "tidy.erd");
+    writeFileSync(messy, "table users {\nid bigint pk\n  name varchar(80)\n}");
+    writeFileSync(tidy, "table users {\n  id  bigint  pk\n}\n");
+    const first = run("fmt", messy, tidy);
+    expect(first.status).toBe(0);
+    expect(first.stderr).toBe("");
+    expect(first.stdout).toBe(`${messy}\n`);
+    expect(readFileSync(messy, "utf8")).toBe("table users {\n  id    bigint       pk\n  name  varchar(80)\n}\n");
+    const again = run("fmt", messy);
+    expect(again.status).toBe(0);
+    expect(again.stdout).toBe("");
+  });
+
+  it("checks the layout without writing, and exits with one when a file is not formatted", () => {
+    const messy = join(dir, "check.erd");
+    const tidy = join(dir, "check-tidy.erd");
+    writeFileSync(messy, "table users { id bigint pk }\n");
+    writeFileSync(tidy, "table users {\n  id  bigint  pk\n}\n");
+    const result = run("fmt", "--check", tidy, messy);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(`${messy}\n`);
+    expect(readFileSync(messy, "utf8")).toBe("table users { id bigint pk }\n");
+    expect(run("fmt", tidy, "--check").status).toBe(0);
+  });
+
+  it("leaves a file with syntax errors as it is and reports them", () => {
+    const before = readFileSync(invalid, "utf8");
+    const result = run("fmt", invalid);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("error: table `broken` is missing its closing `}`");
+    expect(readFileSync(invalid, "utf8")).toBe(before);
   });
 });

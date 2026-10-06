@@ -88,6 +88,10 @@ Lint rules go further than compiling: they point at a reference column without a
 without a primary key or one nothing joins, a column name typed two ways, and an index another one
 covers. `pnpm resin schema.erd --lint` fails a CI step on any of them.
 
+resin has one layout, with columns lined up within each table. `pnpm resin fmt schema.erd`
+rewrites a file in it, keeping every comment, and `--check` fails a CI step on a file that is not
+formatted. The playground formats with Shift + Alt + F.
+
 Schema changes can be reviewed as pictures. `pnpm resin diff old.erd new.erd` draws the newer
 version with added, removed and changed tables and columns marked, and as a GitHub Action
 (`uses: JHZLO/resin@main`) resin keeps a comment with that drawing on every pull request that

@@ -1,13 +1,15 @@
 // Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys | --names] [--expand-audit] | --model | --ast | --lint`,
-// `pnpm resin diff <before.erd> <after.erd> [--markdown]`, or `pnpm resin <file.sql> --from-sql [--infer-refs]`.
+// `pnpm resin diff <before.erd> <after.erd> [--markdown]`, `pnpm resin fmt <file.erd>... [--check]`, or
+// `pnpm resin <file.sql> --from-sql [--infer-refs]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
 // from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
 
-import { readFileSync } from "node:fs";
-import { type Model, type SvgLook, compile, diff, diffMarkdown, formatDiagnostic, fromSql, lint, toSvg } from "./index.ts";
+import { readFileSync, writeFileSync } from "node:fs";
+import { type Model, type SvgLook, compile, diff, diffMarkdown, format, formatDiagnostic, fromSql, lint, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
        resin diff <before.erd> <after.erd> [--markdown] [drawing options]
+       resin fmt <file.erd>... [--check]
        resin <file.sql> --from-sql [--infer-refs]
 
   (no option)      print the diagram as SVG (needs elkjs)
@@ -29,6 +31,11 @@ const USAGE = `usage: resin <file.erd> [options]
                    marked: added, removed, changed. The drawing options apply
     --markdown     print the list of changes as Markdown instead
 
+  fmt              rewrite each file in resin's one layout, and print the
+                   names of the files it changed
+    --check        change nothing: print the files that are not formatted,
+                   and exit with 1 when there is one
+
   --help           print this help and exit
   --               treat the remaining arguments as file names`;
 
@@ -39,7 +46,7 @@ const flags = new Set<string>();
 const files: string[] = [];
 let look = "graphite";
 let positional = false;
-const OPTIONS = new Set(["--look", "--curved", "--keys", "--names", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown"]);
+const OPTIONS = new Set(["--look", "--curved", "--keys", "--names", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check"]);
 function usageError(message: string): never {
   console.error(`resin: ${message}\n\n${USAGE}`);
   process.exit(2);
@@ -61,9 +68,13 @@ for (let i = 0; i < args.length; i++) {
     }
   } else files.push(arg);
 }
-const command = files[0] === "diff" ? "diff" : null;
+const command = files[0] === "diff" || files[0] === "fmt" ? files[0] : null;
 const file = command ? files[1] : files[0];
-if (!file || files.length !== (command ? 3 : 1)) usageError(command ? "diff needs exactly two files" : "expected exactly one file");
+if (command === "fmt") {
+  if (!file) usageError("fmt needs at least one file");
+  if ([...flags].some((flag) => flag !== "--check")) usageError("fmt accepts --check only");
+} else if (!file || files.length !== (command ? 3 : 1)) usageError(command ? "diff needs exactly two files" : "expected exactly one file");
+if (command !== "fmt" && flags.has("--check")) usageError("--check needs the fmt command");
 if (!LOOKS.includes(look as SvgLook)) usageError(`--look takes ${LOOKS.join(", ")}`);
 const modes = ["--model", "--ast", "--lint", "--from-sql"].filter((flag) => flags.has(flag));
 if (modes.length > 1) usageError("choose only one output mode: --model, --ast, --lint or --from-sql");
@@ -89,6 +100,24 @@ async function draw(model: Model): Promise<string> {
 }
 
 try {
+  if (command === "fmt") {
+    // A file with syntax errors is left as it is: there is no telling where its statements end
+    let failed = false;
+    for (const path of files.slice(1)) {
+      const text = readFileSync(path, "utf8");
+      const result = format(text);
+      if (result.text === null) {
+        for (const d of result.diagnostics) console.error(formatDiagnostic(d, text, path) + "\n");
+        failed = true;
+      } else if (result.text !== text) {
+        if (flags.has("--check")) failed = true;
+        else writeFileSync(path, result.text);
+        console.log(path);
+      }
+    }
+    process.exit(failed ? 1 : 0);
+  }
+
   if (command === "diff") {
     // Both versions must compile; an empty file is an empty schema, as for a file a change adds
     const models = files.slice(1, 3).map((path) => {

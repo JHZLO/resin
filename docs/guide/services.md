@@ -81,14 +81,20 @@ When resin [imports SQL](sql.md) whose tables come from two or more schemas, it 
 
 ```erd example file=service-names.erd "Each service owns its users table"
 service accounts {
-  table users { id bigint pk }
+  table users {
+    id  bigint  pk
+  }
 }
+
 service billing {
-  table users { id bigint pk }
+  table users {
+    id  bigint  pk
+  }
+
   table invoices {
-    id bigint pk
-    owner_id bigint -> users
-    account_id bigint ~> accounts.users.id
+    id          bigint  pk
+    owner_id    bigint  -> users
+    account_id  bigint  ~> accounts.users.id
   }
 }
 ```

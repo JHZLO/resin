@@ -28,9 +28,9 @@ table orders "Customer orders" {
 } audit envers(user_id, status)
 
 table order_items "Order lines" {
-  id          bigint  pk
-  order_id    bigint  -> orders.id
-  product_id  bigint  "Product in the catalog service"
+  id          bigint    pk
+  order_id    bigint    -> orders.id
+  product_id  bigint    "Product in the catalog service"
   quantity    int
   created_at  datetime
   unique(order_id, product_id) as uk_order_product
@@ -402,3 +402,44 @@ light and dark pages in `graphite`.
 In the order of the merged model: each added, removed or changed table, and under a changed table
 each added, removed or changed column, with the details. `diffMarkdown(changes)` writes it as a
 Markdown list, `+` for added, `-` for removed and `~` for changed.
+
+## 11. Formatting
+
+`format(source)` writes a document in resin's one layout, so that two people who write the same
+schema write the same text, and a change to a file shows only the lines it changes. `resin fmt`
+and the playground's Format use it.
+
+### 11.1 Guarantees
+
+- Only a document without syntax errors is formatted. With one, `format` returns no text and the
+  errors, and the file is left as it is.
+- The result parses to the same syntax tree as the source, apart from positions, and keeps every
+  comment, in order.
+- Formatting a formatted document changes nothing.
+- Only layout changes: line breaks, indentation and spaces. Names, strings, backtick names and
+  comments are kept exactly as written, and modifiers stay in the order they were written.
+
+### 11.2 The layout
+
+- **One statement per line.** A table written on one line, `table t { id bigint pk }`, is written
+  over three. Each `{` ends its line and each `}` starts one.
+- **Indentation** is two spaces per block: the members of a table, the tables of a service, and
+  four spaces for the members of a table in a service.
+- **Columns line up within their table**: names, then types, each padded to the longest of the
+  table plus two spaces, then the modifiers, two spaces apart. A wide character (Hangul, CJK)
+  counts as two cells, as in a monospace editor. Constraint lines (`unique(...)`, `index(...)`,
+  `foreign(...)`) are not padded.
+- **Spaces within a statement**: one between words; none after `(` or `.`, nor before `)`, `,`,
+  `.` or `?`; `(` follows a name directly (`varchar(32)`, `enum(A, B)`, `unique(a, b)`); one space
+  after a comma, except between type arguments (`decimal(12,2)`). `->` and `~>` have a space on
+  each side, and `} audit envers(a, b)` keeps its audit on the line of the `}`.
+- **Blank lines**: at most one in a row, none at the start of the document or of a block nor
+  before a `}`, and one after each table or service that something else follows. Other blank
+  lines, such as one between groups of columns, are kept.
+- **Comments** stay on their lines. A comment line takes the indentation of its block; a comment
+  after a statement follows it after two spaces.
+- **A statement over several lines**, possible inside parentheses, keeps its line breaks. Its
+  first line is formatted as above; the lines after it are indented two more spaces, and a line
+  that starts with `)` lines up with the statement.
+- Lines end with `\n`, tabs become spaces, trailing spaces are removed, and a document that is not
+  empty ends with exactly one newline.

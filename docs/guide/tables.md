@@ -19,6 +19,8 @@ A short table can sit on one line:
 table tags { id bigint pk }
 ```
 
+[`resin fmt`](formatting.md) writes it over three lines, as every other table.
+
 ## Statements end at the line
 
 A newline ends a statement, so every column sits on a line of its own. Inside parentheses newlines are ignored, which lets a long `enum(...)` wrap:

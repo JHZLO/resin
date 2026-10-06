@@ -4,7 +4,7 @@
 
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SvgLook, type SvgResult, compile, diff, fromSql, looksLikeSql, parse } from "../src/index.ts";
+import { type Diagnostic, type Model, type SvgLook, type SvgResult, compile, diff, format, fromSql, looksLikeSql, parse } from "../src/index.ts";
 import { Documents, type LocalDocument } from "./documents.ts";
 import { AnalysisClient } from "./analysis-client.ts";
 import { RenderClient } from "./render-client.ts";
@@ -1164,6 +1164,33 @@ try {
 }
 
 byId("copy-source").addEventListener("click", () => copy(state.code, "Source copied"));
+
+// ---- formatting ----
+
+/** Lay the document out as `resin fmt` does: one step to undo, the cursor where it was */
+function formatSource(): void {
+  if (state.reading) return;
+  let result;
+  try {
+    result = format(editor.getText());
+  } catch {
+    toast("Could not format this document");
+    return;
+  }
+  if (result.text === null) toast("Fix the errors first: only a document that parses can be formatted");
+  else if (result.text === editor.getText()) toast("Already formatted");
+  else editor.reformat(result.text);
+}
+byId("format-source").addEventListener("click", () => {
+  formatSource();
+  editor.view.focus();
+});
+// Shift + Alt + F, as in most editors. `code`, not `key`: on a Mac, Option turns F into another letter
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "KeyF" || !e.shiftKey || !e.altKey || e.metaKey || e.ctrlKey) return;
+  e.preventDefault();
+  formatSource();
+});
 // The status names the problems; clicking it goes to the first one
 byId("problem-count").addEventListener("click", () => {
   if (problems.length) editor.focusAt(problems[0].span.line, problems[0].span.col);
