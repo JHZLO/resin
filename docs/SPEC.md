@@ -207,7 +207,16 @@ the primary key row it points at.
   services take hues in the order they are declared: teal, violet, amber, rose, sky, lime, then
   again; the hue is the service's place among all the services of the model, so a part of a model
   keeps the colors of the whole. `graphite` draws services in ink alone. A service is
-  `g.rz-svc[data-svc]`.
+  `g.rz-svc[data-svc]`, its label `g.rz-svc-head`.
+- **Folded services** (`fold: [names]`, `--services` for every service) are one card each instead
+  of an area: the service's name and description in the header and its edge, both in its hue, and a
+  row per table with its number of columns and its `EXTERNAL` or `ENVERS` tag. A service whose
+  tables are all external is dashed and tagged `EXTERNAL`. References inside a folded service are
+  counted under its rows (`3 references inside`); a reference that leaves it joins the row of its
+  table, once per pair of rows and kind of reference, with no `N` or `1` at a row's end because the
+  connector may stand for several references. The card is `g.rz-t[data-svc]` with `service` and the
+  service's name in backticks as `data-t` (`` service `ordering` ``), which no table's identity can
+  be, and each row has its table's identity in `data-table`.
 - **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
   an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.

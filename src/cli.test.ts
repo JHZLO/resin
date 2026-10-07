@@ -29,7 +29,7 @@ describe("the command line", () => {
     expect(result.stdout.trim()).toBe(/```text\n([\s\S]*?)\n```/.exec(docs)![1]);
   });
 
-  it.each([[], [valid, "--unknown"], [valid, "--look"], [valid, "--look", "wrong"], [valid, "extra.erd"], ["diff", valid], [valid, "--model", "--ast"], [valid, "--keys", "--names"], [valid, "--infer-refs"], [valid, "--markdown"], [valid, "--from-sql", "--curved"], ["diff", valid, valid, "--lint"], [valid, "--look", "graphite", "--look", "silk-dark"], ["fmt"], ["fmt", valid, "--model"], ["fmt", valid, "--curved"], [valid, "--check"], ["diff", valid, valid, "--check"], [valid, "--to-sql"], [valid, "--to-sql", "db2"], [valid, "--service", "a"], [valid, "--to-sql", "mysql", "--curved"], [valid, "--to-sql", "mysql", "--model"], ["fmt", valid, "--to-sql", "mysql"]])("rejects invalid arguments: %j", (...args) => {
+  it.each([[], [valid, "--unknown"], [valid, "--look"], [valid, "--look", "wrong"], [valid, "extra.erd"], ["diff", valid], [valid, "--model", "--ast"], [valid, "--keys", "--names"], [valid, "--names", "--services"], [valid, "--services", "--model"], [valid, "--infer-refs"], [valid, "--markdown"], [valid, "--from-sql", "--curved"], ["diff", valid, valid, "--lint"], [valid, "--look", "graphite", "--look", "silk-dark"], ["fmt"], ["fmt", valid, "--model"], ["fmt", valid, "--curved"], [valid, "--check"], ["diff", valid, valid, "--check"], [valid, "--to-sql"], [valid, "--to-sql", "db2"], [valid, "--service", "a"], [valid, "--to-sql", "mysql", "--curved"], [valid, "--to-sql", "mysql", "--model"], ["fmt", valid, "--to-sql", "mysql"]])("rejects invalid arguments: %j", (...args) => {
     const result = run(...args);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe("");
@@ -139,6 +139,18 @@ describe("the command line", () => {
     expect(sqlite.status).toBe(0);
     expect(sqlite.stderr).toBe(`${indexed}: note: the index on users (name) has no name, which SQLite needs: named ix_users_name\n`);
     expect(sqlite.stdout).toContain("CREATE INDEX ix_users_name ON users (name);");
+  });
+
+  it("draws each service as one card with --services", () => {
+    const services = join(dir, "folded.erd");
+    writeFileSync(services, "service a {\n  table t {\n    id  int  pk\n  }\n}\n\ntable u {\n  id    int  pk\n  t_id  int  ~> t\n}\n");
+    const result = run(services, "--services");
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain('<g class="rz-t" data-t="service `a`" data-svc="a"');
+    expect(result.stdout).toContain('data-c="t" data-table="a.t"');
+    // A table outside every service keeps its name only
+    expect(result.stdout).not.toContain('data-c="t_id"');
   });
 
   it("writes one service, and refuses a service the document does not have", () => {

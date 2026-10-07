@@ -38,6 +38,9 @@ export interface SvgOptions {
   stage?: boolean;
   /** Connectors: angular (right-angled, the default) or curved */
   edges?: "angular" | "curved";
+  /** Services drawn as one card each, a row per table: references inside a folded service are
+   *  counted under its card, references out of it join its rows. Other tables follow `columns` */
+  fold?: readonly string[];
   /** Prefix for every id in the SVG, so several drawings can share a page. Default "rz-" */
   idPrefix?: string;
 }
@@ -457,12 +460,27 @@ interface View {
   refCols: Set<string>;
   tag: string | null;
   foot: string[];
+  /** A folded service: its name, its place among the services (the hue) and its tables, one per row */
+  fold?: { service: string; hue: number; members: ModelTable[]; external: boolean; expand: boolean };
   w: number;
   h: number;
   nameW: number;
 }
 
-function chips(c: ModelColumn, v: { refCols: Set<string> }): string[] {
+/** A folded service's card. A table's identity has backticks only around a whole name, never after a
+ *  space, so the two never meet */
+export const serviceCardId = (service: string): string => `service \`${service}\``;
+
+/** The table a row of a folded service's card stands for */
+const memberOf = (c: ModelColumn, v: Pick<View, "shown" | "fold">): ModelTable | null => v.fold?.members[v.shown.indexOf(c)] ?? null;
+
+function chips(c: ModelColumn, v: Pick<View, "refCols" | "shown" | "fold">): string[] {
+  const m = memberOf(c, v);
+  if (m) {
+    // A row is a table: the tags its own card would carry. EXTERNAL is on the card when every row is
+    const audit = m.origin === "audit" || (m.audit && !v.fold!.expand) ? (m.audit?.method ?? "envers").toUpperCase() : null;
+    return [m.origin === "external" && !v.fold!.external ? "EXTERNAL" : null, audit].filter((x): x is string => x !== null);
+  }
   const out: string[] = [];
   if (c.pk && v.refCols.has(c.name)) out.push("FK");
   if (c.enumValues) out.push("ENUM");
@@ -479,7 +497,8 @@ const NULL_SIZE = 8.5;
  *  types stay aligned */
 const NULL_W = monoW("NULL", NULL_SIZE) + 7;
 
-function rowTitle(c: ModelColumn, t: ModelTable): string {
+function rowTitle(c: ModelColumn, t: ModelTable, member: ModelTable | null): string {
+  if (member) return [member.label ?? member.name, member.description, c.type].filter(Boolean).join("\n");
   const parts = [`${c.name} ${c.type}${t.origin === "audit" ? "" : c.nullable ? " NULL" : " NOT NULL"}`];
   if (c.description) parts.push(c.description);
   if (c.enumValues) parts.push(c.enumValues.join(" / "));
@@ -555,7 +574,11 @@ function keyLabel(c: ModelColumn, v: View, I: Inks): [string, Ink] | null {
 function panel(v: View, L: Look, id: (name: string) => string, painted: boolean): string {
   const { w, h } = v;
   const dash = v.table.origin === "external" ? ' stroke-dasharray="5 4"' : "";
-  if (!painted) return dash ? `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${stroke(L.ink.sep)}${dash}/>` : "";
+  // A folded service keeps the edge of its area, in its hue. On a live canvas the glass is painted
+  // below, so the hue is drawn over it here
+  const hue = v.fold ? serviceHue(L, v.fold.hue) : null;
+  const rim = hue ? `stroke="${hue}" stroke-opacity="${serviceEdge(L)}"` : null;
+  if (!painted) return dash || rim ? `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${rim ?? stroke(L.ink.sep)}${dash}/>` : "";
   const s: string[] = [];
   if (L.glass) {
     s.push(`<rect width="${w}" height="${h}" rx="${RX}" ${fill(L.glass.veil)}/>`);
@@ -564,7 +587,7 @@ function panel(v: View, L: Look, id: (name: string) => string, painted: boolean)
     s.push(`<rect width="${w}" height="${h}" rx="${RX}" fill="url(#${id("wash")})"/>`);
   }
   s.push(bare(v) ? `<rect width="${w}" height="${h}" rx="${RX}" ${fill(L.ink.head)}/>` : `<path d="${capPath(w)}" ${fill(L.ink.head)}/>`);
-  s.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${stroke(L.glass ? L.glass.rim : [C, 0.25])}${dash}/>`);
+  s.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${RX - 0.5}" fill="none" ${rim ?? stroke(L.glass ? L.glass.rim : [C, 0.25])}${dash}/>`);
   return s.join("");
 }
 
@@ -577,8 +600,9 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   // header: one group with its own hit area, so a click anywhere on it (name, description, tag) reaches it
   const hit = bare(v) ? `<rect class="rz-hit" width="${w}" height="${HEAD}" rx="${RX}" fill="currentColor" fill-opacity="0"/>` : `<path class="rz-hit" d="${capPath(w)}" fill="currentColor" fill-opacity="0"/>`;
   s.push(`<g class="rz-head">${hit}`);
+  const hue = v.fold ? serviceHue(L, v.fold.hue) : null;
   s.push(
-    `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${fill(I.text)}>${esc(t.label ?? t.name)}` +
+    `<text x="${PAD}" y="27" font-size="13.5" font-weight="600" letter-spacing="-0.01em" ${hue ? `fill="${hue}"` : fill(I.text)}>${esc(t.label ?? t.name)}` +
       (t.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(I.muted)}>${esc(t.description)}</tspan>` : "") +
       "</text>",
   );
@@ -595,7 +619,11 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   v.shown.forEach((c, i) => {
     const cy = rowY(i);
     const by = cy + 4.2;
-    s.push(`<g class="rz-c" data-c="${esc(c.name)}"${c.change?.kind === "removed" ? ' opacity="0.55"' : ""}><title>${esc(rowTitle(c, t))}</title>`);
+    // A row of a folded service names the table it stands for, which a viewer can open
+    const member = memberOf(c, v);
+    s.push(
+      `<g class="rz-c" data-c="${esc(c.name)}"${member ? ` data-table="${esc(member.name)}"` : ""}${c.change?.kind === "removed" ? ' opacity="0.55"' : ""}><title>${esc(rowTitle(c, t, member))}</title>`,
+    );
     s.push(`<rect class="rz-hit" x="1" y="${f(cy - ROW / 2)}" width="${w - 2}" height="${ROW}" fill="currentColor" fill-opacity="0"/>`);
     if (c.change) {
       const hue = diffHue(L, c.change.kind);
@@ -694,16 +722,68 @@ function clean(pts: Point[]): Point[] {
 
 // ---- assembly ----
 
-function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand" }): { views: View[]; relations: Relation[] } {
+/** A relation as drawn. `bundled`: its child end is a row of a folded service, so the connector may
+ *  stand for several references and carries no 1 or N */
+type Drawn = Relation & { bundled?: boolean };
+
+function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand"; fold: ReadonlySet<string> }): { views: View[]; relations: Drawn[] } {
   const expand = opts.audit === "expand";
   const tables = model.tables.filter((t) => expand || t.origin !== "audit");
   const names = new Set(tables.map((t) => t.name));
-  const relations = model.relations.filter((r) => names.has(r.parent) && names.has(r.child)).flatMap(r =>
+  const kept = model.relations.filter((r) => names.has(r.parent) && names.has(r.child));
+  const flat = kept.flatMap(r =>
     r.childColumns ? r.childColumns.map((column, i) => ({ ...r, childColumn: column, parentColumn: r.parentColumns![i] })) : [r]);
-  const referenced = new Set(relations.map((r) => `${r.parent}.${r.parentColumn}`));
+  const referenced = new Set(flat.map((r) => `${r.parent}.${r.parentColumn}`));
   const childColumns = new Map<string, string[]>();
-  for (const r of relations) { const columns = childColumns.get(r.child) ?? []; columns.push(r.childColumn); childColumns.set(r.child, columns); }
-  const out = tables.map((table) => {
+  for (const r of flat) { const columns = childColumns.get(r.child) ?? []; columns.push(r.childColumn); childColumns.set(r.child, columns); }
+
+  // A table of a folded service is a row of its service's card. References inside the service are
+  // counted; the others are moved to the rows, once per pair of rows
+  const rowOf = new Map<string, { card: string; row: string; service: string }>();
+  for (const t of tables) if (t.service && opts.fold.has(t.service)) rowOf.set(t.name, { card: serviceCardId(t.service), row: t.label ?? t.name, service: t.service });
+  const inside = new Map<string, number>();
+  for (const r of kept) {
+    const p = rowOf.get(r.parent);
+    if (p && p.service === rowOf.get(r.child)?.service) inside.set(p.service, (inside.get(p.service) ?? 0) + 1);
+  }
+  const relations: Drawn[] = [];
+  const seen = new Set<string>();
+  for (const r of flat) {
+    const p = rowOf.get(r.parent);
+    const c = rowOf.get(r.child);
+    if (!p && !c) relations.push(r);
+    else if (p?.service !== c?.service) {
+      const drawn: Drawn = { ...r, parent: p?.card ?? r.parent, parentColumn: p?.row ?? r.parentColumn, child: c?.card ?? r.child, childColumn: c?.row ?? r.childColumn, parentColumns: undefined, childColumns: undefined, bundled: c !== undefined };
+      const key = JSON.stringify([drawn.parent, drawn.parentColumn, drawn.child, drawn.childColumn, drawn.kind]);
+      if (!seen.has(key)) relations.push(drawn);
+      seen.add(key);
+    }
+  }
+
+  const folded = (name: string, at: number): View => {
+    const sv = model.services.find((x) => x.name === name) ?? { name, description: null };
+    const members = tables.filter((t) => t.service === name);
+    const external = members.every((t) => t.origin === "external");
+    const shown: ModelColumn[] = members.map((t) => ({
+      name: t.label ?? t.name,
+      type: `${t.columns.length} ${t.columns.length === 1 ? "column" : "columns"}`,
+      nullable: false, pk: false, uk: false, ukName: null, enc: false, enumValues: null, index: null, description: null, ref: null,
+      ...(t.change ? { change: t.change } : {}),
+    }));
+    const n = inside.get(name) ?? 0;
+    const table: ModelTable = { name: serviceCardId(name), label: name, description: sv.description, origin: external ? "external" : "table", columns: shown, constraints: [], audit: null, service: null };
+    const base = { table, shown, hidden: 0, refCols: new Set<string>(), tag: external ? "EXTERNAL" : null, foot: n ? [`${n} ${n === 1 ? "reference" : "references"} inside`] : [], fold: { service: name, hue: at, members, external, expand } };
+    return { ...base, ...measure(base) };
+  };
+
+  const out: View[] = [];
+  for (const table of tables) {
+    const row = rowOf.get(table.name);
+    if (row) {
+      // The card takes the place of its service's first table
+      if (!out.some((v) => v.table.name === row.card)) out.push(folded(row.service, Math.max(0, model.services.findIndex((x) => x.name === row.service))));
+      continue;
+    }
     // A column that holds a reference is a foreign key even when its target is not drawn (a part of the
     // model, as the playground's related tables view draws)
     const refCols = new Set([...(childColumns.get(table.name) ?? []), ...table.columns.filter((c) => c.ref).map((c) => c.name), ...(table.foreignKeys ?? []).flatMap(k => k.columns)]);
@@ -721,8 +801,8 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
     if (opts.columns !== "none") for (const fk of table.foreignKeys ?? []) foot.push(`${fk.name ?? "foreign"} (${fk.columns.join(", ")})`);
     if (hidden && opts.columns !== "none") foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
     const base = { table, shown, hidden, refCols, tag, foot };
-    return { ...base, ...measure(base) };
-  });
+    out.push({ ...base, ...measure(base) });
+  }
   return { views: out, relations };
 }
 
@@ -876,6 +956,13 @@ const SERVICE_HUES = {
   dark: ["#5EEAD4", "#C4B5FD", "#FCD34D", "#FDA4AF", "#7DD3FC", "#BEF264"],
   light: ["#0F766E", "#6D28D9", "#B45309", "#BE123C", "#0369A1", "#4D7C0F"],
 };
+/** The hue of the service at `index` among the model's services, or null in graphite */
+function serviceHue(L: Look, index: number): string | null {
+  const hues = L.stage ? (L.stage.dark ? SERVICE_HUES.dark : SERVICE_HUES.light) : null;
+  return hues ? hues[index % hues.length] : null;
+}
+/** The opacity of a service's edge in its hue */
+const serviceEdge = (L: Look): number => (L.stage?.dark ? 0.42 : 0.38);
 
 /** Diff marks (a model from `diff`): added, removed, changed. Graphite takes middle tones that read on
  *  light and dark pages alike */
@@ -908,25 +995,26 @@ function serviceAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string
   s.push(`<mask id="${id("areas")}" maskUnits="userSpaceOnUse"><rect x="-1e5" y="-1e5" width="2e5" height="2e5" fill="white"/>${holes}</mask>`);
   s.push('<g class="rz-services">');
   for (const a of areas) {
-    const hues = L.stage ? (L.stage.dark ? SERVICE_HUES.dark : SERVICE_HUES.light) : null;
-    const hue = hues ? hues[a.hue % hues.length] : C;
-    const [fillA, lineA] = hues ? (L.stage!.dark ? [0.07, 0.42] : [0.07, 0.38]) : [0.035, 0.22];
+    const hue = serviceHue(L, a.hue);
+    const [fillA, lineA] = hue ? [0.07, serviceEdge(L)] : [0.035, 0.22];
     s.push(`<g class="rz-svc" data-svc="${esc(a.service.name)}">`);
-    s.push(`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${SERVICE_RX}" fill="${hue}" fill-opacity="${fillA}" mask="url(#${id("areas")})"/>`);
-    s.push(`<rect x="${f(a.x + 0.5)}" y="${f(a.y + 0.5)}" width="${f(a.w - 1)}" height="${f(a.h - 1)}" rx="${SERVICE_RX - 0.5}" fill="none" stroke="${hue}" stroke-opacity="${lineA}"/>`);
+    s.push(`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${SERVICE_RX}" fill="${hue ?? C}" fill-opacity="${fillA}" mask="url(#${id("areas")})"/>`);
+    s.push(`<rect x="${f(a.x + 0.5)}" y="${f(a.y + 0.5)}" width="${f(a.w - 1)}" height="${f(a.h - 1)}" rx="${SERVICE_RX - 0.5}" fill="none" stroke="${hue ?? C}" stroke-opacity="${lineA}"/>`);
+    // The label has a hit area of its own, as a card's header does, so a viewer can open the service
+    s.push(`<g class="rz-svc-head"><rect class="rz-hit" x="${f(a.x + SERVICE_PAD - 8)}" y="${f(a.y + 13)}" width="${f(serviceLabelW(a.service) + 16)}" height="26" rx="4" fill="currentColor" fill-opacity="0"/>`);
     s.push(
-      `<text x="${f(a.x + SERVICE_PAD)}" y="${f(a.y + 31)}" font-size="13" font-weight="600" letter-spacing="-0.01em" ${hues ? `fill="${hue}"` : fill(L.ink.text)}>${esc(a.service.name)}` +
+      `<text x="${f(a.x + SERVICE_PAD)}" y="${f(a.y + 31)}" font-size="13" font-weight="600" letter-spacing="-0.01em" ${hue ? `fill="${hue}"` : fill(L.ink.text)}>${esc(a.service.name)}` +
         (a.service.description ? `<tspan dx="10" font-size="12" font-weight="400" letter-spacing="0" ${fill(L.ink.muted)}>${esc(a.service.description)}</tspan>` : "") +
         "</text>",
     );
-    s.push("</g>");
+    s.push("</g></g>");
   }
   s.push("</g>");
   return s.join("");
 }
 
 export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}): Promise<SvgResult> {
-  const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse" } as const;
+  const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse", fold: new Set(options.fold ?? []) } as const;
   const look = options.look ?? "graphite";
   const edges = options.edges ?? "angular";
   const L = LOOKS[look];
@@ -1085,7 +1173,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
       `<path d="M${f(start.x + 6.5)},${f(start.y - 4.5)} L${f(start.x + 1.5)},${f(start.y)} L${f(start.x + 6.5)},${f(start.y + 4.5)}" fill="none" ${stroke(ink)} stroke-width="1.3"/>`,
     );
     s.push(`<rect x="${f(end.x - 2.5)}" y="${f(end.y - 2.5)}" width="5" height="5" ${fill(ink)}/>`);
-    s.push(`<text x="${f(end.x - 9)}" y="${f(end.y - 5)}" text-anchor="end" font-family="${MONO}" font-size="9" ${fill(ink)}>${r.one ? "1" : "N"}</text>`);
+    if (!r.bundled) s.push(`<text x="${f(end.x - 9)}" y="${f(end.y - 5)}" text-anchor="end" font-family="${MONO}" font-size="9" ${fill(ink)}>${r.one ? "1" : "N"}</text>`);
     s.push("</g>");
   });
   s.push("</g>", '<g class="rz-tables">');
@@ -1094,7 +1182,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const change = v.table.change;
     const fade = change?.kind === "removed" ? ' opacity="0.6"' : "";
     const edge = change ? `<rect x="0.75" y="0.75" width="${f(b.w - 1.5)}" height="${f(b.h - 1.5)}" rx="${RX - 0.75}" fill="none" stroke="${diffHue(L, change.kind)}" stroke-width="1.5"/>` : "";
-    s.push(`<g class="rz-t" data-t="${esc(v.table.name)}" transform="translate(${b.x},${b.y})"${fade}>${card(v, L, id, painted)}${edge}</g>`);
+    const service = v.fold ? ` data-svc="${esc(v.fold.service)}"` : "";
+    s.push(`<g class="rz-t" data-t="${esc(v.table.name)}"${service} transform="translate(${b.x},${b.y})"${fade}>${card(v, L, id, painted)}${edge}</g>`);
   });
   s.push("</g></svg>");
   return { svg: s.join(""), width: W, height: H, background: L.stage?.base ?? null, boxes };

@@ -31,7 +31,7 @@ Parses, checks and resolves a document in one step. It returns:
 
 ## toSvg(model, elk, options)
 
-Draws a model and resolves to `{ svg, width, height, background, boxes }`. `boxes` gives every card's position, for pages that decorate or navigate the drawing; `background` is the look's base color, or `null` for `graphite`. The options are listed on the [SVG](svg.md) page.
+Draws a model and resolves to `{ svg, width, height, background, boxes }`. `boxes` gives every card's position, for pages that decorate or navigate the drawing; `background` is the look's base color, or `null` for `graphite`. A service drawn folded (the `fold` option) has one box, whose `table` is `serviceCardId(service)`: `service` and the service's name in backticks, as in `` service `ordering` ``. The options are listed on the [SVG](svg.md) page.
 
 resin itself has no runtime dependencies. Layout needs [elkjs](https://github.com/kieler/elkjs), which you pass in, so code that only checks a document never loads it.
 

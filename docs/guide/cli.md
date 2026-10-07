@@ -16,6 +16,7 @@ usage: resin <file.erd> [options]
     --curved       curved connectors instead of right-angled ones
     --keys         show key and reference columns only
     --names        show table names only
+    --services     draw each service as one card that lists its tables
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
@@ -47,6 +48,7 @@ The result goes to standard output, and problems go to standard error in compile
 ```bash
 pnpm resin schema.erd > schema.svg
 pnpm resin schema.erd --keys --curved > schema.keys.svg
+pnpm resin schema.erd --services > schema.services.svg
 pnpm resin schema.erd --model > schema.json
 ```
 
@@ -54,7 +56,7 @@ The SVG is ready to embed with `<img>`: with the default look it picks its ink c
 
 An error leaves standard output empty, including with `--model` and `--ast`. `--help` prints the usage to standard output and exits successfully without a file. Use `--` before a file name that starts with `-`.
 
-Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint`, `--from-sql` or `--to-sql`, or omit them for SVG. Drawing options require SVG output; `--keys` and `--names` cannot be combined. `--markdown` requires `diff`, `--check` requires `fmt`, `--service` requires `--to-sql`, and `--infer-refs` requires `--from-sql`.
+Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint`, `--from-sql` or `--to-sql`, or omit them for SVG. Drawing options require SVG output; only one of `--keys`, `--names` and `--services` can be given. `--markdown` requires `diff`, `--check` requires `fmt`, `--service` requires `--to-sql`, and `--infer-refs` requires `--from-sql`.
 
 ## Lint
 

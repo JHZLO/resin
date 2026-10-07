@@ -220,6 +220,92 @@ table shipments {
     const part = { ...m, tables: m.tables.filter((t) => t.name !== "accounts.users"), relations: m.relations.filter((r) => r.parent !== "accounts.users") };
     expect(count((await toSvg(part, elk)).svg, 'class="rz-svc"')).toBe(1);
   });
+
+  it("gives a service's label a hit area of its own", async () => {
+    const { svg } = await toSvg(modelOf(SRC), elk);
+    expect(svg).toMatch(/data-svc="ordering">(?:<rect[^>]*>){2}<g class="rz-svc-head"><rect class="rz-hit"[^>]*\/><text[^>]*>ordering</);
+  });
+});
+
+describe("folded services", () => {
+  const SRC = `service ordering "Order service" {
+  table orders {
+    id        bigint  pk
+    user_id   bigint  ~> users  index
+    buyer_id  bigint  ~> users  index
+  }
+
+  table order_items {
+    id        bigint  pk
+    order_id  bigint  -> orders  index
+  }
+}
+service accounts "Accounts service" {
+  external table users {
+    id  bigint  pk
+  }
+}
+table shipments {
+  id        bigint  pk
+  order_id  bigint  -> orders  index
+}`;
+  const cardOf = (svg: string, id: string) => svg.split('<g class="rz-t" ').find((x) => x.startsWith(`data-t="${id}"`))!;
+
+  it("draws each folded service as one card with a row per table, and counts the references inside it", async () => {
+    const { svg, boxes } = await toSvg(modelOf(SRC), elk, { columns: "none", fold: ["ordering", "accounts"] });
+    expect(boxes.map((b) => b.table)).toEqual(["service `ordering`", "service `accounts`", "shipments"]);
+    const ordering = cardOf(svg, "service `ordering`");
+    expect(ordering).toContain('data-svc="ordering"');
+    expect(ordering).toContain('<g class="rz-c" data-c="orders" data-table="ordering.orders">');
+    expect(ordering).toContain('<g class="rz-c" data-c="order_items" data-table="ordering.order_items">');
+    expect(ordering).toContain(">3 columns</text>");
+    expect(ordering).toContain(">1 reference inside</text>");
+    expect(ordering).toContain("<title>orders\n3 columns</title>");
+    // A row is a table, not a key: no PK, UK or FK in its gutter
+    expect(ordering).not.toMatch(/>(PK|UK|FK)<\/text>/);
+    // Every table of accounts lives elsewhere, so the card is external
+    expect(cardOf(svg, "service `accounts`")).toContain(">EXTERNAL</text>");
+    expect(cardOf(svg, "service `accounts`")).toContain('stroke-dasharray="5 4"');
+    expect(count(svg, 'class="rz-svc"')).toBe(0);
+  });
+
+  it("joins the rows of the tables a reference crosses between, once per pair of rows", async () => {
+    const { svg } = await toSvg(modelOf(SRC), elk, { columns: "none", fold: ["ordering", "accounts"] });
+    // user_id and buyer_id both reach users: one connector. shipments, outside every service, keeps its own
+    expect(count(svg, 'class="rz-r"')).toBe(2);
+    const users = /<g class="rz-r" data-a="service `accounts`" data-ac="users" data-b="service `ordering`" data-bc="orders">[\s\S]*?<\/g>/.exec(svg)![0];
+    // A connector into a row may stand for several references, so it carries no 1 or N
+    expect(users).not.toMatch(/>(1|N)<\/text>/);
+    const shipments = /<g class="rz-r" data-a="service `ordering`" data-ac="orders" data-b="shipments" data-bc="order_id">[\s\S]*?<\/g>/.exec(svg)![0];
+    expect(shipments).toContain(">N</text>");
+  });
+
+  it("names and edges a folded card in its service's hue, and in ink in graphite", async () => {
+    const dark = cardOf((await toSvg(modelOf(SRC), elk, { look: "aurora-dark", fold: ["ordering"] })).svg, "service `ordering`");
+    expect(dark).toMatch(/letter-spacing="-0\.01em" fill="#5EEAD4">ordering</);
+    expect(dark).toMatch(/fill="none" stroke="#5EEAD4" stroke-opacity="0\.42"/);
+    // On a live canvas the glass is painted below; the edge in the hue is still drawn
+    const live = cardOf((await toSvg(modelOf(SRC), elk, { look: "aurora-light", stage: false, fold: ["ordering"] })).svg, "service `ordering`");
+    expect(live).toMatch(/fill="none" stroke="#0F766E" stroke-opacity="0\.38"/);
+    const ink = cardOf((await toSvg(modelOf(SRC), elk, { fold: ["ordering"] })).svg, "service `ordering`");
+    expect(ink).not.toContain("#5EEAD4");
+  });
+
+  it("gives a folded card an id no table's identity can have", async () => {
+    const src = "service `a.b` {\n  table t {\n    id  int  pk\n  }\n}\ntable `a.b` {\n  id    int  pk\n  t_id  int  ~> t\n}";
+    const { boxes } = await toSvg(modelOf(src), elk, { fold: ["a.b"] });
+    expect(boxes.map((b) => b.table)).toEqual(["service `a.b`", "`a.b`"]);
+  });
+
+  it("draws the tables of the services it does not fold as they are, around the folded cards", async () => {
+    const { svg } = await toSvg(modelOf(SRC), elk, { fold: ["accounts"] });
+    expect(count(svg, 'class="rz-svc"')).toBe(1);
+    expect(svg).toContain('data-t="ordering.orders"');
+    // The column keeps its key and the connector its N: it is one reference
+    const users = /<g class="rz-r" data-a="service `accounts`" data-ac="users" data-b="ordering.orders" data-bc="user_id">[\s\S]*?<\/g>/.exec(svg)![0];
+    expect(users).toContain(">N</text>");
+    expect(cardOf(svg, "ordering.orders")).toMatch(/>FK<\/text><text[^>]*>user_id</);
+  });
 });
 
 describe("golden svg", () => {

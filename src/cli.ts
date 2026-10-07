@@ -1,4 +1,4 @@
-// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys | --names] [--expand-audit] | --model | --ast | --lint`,
+// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--keys | --names | --services] [--expand-audit] | --model | --ast | --lint`,
 // `pnpm resin diff <before.erd> <after.erd> [--markdown]`, `pnpm resin fmt <file.erd>... [--check]`, or
 // `pnpm resin <file.sql> --from-sql [--infer-refs]`, or `pnpm resin <file.erd> --to-sql <db> [--service <s>]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
@@ -20,6 +20,7 @@ const USAGE = `usage: resin <file.erd> [options]
     --curved       curved connectors instead of right-angled ones
     --keys         show key and reference columns only
     --names        show table names only
+    --services     draw each service as one card that lists its tables
     --expand-audit draw audit tables instead of folding them
   --model          print the resolved model as JSON
   --ast            print the syntax tree as JSON
@@ -52,7 +53,7 @@ let look = "graphite";
 let dialect = "";
 let service: string | undefined;
 let positional = false;
-const OPTIONS = new Set(["--look", "--curved", "--keys", "--names", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check", "--to-sql", "--service"]);
+const OPTIONS = new Set(["--look", "--curved", "--keys", "--names", "--services", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check", "--to-sql", "--service"]);
 function usageError(message: string): never {
   console.error(`resin: ${message}\n\n${USAGE}`);
   process.exit(2);
@@ -95,22 +96,24 @@ if (flags.has("--service") && !flags.has("--to-sql")) usageError("--service need
 if (command && modes.length) usageError("diff accepts --markdown and drawing options only");
 if (!command && flags.has("--markdown")) usageError("--markdown needs the diff command");
 if (flags.has("--infer-refs") && !flags.has("--from-sql")) usageError("--infer-refs needs --from-sql");
-if (flags.has("--keys") && flags.has("--names")) usageError("choose either --keys or --names");
-const drawingFlags = ["--look", "--curved", "--keys", "--names", "--expand-audit"];
+if (["--keys", "--names", "--services"].filter((flag) => flags.has(flag)).length > 1) usageError("choose one of --keys, --names or --services");
+const drawingFlags = ["--look", "--curved", "--keys", "--names", "--services", "--expand-audit"];
 if ((modes.length || flags.has("--markdown")) && drawingFlags.some((flag) => flags.has(flag))) usageError("drawing options need SVG output");
 
 const drawing = {
   look: look as SvgLook,
   edges: flags.has("--curved") ? ("curved" as const) : ("angular" as const),
   standalone: true,
-  columns: flags.has("--names") ? ("none" as const) : flags.has("--keys") ? ("keys" as const) : ("all" as const),
+  columns: flags.has("--names") || flags.has("--services") ? ("none" as const) : flags.has("--keys") ? ("keys" as const) : ("all" as const),
   audit: flags.has("--expand-audit") ? ("expand" as const) : ("collapse" as const),
 };
 
 /** Draw a model as SVG. Layout needs elkjs: the core does not depend on it, only this entry point loads it */
 async function draw(model: Model): Promise<string> {
   const { default: ELK } = await import("elkjs");
-  return (await toSvg(model, new ELK(), drawing)).svg + "\n";
+  // Every service folded; a table outside every service keeps its name only
+  const fold = flags.has("--services") ? model.services.map((s) => s.name) : undefined;
+  return (await toSvg(model, new ELK(), { ...drawing, fold })).svg + "\n";
 }
 
 try {
