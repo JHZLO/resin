@@ -5,11 +5,14 @@ const PREFIX = "#erd:";
 
 export interface SharedState {
   code: string;
-  columns: "all" | "keys" | "none";
+  /** services: every service folded into one card, while the whole schema is shown */
+  columns: "all" | "keys" | "none" | "services";
   audit: "collapse" | "expand";
   edges: "angular" | "curved";
   /** Only this table and the tables within `steps` references of it, or null for every table */
   related: { table: string; steps: 1 | 2 } | null;
+  /** Only this service's tables, with the services they link to folded. Optional, so older links open */
+  service?: string | null;
   /** An older version of the document: the diagram then marks what changed since it. Optional, so
    *  links made before it existed still open */
   base?: string | null;
@@ -26,10 +29,11 @@ export function readState(value: unknown): SharedState | null {
   const view = input.view && typeof input.view === "object" && !Array.isArray(input.view) ? input.view as NonNullable<SharedState["view"]> : null;
   return {
     code: input.code,
-    columns: input.columns === "keys" || input.columns === "none" ? input.columns : "all",
+    columns: input.columns === "keys" || input.columns === "none" || input.columns === "services" ? input.columns : "all",
     audit: input.audit === "expand" ? "expand" : "collapse",
     edges: input.edges === "curved" ? "curved" : "angular",
     related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
+    ...(typeof input.service === "string" && !related ? { service: input.service } : {}),
     base: typeof input.base === "string" ? input.base : null,
     ...(view ? { view: {
       direction: view.direction === "incoming" || view.direction === "outgoing" ? view.direction : "both",

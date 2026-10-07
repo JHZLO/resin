@@ -407,6 +407,7 @@ button { cursor: pointer; }
 .ins-bar .ins-related[hidden] + .ins-sql { margin-left: auto; }
 .ins-related svg { width: 14px; height: 14px; }
 .ins-related[aria-pressed="true"] { background: var(--control-on); }
+.ins-bar #service-sql { height: 26px; padding: 0 8px; font-size: 12px; }
 
 /* the side panel: everything about one table, opened from its name on the diagram. It stays until
    it is closed (the button or Esc); clicking elsewhere on the canvas does not close it */
@@ -485,6 +486,24 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .t-note i { padding: 0 4px; font-style: normal; color: var(--faint); }
 .t-lab { font-family: var(--font-body); color: var(--faint); }
 .t-rel { font-size: 12px; color: var(--faint); }
+/* the service panel: what a service owns, what it depends on and what uses it. Its facts sit in the
+   header; references across its edge are grouped under a row for each service on the other side */
+.d-head .d-facts { margin: 2px 0 0; }
+.t-svc tbody tr, .s-refs tbody tr:not(.s-group) { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { :is(.t-svc, .s-refs) tbody tr:not(.s-group):hover td { background: var(--active-line); } }
+.t-svc .d-chip { margin-left: 6px; vertical-align: 1px; }
+.t-table .t-num { text-align: right; font-variant-numeric: tabular-nums; }
+.s-refs { table-layout: fixed; min-width: 470px; }
+.s-refs .c-from { width: 40%; }
+.s-refs .c-arrow { width: 30px; }
+.s-refs .c-rel { width: 104px; }
+.s-refs td.t-name { white-space: normal; overflow-wrap: anywhere; }
+.t-table .t-arrow { padding-inline: 0; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--faint); }
+.t-table .t-arrow.is-warn { color: var(--warn); font-weight: 600; }
+.t-table .s-group th { padding: 9px 6px 7px; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--rule) 32%, transparent); font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--ink); white-space: normal; }
+.s-refs tbody + tbody .s-group th { border-top: 10px solid var(--panel); }
+.s-desc { margin-left: 8px; color: var(--muted); }
+.s-count { float: right; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .t-cols tbody tr { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .t-cols tbody tr:hover td { background: var(--active-line); } }
 /* the column picked on the diagram, in the table */
@@ -576,11 +595,11 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .viewport.is-panning { cursor: grabbing; }
 .content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .content svg { display: block; }
-.content svg .rz-t { cursor: pointer; }
-.viewport.is-panning .content svg .rz-t { cursor: grabbing; }
+.content svg :is(.rz-t, .rz-svc-head) { cursor: pointer; }
+.viewport.is-panning .content svg :is(.rz-t, .rz-svc-head) { cursor: grabbing; }
 /* rows and table names answer the pointer faintly, so they read as clickable; clicking does the rest */
 .content svg .rz-hit { transition: fill-opacity 120ms ease; }
-@media (hover: hover) and (pointer: fine) { .content svg :is(.rz-c, .rz-head):hover > .rz-hit { fill-opacity: 0.07; } }
+@media (hover: hover) and (pointer: fine) { .content svg :is(.rz-c, .rz-head, .rz-svc-head):hover > .rz-hit { fill-opacity: 0.07; } }
 .viewport.is-panning .content svg .rz-hit { fill-opacity: 0; }
 .viewport.is-stale .content { opacity: 0.35; }
 
@@ -885,6 +904,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
             <button type="button" data-columns="all" aria-pressed="true" title="Every column">All</button>
             <button type="button" data-columns="keys" aria-pressed="false" title="Key and reference columns only">Keys</button>
             <button type="button" data-columns="none" aria-pressed="false" title="Table names only">Names</button>
+            <button type="button" id="columns-services" data-columns="services" aria-pressed="false" title="One card per service, listing its tables" hidden>Services</button>
           </span>
           <button type="button" id="toggle-audit" aria-pressed="false" title="Draw audit tables instead of folding them"><span class="switch" aria-hidden="true"></span><span>Audit<span class="label-long"> tables</span></span></button>
           <span class="sep" aria-hidden="true"></span>
@@ -919,7 +939,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
         <div class="ins-bar">
           <span class="ins-label" id="inspector-label">Table</span>
           <span class="ins-title" id="inspector-title"></span>
-          <button type="button" class="btn ins-related" id="inspector-related" aria-pressed="false" title="Show this table and the tables it is joined to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="6" height="6" rx="1.5"/><rect x="2" y="3" width="5" height="5" rx="1.2"/><rect x="17" y="3" width="5" height="5" rx="1.2"/><rect x="17" y="16" width="5" height="5" rx="1.2"/><path d="M7 6.5 9.5 9.5M17 6.5 14.5 9.5M17 18.5l-2.5-3"/></svg>Related only</button>
+          <button type="button" class="btn ins-related" id="inspector-related" aria-pressed="false" title="Show this table and the tables it is joined to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="6" height="6" rx="1.5"/><rect x="2" y="3" width="5" height="5" rx="1.2"/><rect x="17" y="3" width="5" height="5" rx="1.2"/><rect x="17" y="16" width="5" height="5" rx="1.2"/><path d="M7 6.5 9.5 9.5M17 6.5 14.5 9.5M17 18.5l-2.5-3"/></svg><span id="inspector-related-label">Related only</span></button>
+          <button type="button" class="btn" id="service-sql" title="Show the SQL of this service" hidden>SQL</button>
           <button type="button" class="btn ins-sql" id="sql-copy" title="Copy the SQL" hidden>Copy</button>
           <button type="button" class="btn ins-sql" id="sql-download" title="Download the SQL as a file" hidden>Download</button>
           <button type="button" class="btn ghost icon" id="inspector-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>

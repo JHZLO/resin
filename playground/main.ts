@@ -4,14 +4,14 @@
 
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SqlDdl, type SqlDialect, type SvgLook, type SvgResult, SQL_DIALECTS, compile, diff, format, fromSql, looksLikeSql, parse, toSql } from "../src/index.ts";
+import { type Diagnostic, type Model, type SqlDdl, type SqlDialect, type SvgLook, type SvgOptions, type SvgResult, SQL_DIALECTS, compile, diff, format, fromSql, looksLikeSql, parse, toSql } from "../src/index.ts";
 import { Documents, type LocalDocument } from "./documents.ts";
 import { AnalysisClient } from "./analysis-client.ts";
 import { RenderClient } from "./render-client.ts";
 import { createWorkspace, saveFile, fileName } from "./workspace.ts";
-import { relatedModel, relationPath, subset } from "./schema-tools.ts";
-import { glassOf, stageOf } from "../src/svg.ts";
-import { columnDetails, sqlDetails, tableDetails } from "./details.ts";
+import { relatedModel, relationPath, serviceModel, subset } from "./schema-tools.ts";
+import { glassOf, serviceCardId, stageOf } from "../src/svg.ts";
+import { columnDetails, serviceDetails, sqlDetails, tableDetails } from "./details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
 import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
@@ -33,7 +33,7 @@ type StageName = keyof typeof STAGES;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", related: null, base: null, grid: true };
+const state: SharedState & { grid: boolean } = { code: EXAMPLES.order, columns: "all", audit: "collapse", edges: "angular", related: null, service: null, base: null, grid: true };
 let storage: Pick<Storage, "getItem" | "setItem">;
 try { storage = localStorage; } catch { storage = { getItem: () => null, setItem: () => { throw new Error("Storage unavailable"); } }; }
 const documents = new Documents(storage, state);
@@ -102,7 +102,7 @@ async function writeHash(): Promise<boolean> {
   const generation = ++hashGeneration;
   clearTimeout(hashTimer);
   try {
-    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, base: state.base ?? null, view: state.view, reading: state.reading });
+    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, service: state.service ?? null, base: state.base ?? null, view: state.view, reading: state.reading });
     if (generation !== hashGeneration) return false;
     if (location.hash !== hash) history.replaceState({ resinDocument: documents.activeInfo.id }, "", hash);
     return true;
@@ -250,9 +250,15 @@ const panzoom = new PanZoom(
     if (animate) window.setTimeout(placePop, MOVE_MS + 20);
   },
   (target, x, y) => {
-    const table = target.closest<SVGGElement>(".rz-t")?.dataset.t ?? null;
-    const column = target.closest<SVGGElement>(".rz-c")?.dataset.c ?? null;
-    if (table && column) pickColumn(table, column);
+    const card = target.closest<SVGGElement>(".rz-t");
+    const table = card?.dataset.t ?? null;
+    const row = target.closest<SVGGElement>(".rz-c");
+    const column = row?.dataset.c ?? null;
+    // A folded service's card: its header is the service, its rows are tables. An area's label is the service too
+    const service = card ? card.dataset.svc ?? null : target.closest(".rz-svc-head")?.closest<SVGGElement>(".rz-svc")?.dataset.svc ?? null;
+    if (service && row) pickTable(row.dataset.table!);
+    else if (service && (!card || target.closest(".rz-head"))) pickService(service);
+    else if (table && column) pickColumn(table, column);
     else if (table && target.closest(".rz-head")) pickTable(table);
     else if (table) {
       closePop();
@@ -272,8 +278,9 @@ const diagramPanel = byId("panel-diagram");
 const inspector = byId("inspector");
 const inspectorBody = byId("inspector-body");
 const pop = byId("pop");
-/** The table in the side panel, and the column in the popover */
+/** The table (or the service) in the side panel, and the column in the popover */
 let inspected: string | null = null;
+let inspectedService: string | null = null;
 let popped: { table: string; column: string } | null = null;
 let inspectorReturn: HTMLElement | null = null;
 let navigationSeq = 0;
@@ -281,15 +288,37 @@ let navigationSeq = 0;
 const rowEl = (table: string, column: string): SVGGElement | null =>
   tableElements.get(table)?.querySelector<SVGGElement>(`.rz-c[data-c="${CSS.escape(column)}"]`) ?? null;
 
-/** With nothing picked, the table in the side panel keeps the focus; otherwise the focus clears */
-function settleFocus(): void {
-  if (inspected && !inspector.hidden) focus?.table(inspected);
+/** A table the drawing shows as a row of a folded service: that card and row */
+function foldedRow(table: string): { card: string; row: string } | null {
+  const row = content.querySelector<SVGGElement>(`.rz-c[data-table="${CSS.escape(table)}"]`);
+  const card = row?.closest<SVGGElement>(".rz-t")?.dataset.t;
+  return row && card ? { card, row: row.dataset.c! } : null;
+}
+
+/** Focus a table, or its row when its service is folded */
+function focusTable(name: string): void {
+  const folded = foldedRow(name);
+  if (folded) focus?.row(folded.card, folded.row);
+  else focus?.table(name);
+}
+
+/** Focus a service where it is one card; drawn as an area, it has no single thing to keep */
+function focusService(name: string): void {
+  if (tableElements.has(serviceCardId(name))) focus?.table(serviceCardId(name));
   else focus?.clear();
 }
 
-/** Bring a table to the middle of what the side panel leaves visible */
+/** With nothing picked, the table or service in the side panel keeps the focus; otherwise the focus clears */
+function settleFocus(): void {
+  if (inspected && !inspector.hidden) focusTable(inspected);
+  else if (inspectedService && !inspector.hidden) focusService(inspectedService);
+  else focus?.clear();
+}
+
+/** Bring a table (or the card its service is folded into) to the middle of what the side panel leaves visible */
 function reveal(name: string, onlyIfCovered = false, animate = true): void {
-  const b = lastBoxes.find((x) => x.table === name);
+  const drawn = foldedRow(name)?.card ?? name;
+  const b = lastBoxes.find((x) => x.table === drawn);
   if (!b) return;
   const covered = inspector.hidden ? 0 : inspector.offsetWidth;
   const right = panzoom.x + (b.x + b.w) * panzoom.scale;
@@ -308,12 +337,12 @@ async function openTable(name: string, animate = true): Promise<void> {
     await setRelated({ table: name, steps: state.related.steps });
   }
   if (!state.related && drawnModel && !drawnModel.tables.some(t => t.name === name)) {
-    state.view = {}; fitNext = true; save(); scheduleHash(); await render();
+    state.view = {}; state.service = null; fitNext = true; save(); scheduleHash(); await render();
   }
   if (seq !== navigationSeq) return;
   closePop();
   showInspector(name);
-  focus?.table(name);
+  focusTable(name);
   glass?.refresh();
   reveal(name, false, animate);
   if (!animate) byId("inspector-close").focus();
@@ -323,9 +352,44 @@ async function openTable(name: string, animate = true): Promise<void> {
 function pickTable(name: string): void {
   closePop();
   showInspector(name);
-  focus?.table(name);
+  focusTable(name);
   // The panel opens over the canvas: keep the table that was clicked in view
   reveal(name, true);
+}
+
+/** Where a service is drawn: its folded card, or its area's label */
+const serviceEl = (name: string): Element | null =>
+  content.querySelector(`.rz-t[data-svc="${CSS.escape(name)}"]`) ?? content.querySelector(`.rz-svc[data-svc="${CSS.escape(name)}"] .rz-svc-head`);
+
+/** A service's card header or area label on the diagram: the service panel */
+function pickService(name: string): void {
+  closePop();
+  showService(name);
+  focusService(name);
+  revealEl(serviceEl(name));
+}
+
+/** Open a service in the side panel from a link, and bring it into view */
+function openService(name: string, animate = true): void {
+  ++navigationSeq;
+  closePop();
+  showService(name);
+  focusService(name);
+  glass?.refresh();
+  revealEl(serviceEl(name), animate);
+  if (!animate) byId("inspector-close").focus();
+}
+
+/** A reference picked in the service panel: its column where the drawing has it, otherwise the row of
+ *  the folded service its table is in */
+function pickReference(table: string, column: string, animate = true): void {
+  const folded = rowEl(table, column) ? null : foldedRow(table);
+  if (!folded) return void pickColumn(table, column, animate);
+  ++navigationSeq;
+  closePop();
+  focus?.row(folded.card, folded.row);
+  revealEl(rowEl(folded.card, folded.row), animate);
+  glass?.refresh();
 }
 
 /** A column on the diagram (or in the panel): shows its popover, or closes it when it is already open */
@@ -336,8 +400,10 @@ async function pickColumn(table: string, column: string, animate = true): Promis
     settleFocus();
     return;
   }
-  // The panel always lists every column. Selecting a folded row first makes it visible.
+  // The panel always lists every column. Selecting a folded row first makes it visible, and a table
+  // folded into a service around one service's view leaves that view
   if (!rowEl(table, column) && lastModel?.tables.find((t) => t.name === table)?.columns.some((c) => c.name === column)) {
+    if (state.service && foldedRow(table)) state.service = null;
     await setView({ columns: "all" });
     if (seq !== navigationSeq) return;
   }
@@ -347,17 +413,22 @@ async function pickColumn(table: string, column: string, animate = true): Promis
   glass?.refresh();
 }
 
+/** Where focus goes back to when the panel closes: what opened it */
+function rememberReturn(): void {
+  if (!inspector.hidden) return;
+  const active = document.activeElement as HTMLElement | null;
+  inspectorReturn = active?.closest("#palette") ? byId("find") : active;
+}
+
 function showInspector(name: string): void {
-  const view = lastModel ? tableDetails(lastModel, name, openTable, pickColumn) : null;
+  const view = lastModel ? tableDetails(lastModel, name, openTable, pickColumn, openService) : null;
   if (!view) return closeInspector();
-  if (inspector.hidden) {
-    const active = document.activeElement as HTMLElement | null;
-    inspectorReturn = active?.closest("#palette") ? byId("find") : active;
-  }
+  rememberReturn();
   const activeColumn = inspectorBody.contains(document.activeElement) ? (document.activeElement as HTMLElement).closest<HTMLElement>("tr[data-c]")?.dataset.c : null;
   inspected = name;
+  inspectedService = null;
   sqlOpen = false;
-  setInspectorMode(false);
+  setInspectorMode("table");
   inspectorBody.replaceChildren(view);
   byId("inspector-title").textContent = name;
   byId("inspector-related").setAttribute("aria-pressed", String(state.related?.table === name));
@@ -368,9 +439,27 @@ function showInspector(name: string): void {
   if (activeColumn) inspectorBody.querySelector<HTMLButtonElement>(`tr[data-c="${CSS.escape(activeColumn)}"] button`)?.focus();
 }
 
+function showService(name: string): void {
+  const view = lastModel ? serviceDetails(lastModel, name, openTable, pickReference, openService) : null;
+  if (!view) return closeInspector();
+  rememberReturn();
+  inspected = null;
+  inspectedService = name;
+  sqlOpen = false;
+  setInspectorMode("service");
+  inspectorBody.replaceChildren(view);
+  byId("inspector-title").textContent = name;
+  byId("inspector-related").setAttribute("aria-pressed", String(state.service === name));
+  inspector.hidden = false;
+  diagramPanel.classList.add("has-inspector");
+  markPicked();
+  fitFloats();
+}
+
 function closeInspector(): void {
   const restoreFocus = inspector.contains(document.activeElement);
   inspected = null;
+  inspectedService = null;
   sqlOpen = false;
   inspector.hidden = true;
   diagramPanel.classList.remove("has-inspector");
@@ -381,13 +470,17 @@ function closeInspector(): void {
   }
 }
 
-/** The panel shows a table or the SQL: its label, its name and its buttons follow */
-function setInspectorMode(sql: boolean): void {
-  byId("inspector-label").textContent = sql ? "SQL" : "Table";
-  inspector.setAttribute("aria-label", sql ? "SQL" : "Table details");
-  byId("inspector-related").hidden = sql;
-  byId("sql-copy").hidden = !sql;
-  byId("sql-download").hidden = !sql;
+/** The panel shows a table, a service or the SQL: its label, its name and its buttons follow */
+function setInspectorMode(mode: "table" | "service" | "sql"): void {
+  byId("inspector-label").textContent = { table: "Table", service: "Service", sql: "SQL" }[mode];
+  inspector.setAttribute("aria-label", { table: "Table details", service: "Service details", sql: "SQL" }[mode]);
+  const related = byId("inspector-related");
+  related.hidden = mode === "sql";
+  byId("inspector-related-label").textContent = mode === "service" ? "Service only" : "Related only";
+  related.title = mode === "service" ? "Show this service's tables, with the services they link to folded" : "Show this table and the tables it is joined to";
+  byId("service-sql").hidden = mode !== "service";
+  byId("sql-copy").hidden = mode !== "sql";
+  byId("sql-download").hidden = mode !== "sql";
 }
 
 // ---- SQL in the side panel ----
@@ -418,8 +511,9 @@ function showSql(): void {
   const active = document.activeElement as HTMLElement | null;
   const refocus = inspectorBody.contains(active) ? (active?.tagName === "SELECT" ? "select" : active?.dataset.dialect ? `[data-dialect="${sqlDialect}"]` : null) : null;
   inspected = null;
+  inspectedService = null;
   sqlOpen = true;
-  setInspectorMode(true);
+  setInspectorMode("sql");
   inspectorBody.replaceChildren(sqlDetails(model, ddl, sqlDialect, sqlService, (d) => {
     sqlDialect = d;
     try {
@@ -475,7 +569,11 @@ function markPicked(): void {
 
 /** Center a row in what the side panel leaves visible, unless it is already in plain view */
 function revealRow(table: string, column: string, animate = true): void {
-  const row = rowEl(table, column);
+  revealEl(rowEl(table, column), animate);
+}
+
+/** Center a part of the drawing in what the side panel leaves visible, unless it is already in plain view */
+function revealEl(row: Element | null, animate = true): void {
   if (!row) return;
   const area = viewport.getBoundingClientRect();
   const r = row.getBoundingClientRect();
@@ -630,6 +728,7 @@ byId("layout-retry").addEventListener("click", () => void render());
 function modelForView(model: Model, current: SharedState): Model {
   let shown = model;
   if (current.related) shown = relatedModel(model, current.related.table, current.related.steps, current.view?.direction ?? "both");
+  else if (current.service) shown = serviceModel(model, current.service);
   if (current.view?.path) {
     const path = relationPath(model, ...current.view.path);
     if (path) shown = subset(shown, new Set(path));
@@ -643,6 +742,16 @@ function modelForView(model: Model, current: SharedState): Model {
     shown = subset(shown, keep);
   }
   return shown;
+}
+
+/** How the canvas draws a state. Services folds every service while the whole schema is shown. A view
+ *  of a part (one service, a table's neighbors, a path) is about tables, so it draws them in full there;
+ *  one service's view folds the services it links to */
+function drawing(model: Model, current: SharedState): Pick<SvgOptions, "columns" | "fold"> {
+  const level = current.columns === "services" ? "all" : current.columns;
+  if (current.service && !current.related) return { columns: level, fold: model.services.map((s) => s.name).filter((s) => s !== current.service) };
+  if (current.columns !== "services" || current.related || current.view?.path) return { columns: level };
+  return { columns: "none", fold: model.services.map((s) => s.name) };
 }
 
 async function render(): Promise<void> {
@@ -671,7 +780,20 @@ async function render(): Promise<void> {
       save();
       scheduleHash();
     }
-    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.related, state.view, svgLook, glass === null]);
+    // So does one service's view; and the Services level needs a service, or it is the names level
+    if (state.service && !full.services.some((s) => s.name === state.service)) {
+      state.service = null;
+      save();
+      scheduleHash();
+    }
+    byId("columns-services").hidden = full.services.length === 0;
+    if (state.columns === "services" && full.services.length === 0) {
+      state.columns = "none";
+      syncControls();
+      save();
+      scheduleHash();
+    }
+    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.related, state.service, state.view, svgLook, glass === null]);
     glass?.setLook(stageOf(look), glassOf(look));
     if (key === mountedKey) {
       layoutStatus(""); setStale(false);
@@ -683,7 +805,7 @@ async function render(): Promise<void> {
     if (mountedModelKey !== result.modelKey) mountedViews.clear();
     const restored = mountedViews.get(key);
     const rendered = restored ?? await renderer.render(shown, {
-      columns: state.columns,
+      ...drawing(full, state),
       audit: state.audit,
       look: svgLook,
       stage: glass === null,
@@ -721,20 +843,25 @@ async function render(): Promise<void> {
     lastBoxes = empty ? [] : boxes;
     // Keep what was open, as long as it still exists
     if (inspected) showInspector(inspected);
+    else if (inspectedService) showService(inspectedService);
     else if (sqlOpen) showSql();
     if (popped) showPop(popped.table, popped.column);
     if (popped) focus?.row(popped.table, popped.column);
-    else if (inspected) focus?.table(inspected);
+    else settleFocus();
     glass?.setBoxes(lastBoxes, drawn);
-    const counted = (m: Model) => m.tables.filter((t) => state.audit === "expand" || t.origin !== "audit").length;
+    // One service's view counts the tables it draws in full, not the ones folded around it
+    const inFull = (t: Model["tables"][number]) => !state.service || !t.service || t.service === state.service;
+    const counted = (m: Model) => m.tables.filter((t) => (state.audit === "expand" || t.origin !== "audit") && (m === full || inFull(t))).length;
     const tables = counted(full);
-    const relations = shown.relations.filter((r) => state.audit === "expand" || r.origin !== "audit").length;
+    const drawnInFull = new Set(shown.tables.filter(inFull).map((t) => t.name));
+    const relations = shown.relations.filter((r) => (state.audit === "expand" || r.origin !== "audit") && (drawnInFull.has(r.parent) || drawnInFull.has(r.child))).length;
     const tablesText = counted(shown) !== tables ? `${counted(shown)} of ${tables} tables` : `${tables} ${tables === 1 ? "table" : "tables"}`;
-    byId("stats").textContent = empty ? "" : `${tablesText}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
+    const services = full.services.length;
+    byId("stats").textContent = empty ? "" : drawing(full, state).fold && !state.service ? `${services} ${services === 1 ? "service" : "services"}, ${tablesText}` : `${tablesText}, ${relations} ${relations === 1 ? "relation" : "relations"}`;
     const filters = [state.view?.path && `Path: ${state.view.path.join(" → ")}`, state.view?.services && "Service filter", state.view?.changesOnly && "Changed tables and neighbors", state.related && state.view?.direction && state.view.direction !== "both" && `${state.view.direction} references`].filter(Boolean);
     byId("view-summary").hidden = filters.length === 0;
     byId("view-summary-text").textContent = filters.join(" / ");
-    showRelated(Math.max(0, counted(shown) - 1));
+    showRelated(Math.max(0, counted(shown) - 1), shown.tables.some((t) => !inFull(t) || (t.service === null && (state.audit === "expand" || t.origin !== "audit"))));
     setStale(false);
   } catch (e) {
     if (seq !== renderSeq) return;
@@ -758,7 +885,7 @@ function scheduleRender(): void {
 function syncControls(): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-columns]")) b.setAttribute("aria-pressed", String(b.dataset.columns === state.columns));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-steps]")) b.setAttribute("aria-pressed", String(Number(b.dataset.steps) === state.related?.steps));
-  byId("inspector-related").setAttribute("aria-pressed", String(state.related !== null && state.related.table === inspected));
+  byId("inspector-related").setAttribute("aria-pressed", String(inspectedService ? state.service === inspectedService : state.related !== null && state.related.table === inspected));
   byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]")) b.setAttribute("aria-pressed", String(b.dataset.edges === state.edges));
@@ -778,7 +905,11 @@ function setView(change: Partial<Pick<typeof state, "columns" | "audit">>): Prom
   return render();
 }
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-columns]"))
-  b.addEventListener("click", () => setView({ columns: b.dataset.columns === "keys" || b.dataset.columns === "none" ? b.dataset.columns : "all" }));
+  b.addEventListener("click", () => {
+    // Services is the whole schema by service: it leaves a view of a part
+    if (b.dataset.columns === "services") Object.assign(state, { related: null, service: null });
+    void setView({ columns: b.dataset.columns === "keys" || b.dataset.columns === "none" || b.dataset.columns === "services" ? b.dataset.columns : "all" });
+  });
 
 // ---- comparing with a base version ----
 
@@ -807,6 +938,7 @@ byId("compare-stop").addEventListener("click", () => {
 /** Draw only a table and its neighbors, or every table again. The layout changes, so the view fits */
 function setRelated(related: SharedState["related"]): Promise<void> {
   state.related = related;
+  if (related) state.service = null;
   fitNext = true;
   syncControls();
   save();
@@ -814,32 +946,59 @@ function setRelated(related: SharedState["related"]): Promise<void> {
   return render();
 }
 
-/** The pill at the top of the canvas: what is shown, and the way back */
-function showRelated(others: number): void {
+/** Draw only a service, with the services it links to folded, or every table again */
+function setServiceOnly(service: string | null): Promise<void> {
+  state.service = service;
+  if (service) state.related = null;
+  fitNext = true;
+  syncControls();
+  save();
+  scheduleHash();
+  return render();
+}
+
+/** The pill at the top of the canvas: what is shown, and the way back. `linked`: one service's view
+ *  draws more than the service */
+function showRelated(others: number, linked: boolean): void {
   const pill = byId("related-pill");
-  pill.hidden = state.related === null;
-  if (!state.related) return;
+  const shown = state.related?.table ?? state.service ?? null;
+  pill.hidden = shown === null;
+  if (shown === null) return;
+  // One service has no steps: it reaches as far as its references cross
+  pill.querySelector<HTMLElement>(".seg")!.hidden = state.related === null;
+  pill.setAttribute("aria-label", state.related ? "Related tables" : "One service");
   const name = document.createElement("b");
-  name.textContent = state.related.table;
+  name.textContent = shown;
   const long = document.createElement("span");
   long.className = "label-long";
-  long.textContent = others === 0 ? " joins no other table" : ` and ${others} related ${others === 1 ? "table" : "tables"}`;
+  long.textContent = state.related
+    ? others === 0 ? " joins no other table" : ` and ${others} related ${others === 1 ? "table" : "tables"}`
+    : linked ? " and its neighbors" : " links to no other service";
   const short = document.createElement("span");
   short.className = "label-short";
-  short.textContent = ` +${others}`;
+  short.textContent = state.related ? ` +${others}` : "";
   byId("related-text").replaceChildren(name, long, short);
   fitFloats();
 }
 
 byId("inspector-related").addEventListener("click", () => {
+  if (inspectedService) return void setServiceOnly(state.service === inspectedService ? null : inspectedService);
   if (!inspected) return;
   void setRelated(state.related?.table === inspected ? null : { table: inspected, steps: state.related?.steps ?? 1 });
+});
+byId("service-sql").addEventListener("click", () => {
+  if (!inspectedService) return;
+  sqlService = inspectedService;
+  closePop();
+  focus?.clear();
+  showSql();
+  inspectorBody.querySelector<HTMLElement>(`[data-dialect="${sqlDialect}"]`)?.focus();
 });
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-steps]"))
   b.addEventListener("click", () => {
     if (state.related) void setRelated({ table: state.related.table, steps: b.dataset.steps === "2" ? 2 : 1 });
   });
-byId("related-all").addEventListener("click", () => void setRelated(null));
+byId("related-all").addEventListener("click", () => void (state.service ? setServiceOnly(null) : setRelated(null)));
 
 // ---- find a table ----
 
@@ -953,7 +1112,7 @@ async function choose(table: string, related: boolean, animate = false): Promise
   if (related) {
     await setRelated({ table, steps: state.related?.steps ?? 1 });
     showInspector(table);
-    focus?.table(table);
+    focusTable(table);
     glass?.refresh();
   } else await openTable(table, animate);
   inspectorReturn = returnTo;
@@ -1006,7 +1165,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]"))
 byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
   if (!EXAMPLES[key]) return;
-  openDocument(documents.create(`${key}.erd`, { ...state, code: EXAMPLES[key], related: null, base: null, view: {}, reading: false }));
+  openDocument(documents.create(`${key}.erd`, { ...state, code: EXAMPLES[key], related: null, service: null, base: null, view: {}, reading: false }));
 });
 
 byId("grid-toggle").addEventListener("click", () => {
@@ -1051,6 +1210,7 @@ document.addEventListener("keydown", (e) => {
     if (!pop.hidden) closePop();
     else if (!inspector.hidden) closeInspector();
     else if (state.related) void setRelated(null);
+    else if (state.service) void setServiceOnly(null);
     settleFocus();
   });
 });
@@ -1074,7 +1234,7 @@ async function exportSvg(look: SvgLook): Promise<string | null> {
   const full = base ? diff(base, model).model : model;
   const shown = modelForView(full, snapshot);
   try {
-    const { svg } = await exporter.render(shown, { columns: snapshot.columns, audit: snapshot.audit, edges: snapshot.edges, look, standalone: true });
+    const { svg } = await exporter.render(shown, { ...drawing(full, snapshot), audit: snapshot.audit, edges: snapshot.edges, look, standalone: true });
     return svg + "\n";
   } catch {
     toast("Could not export the diagram. Please try again");
@@ -1422,12 +1582,13 @@ const workspace = createWorkspace({
   documents, state: () => state, model: () => lastModel,
   open: openDocument,
   edit: source => { editor.setText(source); fitNext = true; },
-  view: next => { Object.assign(state, next); fitNext = true; syncControls(); save(); scheduleHash(); void render(); },
+  // A view from Explore or Compare replaces one service's view unless it brings its own; a rename keeps it
+  view: next => { Object.assign(state, "view" in next || "related" in next ? { service: null } : {}, next); fitNext = true; syncControls(); save(); scheduleHash(); void render(); },
   notify: toast,
   shareReading: async () => { const hash = await encode({ ...state, reading: true }); await copy(`${location.href.split("#")[0]}${hash}`, "Reading link copied"); },
 });
 byId("workspace-open").addEventListener("click", () => workspace.show("Documents"));
-byId("view-reset").addEventListener("click", () => { state.view = {}; state.related = null; fitNext = true; save(); scheduleHash(); syncControls(); void render(); });
+byId("view-reset").addEventListener("click", () => { state.view = {}; state.related = null; state.service = null; fitNext = true; save(); scheduleHash(); syncControls(); void render(); });
 byId("explore-open").addEventListener("click", () => workspace.show("Explore"));
 byId("edit-copy").addEventListener("click", () => {
   openDocument(documents.create(`${documents.activeInfo.title} copy`, { ...state, reading: false }));
@@ -1456,14 +1617,15 @@ function syncReading(): void {
   byId("editor-show").hidden = !folded() || state.reading === true;
 }
 function openDocument(document: LocalDocument): void {
-  Object.assign(state, { base: null, related: null, view: {}, reading: false }, upgraded(document.state));
+  Object.assign(state, { base: null, related: null, service: null, view: {}, reading: false }, upgraded(document.state));
   editor.resetText(state.code);
   closeSqlBar(); closeInspector(); closePop(); fitNext = true;
   syncControls(); syncReading(); save(); scheduleHash(); void render();
 }
 async function adopt(shared: Partial<typeof state> | null): Promise<void> {
   if (typeof shared?.code !== "string") return;
-  const next = { ...state, ...shared };
+  // A link without one service's view shows the whole schema, whatever was open before
+  const next = { ...state, service: null, ...shared };
   const active = documents.active;
   if (active.state.code !== next.code || state.reading !== next.reading) {
     documents.create("Shared schema", next);

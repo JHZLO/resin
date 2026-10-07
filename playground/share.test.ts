@@ -14,6 +14,12 @@ describe("saved and shared documents", () => {
     expect(await decode(await encode(state))).toEqual(state);
   });
 
+  it("keeps the Services level and one service's view, but not both views of a part", async () => {
+    const state = { code: "service s { table a { id int pk } }", columns: "services", audit: "collapse", edges: "angular", related: null, service: "s", base: null } as const;
+    expect(await decode(await encode(state))).toEqual(state);
+    expect(readState({ code: "", service: "s", related: { table: "a", steps: 1 } })).not.toHaveProperty("service");
+  });
+
   it("opens older code-only links with valid defaults", () => {
     expect(readState({ code: "table a { id int pk }" })).toMatchObject({ columns: "all", related: null, base: null });
   });

@@ -36,6 +36,8 @@ The playground runs the [lint rules](lint.md) on every change. The status bar un
 
 Click a table's name for a side panel that lists its columns, indexes and references as tables. Its left edge resizes it. Click a column, on the diagram or in the panel, for a small card with its details; its text can be selected and copied. A column that holds or receives a reference also highlights that reference.
 
+A service's name, on its area or on its card in the Services view, opens the service in the side panel instead (see [Services](#services)).
+
 Clicking the same table name again keeps the panel open. Close it with its Close button or Esc. Selecting a column from the panel reveals it even when Keys or Names has hidden it. For a composite reference, selecting any member highlights the complete set of column pairs.
 
 The wheel zooms around the pointer, dragging pans, and a double click fits the drawing to the screen.
@@ -51,6 +53,16 @@ Related only, in a table's side panel, draws just that table and the tables its 
 The related controls move below the view options when both groups cannot fit on one row. Long table names shorten with an ellipsis so the step controls and Show all remain visible on narrow screens.
 
 Following a reference in the side panel to a table the view leaves out moves the view to that table, so you can walk a large schema one table at a time. The header counts what is shown, as in `7 of 13 tables`.
+
+## Services
+
+When the document has services, the view options add Services to All, Keys and Names. It draws each service as one card in the service's hue, with a row per table and its number of columns, and counts the references inside the service under the rows. A reference that leaves a service runs from the row of its table, so the connectors show where the services depend on each other. Tables outside every service keep their name only. The header counts services and tables, as in `4 services, 13 tables`.
+
+Click a service's card header, or a service's label on its area in the other views, for the service panel. Its header names what the service owns and the services on either side of it: Tables, Depends on and Used by. Below, Tables lists the service's tables with their number of columns, and Depends on and Used by list the references that cross the service's edge, under a row for each service on the other side, written as resin writes them (`carts.user_id ~> users.id`). A foreign key across services, which the compiler warns about, has its arrow in the warning color. References inside the service are in the panels of its tables.
+
+Rows are pressed as a whole. A table's row, in the panel or on a folded card, opens that table's panel; a reference's row highlights the reference on the diagram. Service names are links to their own panel, and a table's panel links back to its service.
+
+Service only, in the service panel's header, draws the service's tables at the current level (in full from the Services view) and folds the services they reference or are referenced by into cards around them. The header counts the tables drawn in full, as in `6 of 13 tables`. A pill at the top of the canvas names the service; Show all, or Esc once the panel is closed, brings every table back, and so does choosing Services, which shows the whole schema by service. SQL, next to it, opens the [SQL view](#sharing-and-exporting) with the service already chosen.
 
 ## Exploration tools
 
@@ -76,6 +88,7 @@ A link can carry two versions of a document, as the one in a [pull request comme
 | Option | What it does |
 |---|---|
 | All, Keys, Names | Every column; only key and reference columns, folding the rest into `+N columns`; or the table names alone, with the connectors between them |
+| Services | Each service as one card with a row per table; shown when the document has services (see [Services](#services)) |
 | Audit tables | Draws `revinfo` and the `*_aud` tables instead of folding them into a tag |
 | Angular, Curved | Right-angled connectors, or S-bends |
 | Aurora, Silk, Caustic | The background behind the glass |
@@ -83,7 +96,7 @@ A link can carry two versions of a document, as the one in a [pull request comme
 
 ## Sharing and exporting
 
-Copy link puts the document, column visibility, audit setting, connector style, related view, path, service filter and comparison base in the address. Theme, grid, zoom and panel size remain local browser preferences. A link with an unchanged document can still apply different view options.
+Copy link puts the document, column visibility, audit setting, connector style, related view, one service's view, path, service filter and comparison base in the address. Theme, grid, zoom and panel size remain local browser preferences. A link with an unchanged document can still apply different view options.
 
 Copy reading link in Documents opens with the source editor hidden. Recipients can explore the diagram and use Edit a copy to work on their own local document. The link contains the source, and anyone with the link can read it.
 
@@ -99,6 +112,6 @@ SQL DDL, at the end of the Export menu, shows the document as SQL in the side pa
 | Shift + Alt + F | Format the document, as `resin fmt` does ([Formatting](formatting.md)) |
 | Ctrl or Cmd + K | Find a table |
 | Up, Down, Enter, Shift Enter | In the search: move, go to the table, show it with its related tables only |
-| Esc | Close the search, the column card, the side panel, then the related view |
+| Esc | Close the search, the column card, the side panel, then the related view or the one service's view |
 | Ctrl or Cmd + Z, right after pasting SQL | Undo the conversion, keeping the SQL as pasted |
 | Arrow keys on the divider | Resize the editor |

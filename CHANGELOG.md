@@ -72,6 +72,11 @@ The first public version of the language, grammar v0.2.
   services' databases together; write `~>`. SQL import writes the tables of each schema in a service
   when there are several schemas. The side panel says which service a table is in. (For a day this
   was `group`; the parser points `group` at `service`.)
+- Seeing services as a whole: `fold` in `toSvg` and `resin --services` draw a service as one card
+  in its hue, a row per table, with references inside it counted and the others joining the rows.
+  The playground adds Services to All, Keys and Names, a service panel (opened from a service's
+  card or its area's label) with what the service owns, Depends on and Used by, and Service only,
+  which draws one service with the services it links to folded around it.
 - Exploring a large schema in the playground: All, Keys and Names (table names only, also
   `columns: "none"` and `--names`), Find a table (Ctrl or Cmd + K, over names, descriptions and
   columns), and Related only, which draws a table with its neighbors one or two steps away

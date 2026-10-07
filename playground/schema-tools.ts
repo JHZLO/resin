@@ -173,6 +173,21 @@ export function relatedModel(model: Model, table: string, steps: number, directi
   }
   return subset(model, keep);
 }
+/** One service and what it links to: its tables, every table of the services a reference joins them
+ *  to (drawn folded), and the tables outside every service it is joined to */
+export function serviceModel(model: Model, service: string): Model {
+  const serviceOf = new Map(model.tables.map(t => [t.name, t.service]));
+  const keep = new Set(model.tables.filter(t => t.service === service).map(t => t.name));
+  const linked = new Set<string>();
+  for (const r of model.relations)
+    for (const [here, there] of [[r.child, r.parent], [r.parent, r.child]]) {
+      if (serviceOf.get(here) !== service || serviceOf.get(there) === service) continue;
+      const other = serviceOf.get(there);
+      if (other) linked.add(other); else keep.add(there);
+    }
+  for (const t of model.tables) if (t.service && linked.has(t.service)) keep.add(t.name);
+  return subset(model, keep);
+}
 export function relationPath(model: Model, from: string, to: string): string[] | null {
   if (![from, to].every(name => model.tables.some(t => t.name === name))) return null;
   const previous = new Map<string, string | null>([[from, null]]);

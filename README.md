@@ -84,6 +84,10 @@ caustic), each dark or light. The same input always gives byte-identical output,
 has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
 pass in.
 
+For a schema split across services, `pnpm resin schema.erd --services` draws each service as one card
+that lists its tables, with references inside a service counted and the ones between services
+running from table to table, so the dependencies between services are the picture.
+
 Lint rules go further than compiling: they point at a reference column without an index, a table
 without a primary key or one nothing joins, a column name typed two ways, and an index another one
 covers. `pnpm resin schema.erd --lint` fails a CI step on any of them.
@@ -108,8 +112,8 @@ Oracle DDL, dumps included. What resin cannot write yet stays as a comment in it
 
 In the [playground](https://jhzlo.github.io/resin/playground/) the glass is live: the background drifts, the
 stars twinkle and the glass catches the light under your pointer. Click a table name to see its
-columns, indexes and relations as tables, or a column to see its details. Connectors can be angular
-or curved.
+columns, indexes and relations as tables, or a column to see its details. Click a service's name to
+see what it owns, what it depends on and what uses it. Connectors can be angular or curved.
 
 ## Getting started
 

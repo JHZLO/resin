@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compile } from "../src/index.ts";
-import { addLogicalReferences, assignService, mergeImport, referenceCandidates, relatedModel, relationPath, writeDocument } from "./schema-tools.ts";
+import { addLogicalReferences, assignService, mergeImport, referenceCandidates, relatedModel, relationPath, serviceModel, writeDocument } from "./schema-tools.ts";
 const source = `table users "People" { id bigint pk }
 table orders {
  id bigint pk
@@ -46,6 +46,37 @@ describe("schema editing tools", () => {
     expect(relatedModel(model, "orders", 1, "outgoing").tables.map(t => t.name)).toEqual(["users", "orders"]);
     expect(relatedModel(model, "orders", 1, "incoming").tables.map(t => t.name)).toEqual(["orders", "items"]);
     expect(relationPath(model, "users", "missing")).toBeNull();
+  });
+  it("keeps one service, the whole of each service it links to, and the tables outside services it joins", () => {
+    const model = compile(`service a {
+  table t {
+    id  int  pk
+  }
+}
+service b {
+  table u {
+    id    int  pk
+    t_id  int  ~> t
+  }
+
+  table v {
+    id  int  pk
+  }
+}
+service c {
+  table w {
+    id  int  pk
+  }
+}
+table x {
+  id    int  pk
+  t_id  int  -> t
+}
+table y {
+  id  int  pk
+}`).model!;
+    expect(serviceModel(model, "a").tables.map(t => t.name)).toEqual(["a.t", "b.u", "b.v", "x"]);
+    expect(serviceModel(model, "c").tables.map(t => t.name)).toEqual(["c.w"]);
   });
   it("keeps a manually assigned service and inline comments on reimport", () => {
     const current = assignService(source, "billing") + "%% Keep this note\n";

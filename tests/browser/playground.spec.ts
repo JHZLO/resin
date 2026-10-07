@@ -121,6 +121,72 @@ test("recovers from syntax errors and clears an empty diagram", async ({ page })
   await expect(page.locator("#empty")).toBeVisible();
 });
 
+test("folds services into cards, opens a service, and shows one service with its neighbors", async ({ page }) => {
+  const services = `service accounts "Accounts service" {
+  table users {
+    id  int  pk
+  }
+}
+service ordering "Order service" {
+  table orders {
+    id       int  pk
+    user_id  int  ~> users  index
+  }
+
+  table lines {
+    id        int  pk
+    order_id  int  -> orders  index
+  }
+}
+table shipments {
+  id        int  pk
+  order_id  int  -> orders  index
+}`;
+  await page.goto(`/playground/${await encode(shared(schema))}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#columns-services")).toBeHidden();
+  await page.goto(`/playground/${await encode(shared(services, { columns: "services" }))}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#columns-services")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#content .rz-t")).toHaveCount(3);
+  await expect(page.locator("#stats")).toHaveText("2 services, 4 tables");
+  // A card's header is its service; a row is a table
+  await page.locator('.rz-t[data-svc="ordering"] .rz-head').click();
+  await expect(page.locator("#inspector-label")).toHaveText("Service");
+  await expect(page.locator("#inspector-body .d-facts")).toContainText("Depends onaccounts");
+  await expect(page.locator("#inspector-body .s-refs").first()).toContainText("orders.user_id~>users.id");
+  await page.locator('.rz-t[data-svc="ordering"] .rz-c[data-c="lines"]').click();
+  await expect(page.locator("#inspector-title")).toHaveText("ordering.lines");
+  await page.locator("#inspector-body .d-meta .d-link").click();
+  await expect(page.locator("#inspector-title")).toHaveText("ordering");
+  // One service: its tables in full, the services it links to folded
+  await page.locator("#inspector-related").click();
+  await expect(page.locator("#related-pill")).toContainText("ordering and its neighbors");
+  await expect(page.locator("#stats")).toHaveText("3 of 4 tables, 3 relations");
+  await expect(page.locator('#content .rz-t[data-t="ordering.orders"]')).toBeVisible();
+  await expect(page.locator('#content .rz-t[data-svc="accounts"]')).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#inspector")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#related-pill")).toBeHidden();
+  await expect(page.locator("#content .rz-t")).toHaveCount(3);
+  // Explore's views replace one service's view
+  await page.locator('.rz-t[data-svc="ordering"] .rz-head').click();
+  await page.locator("#inspector-related").click();
+  await expect(page.locator("#related-pill")).toBeVisible();
+  await page.locator("#explore-open").click();
+  await page.getByRole("button", { name: "Show all", exact: true }).last().click();
+  await expect(page.locator("#related-pill")).toBeHidden();
+  await expect(page.locator("#content .rz-t")).toHaveCount(3);
+  // A column of a table folded around one service's view: the view opens up to show it
+  await page.locator("#inspector-close").click();
+  await page.locator('.rz-t[data-svc="ordering"] .rz-head').click();
+  await page.locator("#inspector-related").click();
+  await page.locator('.rz-t[data-svc="accounts"] .rz-c[data-c="users"]').click();
+  await expect(page.locator("#inspector-title")).toHaveText("accounts.users");
+  await page.locator('#inspector-body tr[data-c="id"]').click();
+  await expect(page.locator("#related-pill")).toBeHidden();
+  await expect(page.locator("#pop")).toBeVisible();
+});
+
 test("follows key references and switches the related neighborhood", async ({ page }) => {
   await open(page);
   await page.locator('.rz-t[data-t="users"] .rz-head').click();
