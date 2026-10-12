@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
 import { tokenize } from "./sql-lexer.ts";
-import { type SqlImportOptions, fromSql, looksLikeSql } from "./sql.ts";
+import { type SchemaInput, type SqlImportOptions, fromSchema, fromSql, looksLikeSql } from "./sql.ts";
 
 const SQL = join(import.meta.dirname, "../examples/sql");
 
@@ -436,6 +436,213 @@ table audit_log {
       expect(source).toContain("table good {");
       expect(notes.some((n) => n.line === 2 && n.message.includes("unterminated"))).toBe(true);
     }
+  });
+});
+
+describe("fromSchema", () => {
+  /** Convert, and check that the result compiles without an error */
+  const write = (input: SchemaInput, options?: SqlImportOptions): string => {
+    const { source } = fromSchema(input, options);
+    expect(compile(source).diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    return source;
+  };
+
+  it("writes the same resin as SQL that states the same schema", () => {
+    const sql = `create table users (
+  id bigint unsigned not null comment 'Member',
+  email varchar(120) not null,
+  primary key (id),
+  unique key uk_email (email)
+) comment='People';
+create table orders (
+  id bigint not null primary key,
+  user_id bigint unsigned not null,
+  status enum('PENDING','PAID') not null,
+  memo varchar(255) comment 'Free text',
+  shop_id int(11) not null,
+  key ix_user (user_id),
+  unique key uk_shop_memo (shop_id, memo),
+  constraint fk_user foreign key (user_id) references users (id)
+);`;
+    const input: SchemaInput = {
+      tables: [
+        {
+          name: "users",
+          comment: "People",
+          columns: [
+            { name: "id", type: "bigint unsigned", nullable: false, comment: "Member" },
+            { name: "email", type: "varchar(120)", nullable: false },
+          ],
+          primaryKey: ["id"],
+          indexes: [{ name: "uk_email", columns: ["email"], unique: true }],
+        },
+        {
+          name: "orders",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "user_id", type: "bigint unsigned", nullable: false },
+            { name: "status", type: "enum('PENDING','PAID')", nullable: false },
+            { name: "memo", type: "varchar(255)", nullable: true, comment: "Free text" },
+            { name: "shop_id", type: "int(11)", nullable: false },
+          ],
+          primaryKey: ["id"],
+          indexes: [
+            { name: "ix_user", columns: ["user_id"] },
+            { name: "uk_shop_memo", columns: ["shop_id", "memo"], unique: true },
+          ],
+          foreignKeys: [{ name: "fk_user", columns: ["user_id"], table: "users", references: ["id"] }],
+        },
+      ],
+    };
+    expect(write(input)).toBe(fromSql(sql).source);
+  });
+
+  it("writes logical references with ~>, for one column and for several", () => {
+    const out = write({
+      tables: [
+        { name: "users", columns: [{ name: "id", type: "bigint", nullable: false }], primaryKey: ["id"] },
+        {
+          name: "products",
+          columns: [
+            { name: "tenant_id", type: "bigint", nullable: false },
+            { name: "id", type: "bigint", nullable: false },
+          ],
+          primaryKey: ["tenant_id", "id"],
+        },
+        {
+          name: "orders",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "user_id", type: "bigint", nullable: true },
+            { name: "tenant_id", type: "bigint", nullable: false },
+            { name: "product_id", type: "bigint", nullable: false },
+          ],
+          primaryKey: ["id"],
+          foreignKeys: [
+            { columns: ["user_id"], table: "users", kind: "logical" },
+            { columns: ["tenant_id", "product_id"], table: "products", references: ["tenant_id", "id"], kind: "logical", name: "ref_product" },
+          ],
+        },
+      ],
+    });
+    expect(line(out, "user_id")).toBe("user_id  bigint?  ~> users");
+    expect(out).toContain("  foreign(tenant_id, product_id) ~> products(tenant_id, id) as ref_product");
+    const model = compile(out).model!;
+    expect(model.relations.map((r) => `${r.child} ${r.kind} ${r.parent}`)).toEqual(["orders logical users", "orders logical products"]);
+  });
+
+  it("marks encrypted columns enc and takes value lists the type does not carry", () => {
+    const out = write({
+      tables: [
+        {
+          name: "members",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "phone", type: "varchar(255)", nullable: true, encrypted: true, comment: "Phone number" },
+            { name: "grade", type: "varchar(8)", nullable: false, values: ["GOLD", "SILVER"] },
+          ],
+          primaryKey: ["id"],
+        },
+      ],
+    });
+    expect(line(out, "phone")).toBe('phone  varchar(255)?  enc  "Phone number"');
+    expect(line(out, "grade")).toBe("grade  varchar(8)  enum(GOLD, SILVER)");
+  });
+
+  it("declares a table of another schema as external, and writes two schemas as two services", () => {
+    const one = write({
+      tables: [
+        {
+          name: "orders",
+          schema: "ordering",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "user_id", type: "bigint", nullable: false },
+          ],
+          primaryKey: ["id"],
+          foreignKeys: [{ columns: ["user_id"], table: "users", schema: "accounts", kind: "logical" }],
+        },
+      ],
+    });
+    expect(one).toContain("external table `accounts.users` {");
+    expect(line(one, "user_id")).toBe("user_id  bigint  ~> `accounts.users`");
+
+    const two = write({
+      tables: [
+        { name: "users", schema: "accounts", columns: [{ name: "id", type: "bigint", nullable: false }], primaryKey: ["id"] },
+        {
+          name: "orders",
+          schema: "ordering",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "user_id", type: "bigint", nullable: false },
+          ],
+          primaryKey: ["id"],
+          foreignKeys: [{ columns: ["user_id"], table: "users", schema: "accounts", kind: "logical" }],
+        },
+      ],
+    });
+    expect(two).toContain("service accounts {");
+    expect(two).toContain("service ordering {");
+    expect(compile(two).model!.relations.map((r) => `${r.child} -> ${r.parent}`)).toEqual(["ordering.orders -> accounts.users"]);
+  });
+
+  it("turns Envers tables into audit envers", () => {
+    const out = write({
+      tables: [
+        {
+          name: "orders",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "status", type: "varchar(16)", nullable: false },
+            { name: "memo", type: "varchar(255)", nullable: true },
+          ],
+          primaryKey: ["id"],
+        },
+        {
+          name: "orders_aud",
+          columns: [
+            { name: "id", type: "bigint", nullable: false },
+            { name: "rev", type: "int", nullable: false },
+            { name: "revtype", type: "tinyint", nullable: true },
+            { name: "status", type: "varchar(16)", nullable: true },
+          ],
+          primaryKey: ["id", "rev"],
+        },
+        { name: "revinfo", columns: [{ name: "rev", type: "int", nullable: false }], primaryKey: ["rev"] },
+      ],
+    });
+    expect(out).toContain("} audit envers(status)");
+    expect(out).not.toContain("table orders_aud");
+    expect(out).not.toContain("table revinfo");
+  });
+
+  it("reports what it cannot write at the table's place in the input", () => {
+    const { notes } = fromSchema({
+      tables: [
+        { name: "a", columns: [{ name: "id", type: "int", nullable: false }], primaryKey: ["id"] },
+        { name: "b", columns: [{ name: "id", type: "int", nullable: false }], primaryKey: ["id"], foreignKeys: [{ columns: ["missing"], table: "a" }] },
+      ],
+    });
+    expect(notes).toEqual([{ message: "table `b`: a foreign key names `missing`, which the table does not have", line: 2, col: 0 }]);
+  });
+
+  it("normalizes types as the database writes them", () => {
+    const out = write({
+      tables: [
+        {
+          name: "t",
+          columns: [
+            { name: "a", type: "character varying(20)", nullable: false },
+            { name: "b", type: "double precision", nullable: false },
+            { name: "c", type: "tinyint(1) unsigned", nullable: false },
+            { name: "d", type: "decimal(10,2)", nullable: false },
+            { name: "e", type: "", nullable: false },
+          ],
+        },
+      ],
+    });
+    expect(["a", "b", "c", "d", "e"].map((c) => line(out, c).split("  ")[1])).toEqual(["varchar(20)", "double", "tinyint", "decimal(10,2)", "any"]);
   });
 });
 

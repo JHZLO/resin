@@ -19,7 +19,7 @@ export { check } from "./checker.ts";
 export { lower, neighbors } from "./model.ts";
 export { serviceCardId, toSvg } from "./svg.ts";
 export type { ElkLike, SvgLook, SvgOptions, SvgResult } from "./svg.ts";
-export { fromSql, looksLikeSql } from "./sql.ts";
+export { fromSchema, fromSql, looksLikeSql } from "./sql.ts";
 export { LINT_RULES, lint } from "./lint.ts";
 export { diff, diffMarkdown } from "./diff.ts";
 export { format } from "./format.ts";
@@ -28,7 +28,7 @@ export type { SqlDdl, SqlDialect, ToSqlOptions } from "./ddl.ts";
 export type { FormatResult } from "./format.ts";
 export type { Change, ChangeEntry, ChangeKind, ModelDiff } from "./diff.ts";
 export type { LintRule } from "./lint.ts";
-export type { SqlImport, SqlImportOptions, SqlNote } from "./sql.ts";
+export type { SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaInput, SchemaTable, SqlImport, SqlImportOptions, SqlNote } from "./sql.ts";
 
 export interface CompileResult {
   doc: Document;

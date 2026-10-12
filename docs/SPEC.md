@@ -268,7 +268,9 @@ The parser recognizes v0.1 syntax and says how to write it in v0.2.
 
 `fromSql(sql)` (the playground's paste, `resin --from-sql`) writes SQL DDL as resin. It is part of the
 language's definition in the same way as the drawing: these rules say what each SQL fact means in
-resin.
+resin. `fromSchema(schema)` takes the same facts as data (tables, columns with their types as the
+database writes them, keys, indexes and foreign keys) and follows the same rules; it can also state a
+logical reference (`~>`) and an encrypted column (`enc`), which SQL cannot.
 
 ### 8.1 Reading
 

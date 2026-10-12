@@ -1,4 +1,6 @@
-// SQL DDL → resin source. Behind `fromSql`, the playground's paste and `resin --from-sql`.
+// SQL DDL → resin source. Behind `fromSql`, the playground's paste and `resin --from-sql`. `fromSchema`
+// takes the same facts from a structured schema (what a database introspection reports) instead of
+// SQL text, and writes them through the same passes, so both say a schema in the same resin.
 //
 // Three steps. sql-lexer.ts tokenizes every dialect at once and splits statements; sql-parser.ts
 // reads each statement into facts on its own, so one it cannot read costs only itself. This file
@@ -19,12 +21,13 @@
 
 import { AUDIT_SKIP } from "./checker.ts";
 import { tokenize } from "./sql-lexer.ts";
-import { type SqlColumn, type SqlConstraint, type SqlName, type SqlRef, type SqlTable, type SqlType, columnsOf, keysOf, objectKey, objectName, parseStatement, schemaKey, schemaName } from "./sql-parser.ts";
+import { type SqlColumn, type SqlConstraint, type SqlName, type SqlRef, type SqlStatement, type SqlTable, type SqlType, columnsOf, keysOf, objectKey, objectName, parseStatement, parseType, schemaKey, schemaName } from "./sql-parser.ts";
 import { cells } from "./format.ts";
 
 export interface SqlNote {
   message: string;
-  /** Position in the SQL */
+  /** Position in the SQL. From `fromSchema`: the table's place in `tables` (1-based), and the column's
+   *  place in its table, or 0 for the table itself */
   line: number;
   col: number;
 }
@@ -63,6 +66,7 @@ interface Col {
   ref: { table: SqlName; column: string | null; key: string | null; kind: "physical" | "logical"; at: At } | null;
   values: string[] | null;
   comment: string | null;
+  enc: boolean;
 }
 
 interface Tbl {
@@ -75,7 +79,7 @@ interface Tbl {
   cols: Col[];
   uniques: { name: string | null; columns: Col[] }[];
   indexes: { name: string | null; columns: Col[] }[];
-  foreignKeys: { name: string | null; columns: Col[]; ref: SqlRef; at: At; text?: () => string }[];
+  foreignKeys: { name: string | null; columns: Col[]; ref: SqlRef; kind: "physical" | "logical"; at: At; text?: () => string }[];
   comment: string | null;
   /** Written as `%%` comments at the end of the table */
   losses: string[];
@@ -117,8 +121,98 @@ export function looksLikeSql(text: string): boolean {
 }
 
 export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport {
-  const { text, statements, notes: lexicalNotes } = tokenize(sql);
+  const { text, statements, notes } = tokenize(sql);
   const parsed = statements.map((tokens) => ({ st: parseStatement(tokens, text), at: { line: tokens[0].line, col: tokens[0].col } }));
+  return importStatements(parsed, notes, options);
+}
+
+/** A schema as a database introspection reports it (information_schema, JDBC metadata, an ORM's
+ *  model): the input of `fromSchema` */
+export interface SchemaInput {
+  tables: readonly SchemaTable[];
+}
+
+export interface SchemaTable {
+  name: string;
+  /** The schema (database) it is in. Tables from two or more schemas are written in a service each */
+  schema?: string | null;
+  comment?: string | null;
+  columns: readonly SchemaColumn[];
+  /** The primary key's columns, in key order */
+  primaryKey?: readonly string[];
+  /** Indexes and unique constraints. The primary key's own index is said by `primaryKey` */
+  indexes?: readonly SchemaIndex[];
+  foreignKeys?: readonly SchemaForeignKey[];
+}
+
+export interface SchemaColumn {
+  name: string;
+  /** The type as the database writes it: `varchar(255)`, `bigint unsigned`, `enum('A','B')` */
+  type: string;
+  nullable: boolean;
+  comment?: string | null;
+  /** Allowed values the type does not carry, such as those of a value list CHECK */
+  values?: readonly string[] | null;
+  /** Stored encrypted (`enc`), which no database reports on its own */
+  encrypted?: boolean;
+}
+
+export interface SchemaIndex {
+  name?: string | null;
+  columns: readonly string[];
+  unique?: boolean;
+}
+
+export interface SchemaForeignKey {
+  name?: string | null;
+  columns: readonly string[];
+  /** The table pointed at, in `schema` when that is another schema than the table's own */
+  table: string;
+  schema?: string | null;
+  /** The columns pointed at, pair by pair. Left out, the reference points at the primary key */
+  references?: readonly string[] | null;
+  /** `physical` (the default) is a FOREIGN KEY; `logical` is a reference the application keeps (`~>`) */
+  kind?: "physical" | "logical";
+}
+
+/** Write a structured schema as resin, by the same rules as `fromSql` (docs/SPEC.md §8) */
+export function fromSchema(input: SchemaInput, options: SqlImportOptions = {}): SqlImport {
+  const nameOf = (name: string, schema: string | null | undefined, line: number): SqlName => {
+    const parts = schema ? [schema, name] : [name];
+    return { parts, keys: parts.map(lower), line, col: 0 };
+  };
+  const parsed = input.tables.map((t, i): { st: SqlStatement; at: At } => {
+    const at = { line: i + 1, col: 0 };
+    const columns = t.columns.map((c, j): SqlColumn => ({
+      name: c.name,
+      key: lower(c.name),
+      type: parseType(c.type),
+      notNull: !c.nullable,
+      pk: false,
+      unique: null,
+      ref: null,
+      checkValues: c.values ? [...c.values] : null,
+      comment: c.comment ?? null,
+      enc: c.encrypted ?? false,
+      line: at.line,
+      col: j + 1,
+    }));
+    const constraints: SqlTable["constraints"] = [];
+    if (t.primaryKey?.length) constraints.push({ constraint: { kind: "pk", columns: [...t.primaryKey], keys: t.primaryKey.map(lower) }, ...at });
+    for (const ix of t.indexes ?? [])
+      constraints.push({ constraint: { kind: "index", name: ix.name ?? null, unique: ix.unique ?? false, items: ix.columns.map((c) => ({ column: c, key: lower(c) })), where: null }, ...at });
+    for (const fk of t.foreignKeys ?? []) {
+      const ref: SqlRef = { table: nameOf(fk.table, fk.schema, at.line), columns: fk.references ? [...fk.references] : null, keys: fk.references ? fk.references.map(lower) : null, kind: fk.kind ?? "physical" };
+      constraints.push({ constraint: { kind: "fk", columns: [...fk.columns], keys: fk.columns.map(lower), ref, name: fk.name ?? null }, ...at });
+    }
+    const table: SqlTable = { name: nameOf(t.name, t.schema, at.line), columns, constraints, comment: t.comment ?? null, unreadable: [] };
+    return { st: { kind: "table", table }, at };
+  });
+  return importStatements(parsed, [], options);
+}
+
+/** Both passes and the writing, over statements read from SQL or built from a schema */
+function importStatements(parsed: { st: SqlStatement; at: At }[], lexicalNotes: SqlNote[], options: SqlImportOptions): SqlImport {
   const notes: SqlNote[] = [...lexicalNotes];
   const note = (message: string, at: At) => notes.push({ message, line: at.line, col: at.col });
 
@@ -158,9 +252,10 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
     pk: c.pk,
     uk: c.unique ? { name: c.unique.name } : null,
     index: null,
-    ref: c.ref ? { table: c.ref.table, column: c.ref.columns?.[0] ?? null, key: c.ref.keys?.[0] ?? null, kind: "physical", at: { line: c.line, col: c.col } } : null,
+    ref: c.ref ? { table: c.ref.table, column: c.ref.columns?.[0] ?? null, key: c.ref.keys?.[0] ?? null, kind: c.ref.kind ?? "physical", at: { line: c.line, col: c.col } } : null,
     values: c.type.values ?? c.checkValues,
     comment: c.comment,
+    enc: c.enc ?? false,
   });
 
   const columns = (t: Tbl, names: string[], keys: string[], what: string, at: At): Col[] | null => {
@@ -200,11 +295,11 @@ export function fromSql(sql: string, options: SqlImportOptions = {}): SqlImport 
             loss(t, `Not converted: foreign key (${k.columns.join(", ")}) needs equal lists of distinct columns`, at);
             return;
           }
-          t.foreignKeys.push({ name: k.name, columns: cs, ref: k.ref, at });
+          t.foreignKeys.push({ name: k.name, columns: cs, ref: k.ref, kind: k.ref.kind ?? "physical", at });
           return;
         }
         const [c] = columns(t, k.columns, k.keys, "a foreign key", at) ?? [];
-        if (c && !c.ref) c.ref = { table: k.ref.table, column: k.ref.columns?.[0] ?? null, key: k.ref.keys?.[0] ?? null, kind: "physical", at };
+        if (c && !c.ref) c.ref = { table: k.ref.table, column: k.ref.columns?.[0] ?? null, key: k.ref.keys?.[0] ?? null, kind: k.ref.kind ?? "physical", at };
         return;
       }
       case "index": {
@@ -569,6 +664,7 @@ function writeTable(t: Tbl, refs: Map<Col, () => string>, note: (message: string
     const values = enumValues(c.values);
     if (values) mods.push(`enum(${values})`);
     if (c.index) mods.push(c.index.name ? `index as ${resinName(c.index.name)}` : "index");
+    if (c.enc) mods.push("enc");
     const comment = oneLine(c.comment);
     if (comment) mods.push(resinString(comment));
     return [resinName(c.display), `${typeText(c.type)}${c.notNull ? "" : "?"}`, mods.join("  ")];
@@ -583,7 +679,7 @@ function writeTable(t: Tbl, refs: Map<Col, () => string>, note: (message: string
     ...align(rows),
     ...uniques.map((u) => `  unique(${list(u.columns)})${as(u.name)}`),
     ...indexes.map((ix) => `  index(${list(ix.columns)})${as(ix.name)}`),
-    ...t.foreignKeys.flatMap((fk) => fk.text ? [`  foreign(${list(fk.columns)}) -> ${fk.text()}${as(claim(fk.name))}`] : []),
+    ...t.foreignKeys.flatMap((fk) => fk.text ? [`  foreign(${list(fk.columns)}) ${fk.kind === "physical" ? "->" : "~>"} ${fk.text()}${as(claim(fk.name))}`] : []),
     ...t.losses.map((l) => `  %% ${oneLine(l)}`),
     `}${audit}`,
   ];

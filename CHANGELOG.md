@@ -34,6 +34,7 @@ The first public version of the language, grammar v0.2.
 
 ### Added
 
+- `fromSchema(schema)`: write a schema held as data (what a database introspection reports) as resin, by the same rules as `fromSql`, with logical references and encrypted columns.
 - Named local documents, `.erd` and `.sql` files, recovery snapshots, and visible storage failure handling.
 - SQL import review with original source, complete notes, service assignment and updates that retain annotations.
 - Logical relation suggestions and editing, direction filters, relationship paths, service filters and saved views.

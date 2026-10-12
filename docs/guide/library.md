@@ -88,6 +88,40 @@ Converts SQL DDL to resin source, as the playground does on paste; [Importing SQ
 
 `looksLikeSql(text)` tells whether a text is SQL that creates a table, for deciding when to convert.
 
+## fromSchema(schema, options)
+
+Writes a schema you already hold as data, such as what `information_schema` or a driver's metadata reports, as resin. It goes through the same rules as `fromSql`, so a schema read from a live database and the same schema as DDL come out as the same resin, and it returns the same `{ source, notes, tables }` and takes the same options. A note's `line` is the table's place in `tables` (from 1) and its `col` the column's place in that table, or 0 for the table itself.
+
+It can also say two things SQL cannot: a foreign key with `kind: "logical"` is written `~>`, and a column with `encrypted: true` is written `enc`.
+
+```ts
+const { source } = fromSchema({
+  tables: [
+    {
+      name: "orders",
+      comment: "Customer orders",
+      columns: [
+        { name: "id", type: "bigint", nullable: false },
+        { name: "user_id", type: "bigint unsigned", nullable: false },
+        { name: "status", type: "enum('PENDING','PAID')", nullable: false },
+        { name: "buyer_phone", type: "varchar(255)", nullable: true, encrypted: true },
+      ],
+      primaryKey: ["id"],
+      indexes: [{ name: "ix_orders_user", columns: ["user_id"] }],
+      foreignKeys: [{ columns: ["user_id"], table: "users", schema: "accounts", kind: "logical" }],
+    },
+  ],
+});
+```
+
+| Field | What it holds |
+|---|---|
+| `tables[].name`, `schema`, `comment` | The table, the schema it is in, and its comment. Tables from two or more schemas are written in a service each |
+| `columns[]` | `name`, `type` as the database writes it (`varchar(255)`, `bigint unsigned`, `enum('A','B')`), `nullable`, and optionally `comment`, `values` (allowed values the type does not carry) and `encrypted` |
+| `primaryKey` | The primary key's columns, in key order |
+| `indexes[]` | `name`, `columns` and `unique`. Leave the primary key's own index out |
+| `foreignKeys[]` | `columns`, the target `table` (with its `schema` when it is in another one), `references` (the target columns, pair by pair; left out, the primary key), `name`, and `kind`: `physical` (the default) or `logical` |
+
 ## neighbors(model, table, steps)
 
 The part of a model within `steps` references of one table: that table, the tables it references and the ones referencing it (one step), their neighbors too (two steps), and every relation among them. Columns keep their references to the tables left out, so `toSvg` still marks them as foreign keys. The playground's related view draws this.

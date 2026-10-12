@@ -67,7 +67,7 @@ On the command line, `--from-sql` prints the resin on standard output and lists 
 pnpm resin schema.sql --from-sql > schema.erd
 ```
 
-In code, `fromSql(sql)` returns `{ source, notes, tables }`; see [Library](library.md).
+In code, `fromSql(sql)` returns `{ source, notes, tables }`. A tool that reads the schema from a live database can hand it over as data with `fromSchema(schema)` instead, which follows the same rules; see [Library](library.md).
 
 ## Dialects
 

@@ -12,7 +12,7 @@
 //
 // A table body is split at its top-level commas first, so one unreadable element costs only itself.
 
-import type { SqlToken } from "./sql-lexer.ts";
+import { type SqlToken, tokenize } from "./sql-lexer.ts";
 
 /** A possibly qualified name (`public.orders`, `[dbo].[Users]`); the last part is the object */
 export interface SqlName {
@@ -41,6 +41,8 @@ export interface SqlRef {
   /** null when the reference names no column: it points at the primary key */
   columns: string[] | null;
   keys: string[] | null;
+  /** SQL states only foreign keys; a schema handed to `fromSchema` may also state logical references */
+  kind?: "physical" | "logical";
 }
 
 export interface SqlColumn {
@@ -54,6 +56,8 @@ export interface SqlColumn {
   /** From a value list check: `CHECK (status IN ('A', 'B'))` */
   checkValues: string[] | null;
   comment: string | null;
+  /** Stored encrypted. SQL never says so; a schema handed to `fromSchema` may */
+  enc?: boolean;
   line: number;
   col: number;
 }
@@ -694,6 +698,13 @@ function type(e: Cursor): SqlType {
   // PostgreSQL's own name for an array type: text[] is _text
   if (array) name = `_${name}`;
   return { name, args, values };
+}
+
+/** A type written on its own, as a database reports it (`bigint unsigned`, `character varying(20)`,
+ *  `enum('a','b')`), normalized the way a column's type is. Empty text is `any` */
+export function parseType(text: string): SqlType {
+  const [tokens] = tokenize(text).statements;
+  return tokens?.length ? type(new Cursor(tokens)) : { name: "any", args: null, values: null };
 }
 
 /** Skip a DEFAULT or ON UPDATE value: one term, then casts and operators that continue it. Words
