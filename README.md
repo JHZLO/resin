@@ -167,7 +167,9 @@ if (result.model) {
 `compile` returns the syntax tree, the diagnostics, and, when there are no errors, the resolved
 model. `toSvg` draws a model; options choose the look (`graphite`, the
 default, or a glass theme such as `aurora-dark`), all columns or key columns only, and folded or
-expanded audit tables.
+expanded audit tables. `fromSchema` writes a schema held as data, such as what a live database
+reports, as resin. `resin/viewer` is the playground's canvas and table panel for a page of your own;
+see [Embedding the viewer](https://jhzlo.github.io/resin/docs/embedding/).
 
 ## The language at a glance
 

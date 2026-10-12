@@ -1,4 +1,4 @@
-/* The resin site: the landing page and the docs. The playground's live aurora (playground/glass.ts)
+/* The resin site: the landing page and the docs. The playground's live aurora (viewer/glass.ts)
    is the only thing that moves on its own; everything else is glass over it and answers the user.
    Dark first, light by system setting or by the theme button, which shares the playground's choice. */
 :root {

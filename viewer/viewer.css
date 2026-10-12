@@ -1,0 +1,128 @@
+/* resin/viewer.css: the canvas (`Canvas`, on the element that gets .rz-viewer) and what the details
+   say about a table, a service or a column (inside an element the page marks .rz-details).
+
+   A page themes both with the custom properties below. These are light defaults of no specificity,
+   so a page sets its own on :root or any ancestor, dark ones included, and they win. */
+:where(:root) {
+  --rz-ink: #181C21;
+  --rz-muted: #586271;
+  --rz-faint: #8A929E;
+  --rz-rule: #DDE1E6;
+  --rz-panel: #FFFFFF;
+  --rz-code: #EEF0F3;
+  --rz-accent: #9A5A0C;
+  --rz-accent-soft: rgba(205, 138, 30, 0.14);
+  --rz-active-line: rgba(24, 28, 33, 0.035);
+  --rz-warn: #9A6700;
+  --rz-k-pk: #B26A00;
+  --rz-k-uk: #6D4FD8;
+  --rz-k-fk: #0B7A90;
+  /* under the drawing before the first frame of the live background, so the first paint does not flash */
+  --rz-stage: #E9EBF1;
+  --rz-font-body: system-ui, sans-serif;
+  --rz-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ---- the canvas: the page gives it a size ---- */
+.rz-viewer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--rz-stage);
+  color: var(--rz-ink);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+/* the still drawing's dot grid (without WebGL); the live canvas hides its own */
+.rz-viewer:not(.is-grid) .rz-grid { display: none; }
+.rz-viewer.is-panning { cursor: grabbing; }
+.rz-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.rz-content svg { display: block; }
+.rz-content svg :is(.rz-t, .rz-svc-head) { cursor: pointer; }
+.rz-viewer.is-panning .rz-content svg :is(.rz-t, .rz-svc-head) { cursor: grabbing; }
+/* rows and table names answer the pointer faintly, so they read as clickable; clicking does the rest */
+.rz-content svg .rz-hit { transition: fill-opacity 120ms ease; }
+@media (hover: hover) and (pointer: fine) { .rz-content svg :is(.rz-c, .rz-head, .rz-svc-head):hover > .rz-hit { fill-opacity: 0.07; } }
+.rz-viewer.is-panning .rz-content svg .rz-hit { fill-opacity: 0; }
+/* focus: keep what is connected, fade the rest. The live canvas fades the glass under a faded table;
+   the still drawing fades its shadow (rz-s) with the card */
+.rz-content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 150ms ease; }
+.rz-content svg.is-focus :is(.rz-t, .rz-r, .rz-s):not(.is-on) { opacity: 0.14; }
+.rz-content svg .rz-c.is-on .rz-hit { fill: var(--rz-accent); fill-opacity: 0.18; }
+@media (prefers-reduced-motion: reduce) {
+  .rz-content svg :is(.rz-t, .rz-r, .rz-s) { transition: none; }
+}
+
+/* ---- the details: a header, then tables in one style for columns, indexes and references ---- */
+.rz-details .d-head { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--rz-rule); }
+.rz-details .d-name { margin: 0; font-family: var(--rz-font-mono); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.rz-details .d-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.rz-details .d-desc { margin: 0; font-size: 13px; color: var(--rz-muted); }
+.rz-details .d-meta { margin: 0; font-size: 12px; color: var(--rz-faint); font-variant-numeric: tabular-nums; }
+.rz-details .d-section { padding-top: 16px; }
+.rz-details .d-section h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rz-faint); }
+.rz-details .d-section ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.rz-details .d-key { font-family: var(--rz-font-mono); font-size: 10px; font-weight: 600; }
+.rz-details .k-ix { color: var(--rz-muted); }
+.rz-details .k-pk { color: var(--rz-k-pk); }
+.rz-details .k-uk { color: var(--rz-k-uk); }
+.rz-details .k-fk { color: var(--rz-k-fk); }
+.rz-details .d-col-name { padding: 0; border: 0; background: none; color: inherit; font-family: var(--rz-font-mono); font-size: 12.5px; text-align: left; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .rz-details .d-col-name:hover { text-decoration: underline; text-underline-offset: 3px; } }
+.rz-details .d-type { font-family: var(--rz-font-mono); font-size: 12px; color: var(--rz-muted); white-space: nowrap; }
+.rz-details .d-chip { display: inline-block; padding: 0 6px; border: 1px solid var(--rz-rule); border-radius: 4px; background: var(--rz-code); font-family: var(--rz-font-mono); font-size: 10.5px; line-height: 18px; color: var(--rz-muted); }
+.rz-details .d-note { padding: 4px 6px; font-size: 12.5px; line-height: 1.6; }
+.rz-details :is(.d-table, .d-pop) code { font-family: var(--rz-font-mono); font-size: 12px; }
+/* every cell reads from its top line; a narrow panel scrolls the tables sideways */
+.rz-details .t-wrap { overflow-x: auto; margin: 0 -6px; padding: 0 6px; }
+.rz-details .t-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rz-details .t-cols { min-width: 470px; }
+.rz-details .t-table th { padding: 0 8px 6px; border-bottom: 1px solid var(--rz-rule); text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--rz-faint); white-space: nowrap; }
+.rz-details .t-table td { padding: 7px 8px; border-bottom: 1px solid color-mix(in srgb, var(--rz-rule) 55%, transparent); vertical-align: top; }
+.rz-details .t-table tr:last-child td { border-bottom: 0; }
+.rz-details .t-table :is(th, td):first-child { padding-left: 6px; }
+.rz-details .t-table :is(th, td):last-child { padding-right: 6px; }
+.rz-details .t-key { width: 26px; }
+.rz-details .t-key .d-key { line-height: 18px; }
+.rz-details .t-name { font-family: var(--rz-font-mono); white-space: nowrap; }
+.rz-details .t-none { font-family: var(--rz-font-body); font-size: 12px; color: var(--rz-faint); }
+.rz-details .t-type { font-family: var(--rz-font-mono); color: var(--rz-muted); white-space: nowrap; }
+.rz-details .t-null { font-family: var(--rz-font-mono); font-size: 11px; line-height: 18px; color: var(--rz-faint); white-space: nowrap; }
+.rz-details .t-null.is-null { color: var(--rz-k-pk); font-weight: 600; }
+.rz-details .t-desc { min-width: 120px; color: var(--rz-muted); }
+.rz-details .t-desc-text { display: block; }
+.rz-details .t-note { display: block; font-family: var(--rz-font-mono); font-size: 11px; color: var(--rz-muted); }
+.rz-details .t-note i { padding: 0 4px; font-style: normal; color: var(--rz-faint); }
+.rz-details .t-lab { font-family: var(--rz-font-body); color: var(--rz-faint); }
+.rz-details .t-rel { font-size: 12px; color: var(--rz-faint); }
+/* the service panel: what a service owns, what it depends on and what uses it. Its facts sit in the
+   header; references across its edge are grouped under a row for each service on the other side */
+.rz-details .d-head .d-facts { margin: 2px 0 0; }
+.rz-details :is(.t-svc tbody tr, .s-refs tbody tr:not(.s-group)) { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .rz-details :is(.t-svc, .s-refs) tbody tr:not(.s-group):hover td { background: var(--rz-active-line); } }
+.rz-details .t-svc .d-chip { margin-left: 6px; vertical-align: 1px; }
+.rz-details .t-table .t-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rz-details .s-refs { table-layout: fixed; min-width: 470px; }
+.rz-details .s-refs .c-from { width: 40%; }
+.rz-details .s-refs .c-arrow { width: 30px; }
+.rz-details .s-refs .c-rel { width: 104px; }
+.rz-details .s-refs td.t-name { white-space: normal; overflow-wrap: anywhere; }
+.rz-details .t-table .t-arrow { padding-inline: 0; text-align: center; font-family: var(--rz-font-mono); font-size: 12px; color: var(--rz-faint); }
+.rz-details .t-table .t-arrow.is-warn { color: var(--rz-warn); font-weight: 600; }
+.rz-details .t-table .s-group th { padding: 9px 6px 7px; border-bottom: 1px solid var(--rz-rule); background: color-mix(in srgb, var(--rz-rule) 32%, transparent); font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--rz-ink); white-space: normal; }
+.rz-details .s-refs tbody + tbody .s-group th { border-top: 10px solid var(--rz-panel); }
+.rz-details .s-desc { margin-left: 8px; color: var(--rz-muted); }
+.rz-details .s-count { float: right; color: var(--rz-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.rz-details .t-cols tbody tr { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .rz-details .t-cols tbody tr:hover td { background: var(--rz-active-line); } }
+/* the column picked on the diagram, in the table */
+.rz-details .t-cols tbody tr.is-on td { background: var(--rz-accent-soft); }
+.rz-details .d-link { padding: 0; border: 0; background: none; font-family: var(--rz-font-mono); font-size: 12px; color: var(--rz-accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .rz-details .d-link:hover { text-decoration-color: currentColor; } }
+/* a column on its own (`columnDetails`): its name, description and facts */
+.rz-details .d-pop-head { display: flex; align-items: baseline; gap: 8px; }
+.rz-details .d-pop-name { font-family: var(--rz-font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.rz-details .d-pop .d-desc { margin: 4px 0 0; }
+.rz-details .d-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 8px 0 0; }
+.rz-details .d-facts dt { font-size: 11.5px; color: var(--rz-faint); }
+.rz-details .d-facts dd { margin: 0; font-family: var(--rz-font-mono); font-size: 12px; overflow-wrap: anywhere; }

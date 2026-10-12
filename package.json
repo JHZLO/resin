@@ -24,13 +24,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./viewer": "./viewer/index.ts",
+    "./viewer.css": "./viewer/viewer.css"
   },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "playwright test",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p playground && tsc --noEmit -p website && tsc --noEmit -p tests",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p viewer && tsc --noEmit -p playground && tsc --noEmit -p website && tsc --noEmit -p tests",
     "check": "pnpm typecheck && vitest run",
     "resin": "node src/cli.ts",
     "build:site": "node scripts/build-site.mjs"

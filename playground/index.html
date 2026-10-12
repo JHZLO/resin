@@ -21,7 +21,7 @@
 /* Layout: a slim top bar over two panes (source | diagram) split by a draggable divider; one column on
    phones. Controls that only affect the drawing float over the canvas. State is shown with neutral
    fills; the accent is kept for focus and the focused row.
-   The canvas is a WebGL stage (playground/glass.ts) painted under the SVG: the chosen background
+   The canvas is a WebGL stage (viewer/glass.ts) painted under the SVG: the chosen background
    theme (aurora, silk or caustic), dark or light with the page. --stage matches the aurora base so
    the first paint does not flash.
    Motion: the background is the only thing that moves on its own. Everything else moves only to
@@ -61,6 +61,23 @@
   --scroll-hover: rgba(24, 28, 33, 0.3);
   --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* the canvas and the details (viewer/viewer.css) in this page's colors */
+  --rz-ink: var(--ink);
+  --rz-muted: var(--muted);
+  --rz-faint: var(--faint);
+  --rz-rule: var(--rule);
+  --rz-panel: var(--panel);
+  --rz-code: var(--code);
+  --rz-accent: var(--accent);
+  --rz-accent-soft: var(--accent-soft);
+  --rz-active-line: var(--active-line);
+  --rz-warn: var(--warn);
+  --rz-k-pk: var(--k-pk);
+  --rz-k-uk: var(--k-uk);
+  --rz-k-fk: var(--k-fk);
+  --rz-stage: var(--stage);
+  --rz-font-body: var(--font-body);
+  --rz-font-mono: var(--font-mono);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -444,72 +461,6 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .ins-bar .btn { margin-left: auto; flex: none; }
 .ins-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 16px 28px; user-select: text; }
 .panel.has-inspector .float.zoom { right: calc(min(var(--ins-w, 560px), max(calc(100% - 120px), 360px), 100%) + 12px); }
-.d-head { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
-.d-name { margin: 0; font-family: var(--font-mono); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.d-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.d-desc { margin: 0; font-size: 13px; color: var(--muted); }
-.d-meta { margin: 0; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.d-section { padding-top: 16px; }
-.d-section h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
-.d-section ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
-.d-key { font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
-.k-ix { color: var(--muted); }
-.k-pk { color: var(--k-pk); }
-.k-uk { color: var(--k-uk); }
-.k-fk { color: var(--k-fk); }
-.d-col-name { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; text-align: left; cursor: pointer; }
-@media (hover: hover) and (pointer: fine) { .d-col-name:hover { text-decoration: underline; text-underline-offset: 3px; } }
-.d-type { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-.d-chip { display: inline-block; padding: 0 6px; border: 1px solid var(--rule); border-radius: 4px; background: var(--code); font-family: var(--font-mono); font-size: 10.5px; line-height: 18px; color: var(--muted); }
-.d-note { padding: 4px 6px; font-size: 12.5px; line-height: 1.6; }
-.d-table code, .d-pop code { font-family: var(--font-mono); font-size: 12px; }
-/* the panel's tables, one style for columns, indexes and references: a quiet header row, rules
-   between rows, every cell reading from its top line. A narrow panel scrolls them sideways */
-.t-wrap { overflow-x: auto; margin: 0 -6px; padding: 0 6px; }
-.t-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.t-cols { min-width: 470px; }
-.t-table th { padding: 0 8px 6px; border-bottom: 1px solid var(--rule); text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--faint); white-space: nowrap; }
-.t-table td { padding: 7px 8px; border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); vertical-align: top; }
-.t-table tr:last-child td { border-bottom: 0; }
-.t-table :is(th, td):first-child { padding-left: 6px; }
-.t-table :is(th, td):last-child { padding-right: 6px; }
-.t-key { width: 26px; }
-.t-key .d-key { line-height: 18px; }
-.t-name { font-family: var(--font-mono); white-space: nowrap; }
-.t-none { font-family: var(--font-body); font-size: 12px; color: var(--faint); }
-.t-type { font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
-.t-null { font-family: var(--font-mono); font-size: 11px; line-height: 18px; color: var(--faint); white-space: nowrap; }
-.t-null.is-null { color: var(--k-pk); font-weight: 600; }
-.t-desc { min-width: 120px; color: var(--muted); }
-.t-desc-text { display: block; }
-.t-note { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
-.t-note i { padding: 0 4px; font-style: normal; color: var(--faint); }
-.t-lab { font-family: var(--font-body); color: var(--faint); }
-.t-rel { font-size: 12px; color: var(--faint); }
-/* the service panel: what a service owns, what it depends on and what uses it. Its facts sit in the
-   header; references across its edge are grouped under a row for each service on the other side */
-.d-head .d-facts { margin: 2px 0 0; }
-.t-svc tbody tr, .s-refs tbody tr:not(.s-group) { cursor: pointer; }
-@media (hover: hover) and (pointer: fine) { :is(.t-svc, .s-refs) tbody tr:not(.s-group):hover td { background: var(--active-line); } }
-.t-svc .d-chip { margin-left: 6px; vertical-align: 1px; }
-.t-table .t-num { text-align: right; font-variant-numeric: tabular-nums; }
-.s-refs { table-layout: fixed; min-width: 470px; }
-.s-refs .c-from { width: 40%; }
-.s-refs .c-arrow { width: 30px; }
-.s-refs .c-rel { width: 104px; }
-.s-refs td.t-name { white-space: normal; overflow-wrap: anywhere; }
-.t-table .t-arrow { padding-inline: 0; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--faint); }
-.t-table .t-arrow.is-warn { color: var(--warn); font-weight: 600; }
-.t-table .s-group th { padding: 9px 6px 7px; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--rule) 32%, transparent); font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--ink); white-space: normal; }
-.s-refs tbody + tbody .s-group th { border-top: 10px solid var(--panel); }
-.s-desc { margin-left: 8px; color: var(--muted); }
-.s-count { float: right; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
-.t-cols tbody tr { cursor: pointer; }
-@media (hover: hover) and (pointer: fine) { .t-cols tbody tr:hover td { background: var(--active-line); } }
-/* the column picked on the diagram, in the table */
-.t-cols tbody tr.is-on td { background: var(--accent-soft); }
-.d-link { padding: 0; border: 0; background: none; font-family: var(--font-mono); font-size: 12px; color: var(--accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; }
-@media (hover: hover) and (pointer: fine) { .d-link:hover { text-decoration-color: currentColor; } }
 
 /* the column popover: a small card under its row, with text that can be selected and copied */
 .pop {
@@ -537,12 +488,6 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 @starting-style {
   .pop { opacity: 0; scale: 0.97; }
 }
-.d-pop-head { display: flex; align-items: baseline; gap: 8px; }
-.d-pop-name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-.d-pop .d-desc { margin: 4px 0 0; }
-.d-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 8px 0 0; }
-.d-facts dt { font-size: 11.5px; color: var(--faint); }
-.d-facts dd { margin: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
 .menu button {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
@@ -578,30 +523,10 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .sw { width: 14px; height: 10px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.4); }
 .panel { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .panel[hidden] { display: none; }
-.viewport {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  background-color: var(--stage);
-  color: var(--ink);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-/* the still drawing's dot grid (without WebGL); the live canvas hides its own */
-.viewport:not(.grid) .rz-grid { display: none; }
+/* the canvas itself is styled by viewer/viewer.css (.rz-viewer); here it only takes the room left */
+.viewport { flex: 1; min-height: 0; }
 .viewport.is-stale .stage-glass { opacity: 0.35; }
-.viewport.is-panning { cursor: grabbing; }
-.content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.content svg { display: block; }
-.content svg :is(.rz-t, .rz-svc-head) { cursor: pointer; }
-.viewport.is-panning .content svg :is(.rz-t, .rz-svc-head) { cursor: grabbing; }
-/* rows and table names answer the pointer faintly, so they read as clickable; clicking does the rest */
-.content svg .rz-hit { transition: fill-opacity 120ms ease; }
-@media (hover: hover) and (pointer: fine) { .content svg :is(.rz-c, .rz-head, .rz-svc-head):hover > .rz-hit { fill-opacity: 0.07; } }
-.viewport.is-panning .content svg .rz-hit { fill-opacity: 0; }
-.viewport.is-stale .content { opacity: 0.35; }
+.viewport.is-stale .rz-content { opacity: 0.35; }
 
 /* floating controls over the canvas */
 .float {
@@ -679,12 +604,6 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .float button[aria-pressed="true"] .switch { background: var(--ink); border-color: var(--ink); }
 .float button[aria-pressed="true"] .switch::after { transform: translateX(10px); background: var(--panel); }
 
-/* focus: keep what is connected, fade the rest. The live canvas fades the glass under a faded table;
-   the still drawing fades its shadow (rz-s) with the card */
-.content svg :is(.rz-t, .rz-r, .rz-s) { transition: opacity 150ms ease; }
-.content svg.is-focus :is(.rz-t, .rz-r, .rz-s):not(.is-on) { opacity: 0.14; }
-.content svg .rz-c.is-on .rz-hit { fill: var(--accent); fill-opacity: 0.18; }
-
 .notice {
   position: absolute;
   left: 50%;
@@ -741,7 +660,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .panel[data-room="tight"] .float.stages { display: none; }
 /* reduced motion: fewer and gentler, not none. Things still fade; nothing slides, grows or presses */
 @media (prefers-reduced-motion: reduce) {
-  .content svg :is(.rz-t, .rz-r, .rz-s), .switch, .switch::after, .work.is-moving { transition: none; }
+  .switch, .switch::after, .work.is-moving { transition: none; }
   .btn:active, .float button:active, .menu button:active, .find-btn:active { transform: none; }
   .star-count { animation: none; }
   .menu, .inspector, .toast, .pop, .palette { transition: opacity 150ms ease; }
@@ -789,6 +708,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   #workspace-open, #edit-copy { font-size: 12px; padding: 0 8px; }
 }
 </style>
+<!--VIEWER-CSS-->
 </head>
 <body>
 <header class="bar">
@@ -885,8 +805,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
     </div>
     <div id="view-summary" class="sql-bar" hidden><span class="sql-text" id="view-summary-text"></span><button type="button" class="btn" id="view-reset">Reset view</button></div>
     <div class="panel" id="panel-diagram">
-      <div class="viewport grid" id="viewport">
-        <div class="content" id="content"></div>
+      <div class="viewport rz-viewer is-grid" id="viewport">
+        <div class="rz-content" id="content"></div>
         <div class="float layout-status" id="layout-status" role="status" hidden><span id="layout-message"></span><button type="button" id="layout-cancel">Cancel</button><button type="button" id="layout-retry" hidden>Retry</button></div>
         <p class="notice empty" id="empty" hidden>Add a <code>table</code>, or paste SQL, to see it here.</p>
         <p class="notice stale" id="stale" hidden>Showing the last valid diagram. Fix the errors to update it.</p>
@@ -933,7 +853,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
         <p class="pal-empty" id="palette-empty" hidden>No table or column matches</p>
         <div class="pal-foot"><span><span class="kbd">Up</span> <span class="kbd">Down</span> move</span><span><span class="kbd">Enter</span> go to the table</span><span><span class="kbd">Shift Enter</span> related tables only</span></div>
       </div>
-      <div class="pop" id="pop" role="dialog" aria-label="Column details" hidden></div>
+      <div class="pop rz-details" id="pop" role="dialog" aria-label="Column details" hidden></div>
       <aside class="inspector" id="inspector" aria-label="Table details" hidden>
         <div class="ins-resize" id="inspector-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" title="Drag to resize" tabindex="0"></div>
         <div class="ins-bar">
@@ -945,7 +865,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
           <button type="button" class="btn ins-sql" id="sql-download" title="Download the SQL as a file" hidden>Download</button>
           <button type="button" class="btn ghost icon" id="inspector-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
-        <div class="ins-body" id="inspector-body"></div>
+        <div class="ins-body rz-details" id="inspector-body"></div>
       </aside>
     </div>
   </section>

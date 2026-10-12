@@ -1,4 +1,4 @@
-import { LayoutCache } from "./layout-cache.ts";
+import { LayoutCache } from "../viewer/layout-cache.ts";
 import ELK from "elkjs/lib/elk-api.js";
 import { toSvg, type ElkLike, type Model, type SvgOptions, type SvgResult } from "../src/index.ts";
 declare const __RESIN_WORKER__: string;

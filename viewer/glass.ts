@@ -418,6 +418,8 @@ export class LiveGlass {
   private frame = 0;
   private skip = false;
   private paused = false;
+  private readonly abort = new AbortController();
+  private readonly resizes = new ResizeObserver(() => this.resize());
 
   constructor(viewport: HTMLElement, content: HTMLElement) {
     this.viewport = viewport;
@@ -429,11 +431,12 @@ export class LiveGlass {
     if (!gl) throw new Error("WebGL2 is not available");
     this.gl = gl;
     this.init();
+    const signal = this.abort.signal;
     this.canvas.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
       cancelAnimationFrame(this.frame);
       this.frame = 0;
-    });
+    }, { signal });
     this.canvas.addEventListener("webglcontextrestored", () => {
       this.init();
       // Restoring creates new textures: allocate them even when the viewport size did not change
@@ -441,7 +444,7 @@ export class LiveGlass {
       this.upload(true);
       this.last = 0;
       this.kick();
-    });
+    }, { signal });
     this.reduce.addEventListener("change", () => {
       if (this.reduce.matches) {
         this.tween = null;
@@ -452,10 +455,10 @@ export class LiveGlass {
       this.last = 0;
       this.skip = false;
       this.kick();
-    });
-    viewport.addEventListener("pointermove", (e) => this.point(e), { passive: true });
-    viewport.addEventListener("pointerleave", () => this.rest());
-    new ResizeObserver(() => this.resize()).observe(viewport);
+    }, { signal });
+    viewport.addEventListener("pointermove", (e) => this.point(e), { passive: true, signal });
+    viewport.addEventListener("pointerleave", () => this.rest(), { signal });
+    this.resizes.observe(viewport);
     this.resize();
     this.pos = { ...this.target };
   }
@@ -501,6 +504,17 @@ export class LiveGlass {
   refresh(instant = false): void {
     this.upload(instant);
     this.kick();
+  }
+
+  /** Stop drawing for good and give the GPU context back, for a page that removes the canvas */
+  destroy(): void {
+    this.abort.abort();
+    this.resizes.disconnect();
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.paused = true;
+    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    this.canvas.remove();
   }
 
   /** Stop drawing while the canvas is out of sight */

@@ -27,6 +27,8 @@ export class PanZoom {
   private press: { x: number; y: number; target: Element; dragged: boolean } | null = null;
   /** Still fitted: keep fitting when the viewport resizes, until the user pans or zooms */
   private auto = true;
+  private readonly abort = new AbortController();
+  private readonly resizes: ResizeObserver;
 
   constructor(
     viewport: HTMLElement,
@@ -38,18 +40,26 @@ export class PanZoom {
     this.content = content;
     this.onChange = onChange;
     this.onTap = onTap;
-    viewport.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
-    viewport.addEventListener("pointerdown", (e) => this.down(e));
-    viewport.addEventListener("pointermove", (e) => this.move(e));
-    viewport.addEventListener("pointerup", (e) => this.up(e));
-    viewport.addEventListener("pointercancel", (e) => this.up(e, true));
-    viewport.addEventListener("lostpointercapture", (e) => this.up(e, true));
+    const signal = this.abort.signal;
+    viewport.addEventListener("wheel", (e) => this.wheel(e), { passive: false, signal });
+    viewport.addEventListener("pointerdown", (e) => this.down(e), { signal });
+    viewport.addEventListener("pointermove", (e) => this.move(e), { signal });
+    viewport.addEventListener("pointerup", (e) => this.up(e), { signal });
+    viewport.addEventListener("pointercancel", (e) => this.up(e, true), { signal });
+    viewport.addEventListener("lostpointercapture", (e) => this.up(e, true), { signal });
     viewport.addEventListener("dblclick", (e) => {
       if (!isControl(e.target)) this.fit(true);
-    });
-    new ResizeObserver(() => {
+    }, { signal });
+    this.resizes = new ResizeObserver(() => {
       if (this.auto) this.fit();
-    }).observe(viewport);
+    });
+    this.resizes.observe(viewport);
+  }
+
+  /** Stop listening to the viewport, for a page that removes the view */
+  destroy(): void {
+    this.abort.abort();
+    this.resizes.disconnect();
   }
 
   /** The natural size of the current drawing */

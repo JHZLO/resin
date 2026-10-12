@@ -1,6 +1,6 @@
 # Library
 
-resin is a library first: the playground and the command line are both small programs around it. It is not on npm yet, so import it from a clone; Node 22.18 or newer runs its TypeScript sources directly.
+resin is a library first: the playground and the command line are both small programs around it. It is not on npm yet, so import it from a clone; Node 22.18 or newer runs its TypeScript sources directly. A page that shows diagrams the way the playground does (pan, zoom, focus, the live glass and the table panel) uses `resin/viewer`; see [Embedding the viewer](embedding.md).
 
 ```ts
 import { readFile } from "node:fs/promises";

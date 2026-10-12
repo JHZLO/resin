@@ -38,7 +38,7 @@ const NAV = [
       ["names", "Names and comments"],
     ],
   ],
-  ["Outputs", [["svg", "SVG"], ["generating-sql", "Generating SQL"], ["diff", "Comparing versions"], ["formatting", "Formatting"], ["cli", "Command line"], ["library", "Library"]]],
+  ["Outputs", [["svg", "SVG"], ["generating-sql", "Generating SQL"], ["diff", "Comparing versions"], ["formatting", "Formatting"], ["cli", "Command line"], ["library", "Library"], ["embedding", "Embedding the viewer"]]],
   ["Reference", [["grammar", "Grammar"], ["diagnostics", "Diagnostics"], ["lint", "Lint"], ["migrating", "Migrating from v0.1"]]],
 ];
 const PAGES = NAV.flatMap(([group, pages]) => pages.map(([slug, title]) => ({ group, slug, title })));
@@ -386,8 +386,12 @@ async function renderPlayground() {
   const script = result.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
   const template = await readFile("playground/index.html", "utf8");
   if (!template.includes("<!--APP-->")) throw new Error("playground/index.html has no <!--APP--> placeholder");
+  if (!template.includes("<!--VIEWER-CSS-->")) throw new Error("playground/index.html has no <!--VIEWER-CSS--> placeholder");
+  // The canvas and the details are styled by the same sheet a page embedding resin/viewer imports
+  const viewerCss = await readFile("viewer/viewer.css", "utf8");
   // The playground stays one self-contained page: its icon is the mark as a data URL
   const html = template
+    .replace("<!--VIEWER-CSS-->", () => `<style>\n${viewerCss}</style>`)
     .replace("<!--APP-->", () => `<script>${script}</script>`)
     .replace("%FAVICON%", "data:image/svg+xml," + encodeURIComponent(MARK_FILE))
     .replace("%MARK%", () => MARK);

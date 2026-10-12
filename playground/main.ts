@@ -10,13 +10,12 @@ import { AnalysisClient } from "./analysis-client.ts";
 import { RenderClient } from "./render-client.ts";
 import { createWorkspace, saveFile, fileName } from "./workspace.ts";
 import { relatedModel, relationPath, serviceModel, subset } from "./schema-tools.ts";
-import { glassOf, serviceCardId, stageOf } from "../src/svg.ts";
-import { columnDetails, serviceDetails, sqlDetails, tableDetails } from "./details.ts";
+import { columnDetails, serviceDetails, sqlDetails, tableDetails } from "../viewer/details.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
-import { LiveGlass } from "./glass.ts";
 import { type SharedState, decode, encode } from "./share.ts";
 import { showStars } from "./stars.ts";
-import { type Focus, MOVE_MS, PanZoom, createFocus } from "./view.ts";
+import { Canvas, type MountedDrawing } from "../viewer/canvas.ts";
+import { MOVE_MS } from "../viewer/view.ts";
 
 const EXAMPLES: Record<string, string> = {
   order: orderExample,
@@ -40,11 +39,10 @@ const documents = new Documents(storage, state);
 const analyzer = new AnalysisClient();
 const renderer = new RenderClient();
 let mountedKey = "";
-type MountedDiagram = Pick<SvgResult, "width" | "height" | "background" | "boxes"> & { element: SVGSVGElement | null; nodes: number };
-let currentDiagram: MountedDiagram | null = null;
+let currentDiagram: MountedDrawing | null = null;
 let mountedModelKey = 0;
-const mountedViews = new Map<string, MountedDiagram>();
-function rememberView(key: string, value: MountedDiagram): void {
+const mountedViews = new Map<string, MountedDrawing>();
+function rememberView(key: string, value: MountedDrawing): void {
   if (value.nodes > 100_000) return;
   mountedViews.delete(key); mountedViews.set(key, value);
   let nodes = [...mountedViews.values()].reduce((sum, entry) => sum + entry.nodes, 0);
@@ -59,12 +57,9 @@ const exporter = new RenderClient();
 let lastModel: Model | null = null;
 /** What the canvas draws: the whole model, or a table and its neighbors */
 let drawnModel: Model | null = null;
-let focus: Focus | null = null;
-let tableElements = new Map<string, SVGGElement>();
 let popFrame = 0;
 let renderSeq = 0;
 let fitNext = true;
-let lastBoxes: { table: string; x: number; y: number; w: number; h: number }[] = [];
 let stageName: StageName = "aurora";
 try {
   const saved = localStorage.getItem(STAGE_STORE);
@@ -224,53 +219,32 @@ byId("lint-count").addEventListener("click", () => {
 // ---- rendering ----
 
 const viewport = byId("viewport");
-const content = byId("content");
 const zoomLevel = byId("zoom-level");
 
-// The glass and its moving stage are painted with WebGL under the SVG. Without WebGL2 the SVG paints a
-// still version itself
-let glass: LiveGlass | null = null;
-if (LiveGlass.available()) {
-  try {
-    glass = new LiveGlass(viewport, content);
-  } catch (e) {
-    console.warn("resin: the live canvas is off, showing the still drawing", e);
-    viewport.querySelector(".stage-glass")?.remove();
-  }
-}
-
-const panzoom = new PanZoom(
-  viewport,
-  content,
-  (animate) => {
-    zoomLevel.textContent = `${Math.round(panzoom.scale * 100)}%`;
-    glass?.setView(panzoom.scale, panzoom.x, panzoom.y, animate);
+// The canvas: the live glass painted with WebGL under the SVG (without WebGL2 the SVG paints a still
+// version itself), pan and zoom, and focus. A press goes to the panel or the popover
+const canvas = new Canvas(viewport, {
+  onView: (animate) => {
+    zoomLevel.textContent = `${Math.round(canvas.view.scale * 100)}%`;
     // The popover rides along with its row; after an animated move, place it again once settled
     if (!popFrame) popFrame = requestAnimationFrame(() => { popFrame = 0; placePop(); });
     if (animate) window.setTimeout(placePop, MOVE_MS + 20);
   },
-  (target, x, y) => {
-    const card = target.closest<SVGGElement>(".rz-t");
-    const table = card?.dataset.t ?? null;
-    const row = target.closest<SVGGElement>(".rz-c");
-    const column = row?.dataset.c ?? null;
+  onTap: (hit) => {
     // A folded service's card: its header is the service, its rows are tables. An area's label is the service too
-    const service = card ? card.dataset.svc ?? null : target.closest(".rz-svc-head")?.closest<SVGGElement>(".rz-svc")?.dataset.svc ?? null;
-    if (service && row) pickTable(row.dataset.table!);
-    else if (service && (!card || target.closest(".rz-head"))) pickService(service);
-    else if (table && column) pickColumn(table, column);
-    else if (table && target.closest(".rz-head")) pickTable(table);
-    else if (table) {
+    if (hit.service && hit.rowTable) pickTable(hit.rowTable);
+    else if (hit.service && hit.header) pickService(hit.service);
+    else if (hit.table && hit.column) pickColumn(hit.table, hit.column);
+    else if (hit.table && hit.header) pickTable(hit.table);
+    else if (hit.table) {
       closePop();
-      focus?.table(table);
+      canvas.focus?.table(hit.table);
     } else {
       closePop();
       settleFocus();
     }
-    glass?.refresh();
-    glass?.ripple(x, y);
   },
-);
+});
 
 // ---- details: the table panel and the column popover ----
 
@@ -285,45 +259,20 @@ let popped: { table: string; column: string } | null = null;
 let inspectorReturn: HTMLElement | null = null;
 let navigationSeq = 0;
 
-const rowEl = (table: string, column: string): SVGGElement | null =>
-  tableElements.get(table)?.querySelector<SVGGElement>(`.rz-c[data-c="${CSS.escape(column)}"]`) ?? null;
-
-/** A table the drawing shows as a row of a folded service: that card and row */
-function foldedRow(table: string): { card: string; row: string } | null {
-  const row = content.querySelector<SVGGElement>(`.rz-c[data-table="${CSS.escape(table)}"]`);
-  const card = row?.closest<SVGGElement>(".rz-t")?.dataset.t;
-  return row && card ? { card, row: row.dataset.c! } : null;
-}
-
-/** Focus a table, or its row when its service is folded */
-function focusTable(name: string): void {
-  const folded = foldedRow(name);
-  if (folded) focus?.row(folded.card, folded.row);
-  else focus?.table(name);
-}
-
-/** Focus a service where it is one card; drawn as an area, it has no single thing to keep */
-function focusService(name: string): void {
-  if (tableElements.has(serviceCardId(name))) focus?.table(serviceCardId(name));
-  else focus?.clear();
-}
+const rowEl = (table: string, column: string): SVGGElement | null => canvas.row(table, column);
+/** What the side panel covers of the canvas */
+const covered = (): number => (inspector.hidden ? 0 : inspector.offsetWidth);
 
 /** With nothing picked, the table or service in the side panel keeps the focus; otherwise the focus clears */
 function settleFocus(): void {
-  if (inspected && !inspector.hidden) focusTable(inspected);
-  else if (inspectedService && !inspector.hidden) focusService(inspectedService);
-  else focus?.clear();
+  if (inspected && !inspector.hidden) canvas.focusTable(inspected);
+  else if (inspectedService && !inspector.hidden) canvas.focusService(inspectedService);
+  else canvas.focus?.clear();
 }
 
 /** Bring a table (or the card its service is folded into) to the middle of what the side panel leaves visible */
 function reveal(name: string, onlyIfCovered = false, animate = true): void {
-  const drawn = foldedRow(name)?.card ?? name;
-  const b = lastBoxes.find((x) => x.table === drawn);
-  if (!b) return;
-  const covered = inspector.hidden ? 0 : inspector.offsetWidth;
-  const right = panzoom.x + (b.x + b.w) * panzoom.scale;
-  if (onlyIfCovered && right <= viewport.clientWidth - covered - 16) return;
-  panzoom.centerOn(b.x + b.w / 2, b.y + b.h / 2, covered, animate);
+  canvas.reveal(name, covered(), onlyIfCovered, animate);
 }
 
 /** Open a table in the side panel, focus it, and bring it into view */
@@ -342,8 +291,8 @@ async function openTable(name: string, animate = true): Promise<void> {
   if (seq !== navigationSeq) return;
   closePop();
   showInspector(name);
-  focusTable(name);
-  glass?.refresh();
+  canvas.focusTable(name);
+  canvas.refresh();
   reveal(name, false, animate);
   if (!animate) byId("inspector-close").focus();
 }
@@ -352,20 +301,19 @@ async function openTable(name: string, animate = true): Promise<void> {
 function pickTable(name: string): void {
   closePop();
   showInspector(name);
-  focusTable(name);
+  canvas.focusTable(name);
   // The panel opens over the canvas: keep the table that was clicked in view
   reveal(name, true);
 }
 
 /** Where a service is drawn: its folded card, or its area's label */
-const serviceEl = (name: string): Element | null =>
-  content.querySelector(`.rz-t[data-svc="${CSS.escape(name)}"]`) ?? content.querySelector(`.rz-svc[data-svc="${CSS.escape(name)}"] .rz-svc-head`);
+const serviceEl = (name: string): Element | null => canvas.serviceElement(name);
 
 /** A service's card header or area label on the diagram: the service panel */
 function pickService(name: string): void {
   closePop();
   showService(name);
-  focusService(name);
+  canvas.focusService(name);
   revealEl(serviceEl(name));
 }
 
@@ -374,8 +322,8 @@ function openService(name: string, animate = true): void {
   ++navigationSeq;
   closePop();
   showService(name);
-  focusService(name);
-  glass?.refresh();
+  canvas.focusService(name);
+  canvas.refresh();
   revealEl(serviceEl(name), animate);
   if (!animate) byId("inspector-close").focus();
 }
@@ -383,13 +331,13 @@ function openService(name: string, animate = true): void {
 /** A reference picked in the service panel: its column where the drawing has it, otherwise the row of
  *  the folded service its table is in */
 function pickReference(table: string, column: string, animate = true): void {
-  const folded = rowEl(table, column) ? null : foldedRow(table);
+  const folded = rowEl(table, column) ? null : canvas.foldedRow(table);
   if (!folded) return void pickColumn(table, column, animate);
   ++navigationSeq;
   closePop();
-  focus?.row(folded.card, folded.row);
+  canvas.focus?.row(folded.card, folded.row);
   revealEl(rowEl(folded.card, folded.row), animate);
-  glass?.refresh();
+  canvas.refresh();
 }
 
 /** A column on the diagram (or in the panel): shows its popover, or closes it when it is already open */
@@ -403,14 +351,14 @@ async function pickColumn(table: string, column: string, animate = true): Promis
   // The panel always lists every column. Selecting a folded row first makes it visible, and a table
   // folded into a service around one service's view leaves that view
   if (!rowEl(table, column) && lastModel?.tables.find((t) => t.name === table)?.columns.some((c) => c.name === column)) {
-    if (state.service && foldedRow(table)) state.service = null;
+    if (state.service && canvas.foldedRow(table)) state.service = null;
     await setView({ columns: "all" });
     if (seq !== navigationSeq) return;
   }
-  focus?.row(table, column);
+  canvas.focus?.row(table, column);
   showPop(table, column);
   if (!pop.hidden) revealRow(table, column, animate);
-  glass?.refresh();
+  canvas.refresh();
 }
 
 /** Where focus goes back to when the panel closes: what opened it */
@@ -574,14 +522,7 @@ function revealRow(table: string, column: string, animate = true): void {
 
 /** Center a part of the drawing in what the side panel leaves visible, unless it is already in plain view */
 function revealEl(row: Element | null, animate = true): void {
-  if (!row) return;
-  const area = viewport.getBoundingClientRect();
-  const r = row.getBoundingClientRect();
-  const covered = inspector.hidden ? 0 : inspector.offsetWidth;
-  if (r.left >= area.left + 8 && r.right <= area.right - covered - 8 && r.top >= area.top + 8 && r.bottom <= area.bottom - 8) return;
-  const cx = (r.left + r.width / 2 - area.left - panzoom.x) / panzoom.scale;
-  const cy = (r.top + r.height / 2 - area.top - panzoom.y) / panzoom.scale;
-  panzoom.centerOn(cx, cy, covered, animate);
+  canvas.revealElement(row, covered(), animate);
 }
 
 // ---- the side panel's width, and the canvas it leaves ----
@@ -700,8 +641,8 @@ function placePop(): void {
 
 byId("inspector-close").addEventListener("click", () => {
   closeInspector();
-  focus?.clear();
-  glass?.refresh();
+  canvas.focus?.clear();
+  canvas.refresh();
 });
 
 const isDark = (): boolean => {
@@ -765,9 +706,8 @@ async function render(): Promise<void> {
     editor.showDiagnostics([...result.diagnostics, ...result.findings]);
     showProblems(result.diagnostics, result.findings);
     if (!result.model) { layoutStatus(""); setStale(true); return; }
-    const look = canvasLook();
-    // All live backgrounds use the same SVG ink for a given light/dark mode.
-    const svgLook = glass ? `aurora-${look.endsWith("dark") ? "dark" : "light"}` as SvgLook : look;
+    canvas.setLook(stageName, isDark());
+    const ink = canvas.drawOptions();
     const full = result.model;
     showCompare(result.changes);
     // The related view needs its table; when the table is renamed or removed, every table comes back
@@ -793,11 +733,10 @@ async function render(): Promise<void> {
       save();
       scheduleHash();
     }
-    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.related, state.service, state.view, svgLook, glass === null]);
-    glass?.setLook(stageOf(look), glassOf(look));
+    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.related, state.service, state.view, ink.look, ink.stage]);
     if (key === mountedKey) {
       layoutStatus(""); setStale(false);
-      if (fitNext) { panzoom.fit(); fitNext = false; }
+      if (fitNext) { canvas.view.fit(); fitNext = false; }
       return;
     }
     layoutStatus("Laying out the diagram…", true);
@@ -807,48 +746,32 @@ async function render(): Promise<void> {
     const rendered = restored ?? await renderer.render(shown, {
       ...drawing(full, state),
       audit: state.audit,
-      look: svgLook,
-      stage: glass === null,
+      ...ink,
       edges: state.edges,
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
     layoutStatus("");
-    const { width, height, background, boxes } = rendered;
-    viewport.style.backgroundColor = background ?? "";
-    glass?.setLook(stageOf(look), glassOf(look));
     lastModel = full;
     drawnModel = shown;
     const empty = shown.tables.length === 0;
     byId("empty").hidden = !empty;
     byId("empty").textContent = full.tables.length ? "No tables match this view. Use Reset view to see all tables." : "Add a table, or paste SQL, to see it here.";
-    focus?.clear();
     mountedViews.delete(key);
     if (currentDiagram && mountedModelKey === result.modelKey) rememberView(mountedKey, currentDiagram);
-    if (restored) content.replaceChildren(...(restored.element ? [restored.element] : []));
-    else content.innerHTML = empty ? "" : (rendered as SvgResult).svg;
+    currentDiagram = canvas.show(restored ?? (empty ? { ...(rendered as SvgResult), svg: "" } : rendered), fitNext);
+    fitNext = false;
     mountedKey = key;
     mountedModelKey = result.modelKey;
-    tableElements = new Map([...content.querySelectorAll<SVGGElement>(".rz-t")].map(table => [table.dataset.t!, table]));
-    panzoom.setSize(width, height);
-    if (fitNext) {
-      panzoom.fit();
-      fitNext = false;
-    }
-    const drawn = content.querySelector("svg");
-    // Rows open a popover on click; their native tooltips would only get in its way
-    if (!restored) for (const title of content.querySelectorAll(".rz-c > title")) title.remove();
-    currentDiagram = restored ?? { width, height, background, boxes, element: drawn, nodes: content.querySelectorAll("*").length };
-    focus = drawn ? createFocus(drawn) : null;
-    lastBoxes = empty ? [] : boxes;
     // Keep what was open, as long as it still exists
     if (inspected) showInspector(inspected);
     else if (inspectedService) showService(inspectedService);
     else if (sqlOpen) showSql();
     if (popped) showPop(popped.table, popped.column);
-    if (popped) focus?.row(popped.table, popped.column);
+    if (popped) canvas.focus?.row(popped.table, popped.column);
     else settleFocus();
-    glass?.setBoxes(lastBoxes, drawn);
+    // The glass under the cards takes the focus just restored at once
+    canvas.refresh(true);
     // One service's view counts the tables it draws in full, not the ones folded around it
     const inFull = (t: Model["tables"][number]) => !state.service || !t.service || t.service === state.service;
     const counted = (m: Model) => m.tables.filter((t) => (state.audit === "expand" || t.origin !== "audit") && (m === full || inFull(t))).length;
@@ -889,8 +812,7 @@ function syncControls(): void {
   byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]")) b.setAttribute("aria-pressed", String(b.dataset.edges === state.edges));
-  viewport.classList.toggle("grid", state.grid);
-  glass?.setGrid(state.grid);
+  canvas.setGrid(state.grid);
   const select = byId<HTMLSelectElement>("example");
   const match = Object.entries(EXAMPLES).find(([, text]) => text === state.code);
   select.value = match ? match[0] : "";
@@ -990,7 +912,7 @@ byId("service-sql").addEventListener("click", () => {
   if (!inspectedService) return;
   sqlService = inspectedService;
   closePop();
-  focus?.clear();
+  canvas.focus?.clear();
   showSql();
   inspectorBody.querySelector<HTMLElement>(`[data-dialect="${sqlDialect}"]`)?.focus();
 });
@@ -1112,8 +1034,8 @@ async function choose(table: string, related: boolean, animate = false): Promise
   if (related) {
     await setRelated({ table, steps: state.related?.steps ?? 1 });
     showInspector(table);
-    focusTable(table);
-    glass?.refresh();
+    canvas.focusTable(table);
+    canvas.refresh();
   } else await openTable(table, animate);
   inspectorReturn = returnTo;
   byId("inspector-close").focus();
@@ -1190,17 +1112,17 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-stage]"))
     render();
   });
 syncStage();
-byId("zoom-in").addEventListener("click", (e) => panzoom.zoomBy(1.25, undefined, undefined, e.detail !== 0));
-byId("zoom-out").addEventListener("click", (e) => panzoom.zoomBy(0.8, undefined, undefined, e.detail !== 0));
-byId("zoom-level").addEventListener("click", (e) => panzoom.actualSize(e.detail !== 0));
-byId("zoom-fit").addEventListener("click", (e) => panzoom.fit(e.detail !== 0));
+byId("zoom-in").addEventListener("click", (e) => canvas.view.zoomBy(1.25, undefined, undefined, e.detail !== 0));
+byId("zoom-out").addEventListener("click", (e) => canvas.view.zoomBy(0.8, undefined, undefined, e.detail !== 0));
+byId("zoom-level").addEventListener("click", (e) => canvas.view.actualSize(e.detail !== 0));
+byId("zoom-fit").addEventListener("click", (e) => canvas.view.fit(e.detail !== 0));
 /** Keyboard actions never animate: the change lands at once, glass included */
 function instantly(change: () => void): void {
   diagramPanel.classList.add("is-instant");
   change();
   void diagramPanel.offsetWidth; // apply the change while transitions are off
   diagramPanel.classList.remove("is-instant");
-  glass?.refresh(true);
+  canvas.refresh(true);
 }
 
 // Escape closes the innermost thing that is open: the popover, then the side panel
@@ -1289,7 +1211,7 @@ for (const item of variantItems)
 byId("download-sql").addEventListener("click", () => {
   setMenu(false);
   closePop();
-  focus?.clear();
+  canvas.focus?.clear();
   if (inspector.hidden) inspectorReturn = downloadButton;
   showSql();
   inspectorBody.querySelector<HTMLElement>(`[data-dialect="${sqlDialect}"]`)?.focus();

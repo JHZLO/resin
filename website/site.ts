@@ -2,7 +2,7 @@
 // theme (the same choice as the playground's), the header that turns to glass on scroll, and in the
 // docs the example that follows the reading, search, and the menu on small screens.
 
-import { LiveGlass } from "../playground/glass.ts";
+import { LiveGlass } from "../viewer/glass.ts";
 import { showStars } from "../playground/stars.ts";
 import { glassOf, stageOf } from "../src/svg.ts";
 import { demoTheme } from "./demo.ts";
