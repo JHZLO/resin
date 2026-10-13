@@ -6,6 +6,8 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
 ### Added
 
 - Top to bottom drawings (`direction: "down"`, `--down`): a referenced table above the tables that
