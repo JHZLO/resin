@@ -6,6 +6,8 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-13
+
 ### Added
 
 - Choose the parts of a row the cards show: `hide` in `toSvg` (`keys`, `tags`, `descriptions`,
