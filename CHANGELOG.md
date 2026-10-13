@@ -6,7 +6,10 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
-The first public version of the language, grammar v0.2.
+## [0.2.0] - 2026-10-13
+
+The first public version of the language, grammar v0.2, and the first release on npm as
+`@jhzlo/resin`.
 
 ### Performance
 
@@ -34,7 +37,7 @@ The first public version of the language, grammar v0.2.
 
 ### Added
 
-- `resin/viewer` and `resin/viewer.css`: the playground's canvas (pan, zoom, focus, live glass) and its table, service and column panels, for a page of your own. The playground is built on it.
+- `@jhzlo/resin/viewer` and `@jhzlo/resin/viewer.css`: the playground's canvas (pan, zoom, focus, live glass) and its table, service and column panels, for a page of your own. The playground is built on it.
 - `fromSchema(schema)`: write a schema held as data (what a database introspection reports) as resin, by the same rules as `fromSql`, with logical references and encrypted columns.
 - Named local documents, `.erd` and `.sql` files, recovery snapshots, and visible storage failure handling.
 - SQL import review with original source, complete notes, service assignment and updates that retain annotations.

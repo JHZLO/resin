@@ -1,5 +1,5 @@
 {
-  "name": "resin",
+  "name": "@jhzlo/resin",
   "version": "0.2.0",
   "description": "A small language for entity-relationship diagrams, drawn as SVG.",
   "keywords": [
@@ -21,12 +21,33 @@
   },
   "license": "MIT",
   "author": "JHZLO (https://github.com/JHZLO)",
-  "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./viewer": "./viewer/index.ts",
-    "./viewer.css": "./viewer/viewer.css"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./viewer": {
+      "types": "./dist/viewer/index.d.ts",
+      "default": "./dist/viewer/index.js"
+    },
+    "./viewer.css": {
+      "types": "./dist/viewer/viewer.css.d.ts",
+      "default": "./dist/viewer/viewer.css"
+    }
+  },
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run",
@@ -35,7 +56,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p viewer && tsc --noEmit -p playground && tsc --noEmit -p website && tsc --noEmit -p tests",
     "check": "pnpm typecheck && vitest run",
     "resin": "node src/cli.ts",
-    "build:site": "node scripts/build-site.mjs"
+    "build:site": "node scripts/build-site.mjs",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp viewer/viewer.css dist/viewer/viewer.css && echo 'export {};' > dist/viewer/viewer.css.d.ts",
+    "prepack": "pnpm build"
   },
   "engines": {
     "node": ">=22.18"

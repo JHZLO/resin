@@ -1,11 +1,17 @@
 # Library
 
-resin is a library first: the playground and the command line are both small programs around it. It is not on npm yet, so import it from a clone; Node 22.18 or newer runs its TypeScript sources directly. A page that shows diagrams the way the playground does (pan, zoom, focus, the live glass and the table panel) uses `resin/viewer`; see [Embedding the viewer](embedding.md).
+resin is a library first: the playground and the command line are both small programs around it. Install it from npm, with [elkjs](https://github.com/kieler/elkjs) for drawing:
+
+```bash
+npm install @jhzlo/resin elkjs
+```
+
+It is published as JavaScript with type declarations. A page that shows diagrams the way the playground does (pan, zoom, focus, the live glass and the table panel) uses `@jhzlo/resin/viewer`; see [Embedding the viewer](embedding.md).
 
 ```ts
 import { readFile } from "node:fs/promises";
 import ELK from "elkjs";
-import { compile, formatDiagnostic, toSvg } from "./resin/src/index.ts";
+import { compile, formatDiagnostic, toSvg } from "@jhzlo/resin";
 
 const source = await readFile("schema.erd", "utf8");
 const result = compile(source);

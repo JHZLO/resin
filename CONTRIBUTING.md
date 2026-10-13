@@ -4,8 +4,8 @@ Thanks for taking the time. Bug reports, grammar ideas and pull requests are all
 
 ## Setup
 
-You need Node 22.18 or newer and [pnpm](https://pnpm.io). There is no build step for the library:
-Node runs the TypeScript sources directly.
+You need Node 22.18 or newer and [pnpm](https://pnpm.io). There is no build step while you work:
+Node runs the TypeScript sources directly. `pnpm build` writes `dist/` for the npm package only.
 
 ```bash
 pnpm install
@@ -32,9 +32,10 @@ source ──lex──> tokens ──parse──> syntax tree ──check──>
 | `src/model.ts` | Resolves references, cardinality and audit tables once, for every output |
 | `src/sql-lexer.ts`, `src/sql-parser.ts`, `src/sql.ts` | SQL import: one tokenizer for every dialect, a lenient reader per statement, then resolution in two passes and resin output (SPEC §8) |
 | `src/svg.ts` | SVG output, laid out with ELK: `graphite`, or glass in three themes (`aurora`, `silk`, `caustic`), dark or light |
-| `src/index.ts` | The public API (`compile`, `toSvg`, ...) |
+| `src/index.ts` | The public API (`compile`, `toSvg`, ...), published as `@jhzlo/resin` |
 | `src/cli.ts` | Command-line entry |
-| `playground/` | The web playground. `glass.ts` paints the live glass canvas with WebGL |
+| `viewer/` | `@jhzlo/resin/viewer` and `viewer.css`: the canvas (`canvas.ts`; `glass.ts` paints the live glass with WebGL) and the table, service and column panels (`details.ts`). The playground is built on it |
+| `playground/` | The web playground: the editor, the documents and the controls around the viewer |
 | `docs/guide/` | The docs, one Markdown page each. `` ```erd example `` blocks are drawn by resin when the site is built |
 | `website/` | The landing page's and the docs' style and script, the code highlighter, and the logo (`brand/mark.svg`) |
 | `scripts/build-site.mjs` | Builds `site/`: the landing page, the docs and the playground, for GitHub Pages |
@@ -91,3 +92,16 @@ Check new syntax against these. If a change bends one of them, open an issue to 
 capitalized, no trailing period, at most 70 characters. Types: `feat` `fix` `refactor` `perf`
 `docs` `test` `build` `ci` `chore` `style`. Scopes are usually a module: `parser`, `checker`,
 `svg`, `playground`, `spec`.
+
+## Releasing
+
+Releases go to npm as `@jhzlo/resin`, from GitHub Actions.
+
+1. Set the new version in `package.json` and move the `Unreleased` notes in `CHANGELOG.md` under it.
+2. Commit, then tag the commit `v<version>` and push the tag.
+3. The `Publish` workflow checks that the tag is on `main` and matches `package.json`, runs
+   `pnpm check`, builds `dist/` and publishes. npm trusts the workflow through OIDC (trusted
+   publishing), so there is no npm token to keep, and each version it publishes carries provenance
+   that points back to its commit.
+
+`npm pack --dry-run` builds `dist/` and lists what a release contains.

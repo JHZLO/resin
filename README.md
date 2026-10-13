@@ -117,8 +117,9 @@ see what it owns, what it depends on and what uses it. Connectors can be angular
 
 ## Getting started
 
-resin is not on npm yet. It needs Node 22.18 or newer (the sources are TypeScript run directly by
-Node) and [pnpm](https://pnpm.io).
+The command line runs from a clone of the repository. It needs Node 22.18 or newer (the sources are
+TypeScript run directly by Node) and [pnpm](https://pnpm.io). To use resin in code, install it from
+npm instead; see [Using the library](#using-the-library).
 
 ```bash
 git clone https://github.com/JHZLO/resin.git
@@ -152,9 +153,13 @@ schema.erd:3:26: error: referenced table `user` is not in this document
 
 ## Using the library
 
+```bash
+npm install @jhzlo/resin elkjs
+```
+
 ```ts
 import ELK from "elkjs";
-import { compile, formatDiagnostic, toSvg } from "./src/index.ts";
+import { compile, formatDiagnostic, toSvg } from "@jhzlo/resin";
 
 const result = compile(source);
 for (const d of result.diagnostics) console.error(formatDiagnostic(d, source, "schema.erd"));
@@ -168,7 +173,7 @@ if (result.model) {
 model. `toSvg` draws a model; options choose the look (`graphite`, the
 default, or a glass theme such as `aurora-dark`), all columns or key columns only, and folded or
 expanded audit tables. `fromSchema` writes a schema held as data, such as what a live database
-reports, as resin. `resin/viewer` is the playground's canvas and table panel for a page of your own;
+reports, as resin. `@jhzlo/resin/viewer` is the playground's canvas and table panel for a page of your own;
 see [Embedding the viewer](https://jhzlo.github.io/resin/docs/embedding/).
 
 ## The language at a glance

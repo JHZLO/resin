@@ -387,7 +387,7 @@ async function renderPlayground() {
   const template = await readFile("playground/index.html", "utf8");
   if (!template.includes("<!--APP-->")) throw new Error("playground/index.html has no <!--APP--> placeholder");
   if (!template.includes("<!--VIEWER-CSS-->")) throw new Error("playground/index.html has no <!--VIEWER-CSS--> placeholder");
-  // The canvas and the details are styled by the same sheet a page embedding resin/viewer imports
+  // The canvas and the details are styled by the same sheet a page embedding @jhzlo/resin/viewer imports
   const viewerCss = await readFile("viewer/viewer.css", "utf8");
   // The playground stays one self-contained page: its icon is the mark as a data URL
   const html = template

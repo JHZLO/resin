@@ -1,4 +1,4 @@
-/* resin/viewer.css: the canvas (`Canvas`, on the element that gets .rz-viewer) and what the details
+/* @jhzlo/resin/viewer.css: the canvas (`Canvas`, on the element that gets .rz-viewer) and what the details
    say about a table, a service or a column (inside an element the page marks .rz-details).
 
    A page themes both with the custom properties below. These are light defaults of no specificity,

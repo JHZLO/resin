@@ -1,14 +1,14 @@
 # Embedding the viewer
 
-`resin/viewer` is the playground's diagram, for a page of your own: the canvas that pans, zooms and focuses, with the live glass under the cards, and the panels that describe a table, a service or a column. A page that embeds it shows a schema the way the playground does. It keeps its own controls and layout; the viewer tells it what was pressed.
+`@jhzlo/resin/viewer` is the playground's diagram, for a page of your own: the canvas that pans, zooms and focuses, with the live glass under the cards, and the panels that describe a table, a service or a column. A page that embeds it shows a schema the way the playground does. It keeps its own controls and layout; the viewer tells it what was pressed.
 
-It needs a browser. The language (`resin`) does not, and a page that only compiles or draws to a file never loads the viewer.
+It needs a browser. The language (`@jhzlo/resin`) does not, and a page that only compiles or draws to a file never loads the viewer.
 
 ```ts
 import ELK from "elkjs/lib/elk.bundled.js";
-import { compile, toSvg } from "resin";
-import { Canvas, tableDetails } from "resin/viewer";
-import "resin/viewer.css";
+import { compile, toSvg } from "@jhzlo/resin";
+import { Canvas, tableDetails } from "@jhzlo/resin/viewer";
+import "@jhzlo/resin/viewer.css";
 
 const { model } = compile(source);
 const panel = document.querySelector<HTMLElement>("#panel")!; // marked class="rz-details"
@@ -56,7 +56,7 @@ A press reports `hit`: `table` (the card pressed, a folded service's card being 
 
 ## Styles
 
-`resin/viewer.css` styles the canvas and the details. It reads these custom properties, with light defaults; set them on `:root` or any ancestor, dark values included, to match the page:
+`@jhzlo/resin/viewer.css` styles the canvas and the details. It reads these custom properties, with light defaults; set them on `:root` or any ancestor, dark values included, to match the page:
 
 | Property | Used for |
 |---|---|

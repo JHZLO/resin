@@ -4,7 +4,7 @@ The quickest way to try resin is the [playground](https://jhzlo.github.io/resin/
 
 ## Install
 
-resin is not on npm yet. It needs Node 22.18 or newer, which runs its TypeScript sources directly, and [pnpm](https://pnpm.io).
+The command line runs from a clone of the repository. It needs Node 22.18 or newer, which runs its TypeScript sources directly, and [pnpm](https://pnpm.io). To use resin in code, install `@jhzlo/resin` from npm; see [Library](library.md).
 
 ```bash
 git clone https://github.com/JHZLO/resin.git
