@@ -6,6 +6,8 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-13
+
 ### Added
 
 - The command line ships in the npm package: `npm install --save-dev @jhzlo/resin elkjs`, then
