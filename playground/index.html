@@ -657,6 +657,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   .find-btn { min-width: 0; width: 30px; justify-content: center; padding: 0; }
   .link-source { min-width: 30px; justify-content: center; padding: 0 7px; }
   .float.view button .label-long, .float.stages .label-long, .float.zoom .label-long, .float.related .label-long { display: none; }
+  /* a phone: the view controls take a second line rather than run off the screen */
+  .float.view { flex-wrap: wrap; max-width: calc(100% - 24px); }
   .float.related .label-short { display: inline; }
   .ins-resize { display: none; }
   .inspector { width: 100%; }

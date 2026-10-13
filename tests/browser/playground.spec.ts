@@ -306,6 +306,13 @@ test("keeps a narrow layout usable with the panel open", async ({ page }) => {
   }
   await page.locator("#inspector-close").click();
   await expect(page.locator("#find")).toBeVisible();
+  // The view controls take a second line rather than push Parts off the screen
+  const parts = await page.locator("#parts").boundingBox();
+  expect(parts!.x + parts!.width).toBeLessThanOrEqual(bounds.viewport);
+  await page.locator("#parts").click();
+  const menu = await page.locator("#parts-menu").boundingBox();
+  expect(menu!.y).toBeGreaterThan(parts!.y + parts!.height);
+  expect(menu!.x + menu!.width).toBeLessThanOrEqual(bounds.viewport);
 });
 
 for (const size of [10, 100, 500]) {

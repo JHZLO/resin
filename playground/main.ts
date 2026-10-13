@@ -1106,6 +1106,9 @@ function togglePart(part: CardPart): void {
 const partsButton = byId("parts");
 const partsMenu = byId("parts-menu");
 function setParts(open: boolean, returnFocus = false): void {
+  // Under the view controls, which take two lines on a phone
+  const controls = partsButton.closest<HTMLElement>(".float")!;
+  if (open) partsMenu.style.top = `${controls.offsetTop + controls.offsetHeight + 6}px`;
   partsMenu.hidden = !open;
   partsButton.setAttribute("aria-expanded", String(open));
   if (open) partsMenu.querySelector<HTMLElement>("button")?.focus();
@@ -1116,6 +1119,11 @@ partsMenu.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   e.stopPropagation();
   setParts(false, true);
+});
+// Tab moves between the parts; leaving the menu closes it
+partsMenu.addEventListener("focusout", (e) => {
+  const next = e.relatedTarget as Node | null;
+  if (next && !partsMenu.contains(next) && next !== partsButton) setParts(false);
 });
 // Like the download menu, a press anywhere else closes it
 document.addEventListener("pointerdown", (e) => {
