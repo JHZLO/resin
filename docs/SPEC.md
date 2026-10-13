@@ -188,12 +188,14 @@ layered algorithm. Left to right, the default, there is a port on every column r
 runs from a foreign key row to the primary key row it points at; top to bottom, see Direction.
 
 - **Cards**: the table name and description in the header, then one row per column: a key label
-  (`PK`, `UK` or `FK`) in a gutter, the column name, its description, and the type at the right edge.
-  A nullable column is marked `NULL` after its type, as in DDL; a card with any nullable column keeps
-  a narrow column for it, so the types stay aligned. Tags `ENUM`, `ENC`, `IX` and `FK` sit before the
-  type. Composite
-  constraints are listed under the rows. Corners are small (8 units), tags are rectangles and the
-  edge is one even line.
+  (`PK`, `UK` or `FK`) in a gutter, the column name with its tags (`ENUM`, `ENC`, `IX`, and `FK` on a
+  primary key) after it in small capitals without a box, its description, and the type at the right
+  edge. The name and its tags are one column, so the descriptions of a card start at one place. A
+  nullable column is marked `NULL` after its type, as in DDL, in the description's ink; a card with
+  any nullable column keeps a narrow column for it, so the types stay aligned. Composite constraints
+  are listed under the rows. Corners are small (8 units), the header's tag (`EXTERNAL`, `ENVERS`) is a
+  rectangle and the edge is one even line. `hide` leaves parts of the rows out (`keys`, `tags`,
+  `descriptions`, `types`, `nulls`); the name always stays and the card narrows to what is left.
 - **Connectors**: orthogonal with tight bends. Solid for physical FKs, dashed for logical
   references. A chevron at the primary key end, as in `->`; a square port and `N` (one-to-many) or
   `1` (one-to-one) at the foreign key end. Nullability is shown by the `NULL` on the foreign key row

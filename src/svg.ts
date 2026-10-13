@@ -4,7 +4,8 @@
 // on a card's edge for each connector; orthogonal routing) → SVG string.
 //
 // Every look shares one layout and one card anatomy: a panel with modest corners, key labels (PK, UK,
-// FK) in a gutter, rectangular tags, and orthogonal connectors with square ends.
+// FK) in a gutter, tags in small capitals after a column's name, and orthogonal connectors with square
+// ends.
 //   graphite  paints nothing behind the drawing. Ink is currentColor, so it reads on any page; the
 //             default for files.
 //   glass     frosted liquid glass panels over a stage in one of three themes (aurora, silk,
@@ -23,6 +24,10 @@ import type { ChangeKind } from "./diff.ts";
 import type { Model, ModelColumn, ModelService, ModelTable, Relation } from "./model.ts";
 
 export type SvgLook = "graphite" | "aurora-dark" | "aurora-light" | "silk-dark" | "silk-light" | "caustic-dark" | "caustic-light";
+/** A part of a column's row on a card. The column's name is not one: it always stays */
+export type CardPart = "keys" | "tags" | "descriptions" | "types" | "nulls";
+/** The parts in the order a row draws them. The name, which always stays, comes after the key label */
+export const CARD_PARTS: readonly CardPart[] = ["keys", "tags", "descriptions", "types", "nulls"];
 
 export interface SvgOptions {
   /** all = every column, keys = key and reference columns only (the rest become "+N columns"),
@@ -43,6 +48,9 @@ export interface SvgOptions {
    *  reference it, each connector joining the two rows. down: a referenced table above them, each
    *  connector joining the two cards, since a row has ends only at the sides of its card */
   direction?: "right" | "down";
+  /** Parts of the rows to leave out of the cards: the key labels (PK, UK, FK), tags (IX, ENUM, ENC),
+   *  descriptions, types and NULL. Cards narrow to what is left */
+  hide?: readonly CardPart[];
   /** Services drawn as one card each, a row per table: references inside a folded service are
    *  counted under its card, references out of it join its rows. Other tables follow `columns` */
   fold?: readonly string[];
@@ -201,7 +209,6 @@ interface Inks {
   pk: Ink;
   uk: Ink;
   fk: Ink;
-  nullable: Ink;
   line: Ink;
   tag: Ink;
   tagRim: Ink;
@@ -232,7 +239,6 @@ const INK: Record<"current" | "dark" | "light", Inks> = {
     pk: [C, 1],
     uk: [C, 0.78],
     fk: [C, 0.55],
-    nullable: [C, 1],
     line: [C, 0.55],
     tag: [C, 0.04],
     tagRim: [C, 0.18],
@@ -248,7 +254,6 @@ const INK: Record<"current" | "dark" | "light", Inks> = {
     pk: ["#F6C76B", 1],
     uk: ["#C8BBFF", 1],
     fk: ["#86E1EC", 1],
-    nullable: ["#F6C76B", 1],
     line: ["#E9ECF8", 0.62],
     tag: [WHITE, 0.07],
     tagRim: [WHITE, 0.16],
@@ -264,7 +269,6 @@ const INK: Record<"current" | "dark" | "light", Inks> = {
     pk: ["#B26A00", 1],
     uk: ["#6D4FD8", 1],
     fk: ["#0B7A90", 1],
-    nullable: ["#B26A00", 1],
     line: ["#1E293B", 0.52],
     tag: [WHITE, 0.6],
     tagRim: ["#0F172A", 0.12],
@@ -467,6 +471,7 @@ interface View {
   foot: string[];
   /** A folded service: its name, its place among the services (the hue) and its tables, one per row */
   fold?: { service: string; hue: number; members: ModelTable[]; external: boolean; expand: boolean };
+  hide: ReadonlySet<CardPart>;
   w: number;
   h: number;
   nameW: number;
@@ -494,7 +499,10 @@ function chips(c: ModelColumn, v: Pick<View, "refCols" | "shown" | "fold">): str
   return out;
 }
 const chipW = (text: string): number => monoW(text, 8.5) + 10;
-const chipsW = (list: string[]): number => (list.length ? list.reduce((w, x) => w + chipW(x) + 4, 0) + 6 : 0);
+/** A row's tags (IX, ENUM, ENC, FK on a primary key) follow its name as small capitals, without a box */
+const TAG_SIZE = 8.5;
+const tagW = (text: string): number => monoW(text, TAG_SIZE) + text.length * 0.34;
+const tagsW = (list: string[]): number => (list.length ? list.reduce((w, x) => w + tagW(x), 0) + 7 + 6 * (list.length - 1) : 0);
 /** Nullability is spelled out the way DDL does: `varchar NULL`. Generated audit tables leave it out */
 const isNull = (c: ModelColumn, t: ModelTable): boolean => c.nullable && t.origin !== "audit";
 const NULL_SIZE = 8.5;
@@ -519,12 +527,13 @@ const bare = (v: Pick<View, "shown" | "foot">): boolean => v.shown.length === 0 
 
 function measure(v: Omit<View, "w" | "h" | "nameW">): Pick<View, "w" | "h" | "nameW"> {
   const t = v.table;
-  const nameW = maxOf(v.shown.map((c) => sansW(c.name, 12.5) * (c.pk ? 1.04 : 1)), 48);
-  const descW = maxOf(v.shown.map((c) => (c.description ? sansW(c.description, 11.5) : 0)));
-  const typeW = maxOf(v.shown.map((c) => monoW(c.type, 11)), 40);
-  const chipW_ = maxOf(v.shown.map((c) => chipsW(chips(c, v))));
-  const nullW = v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
-  const rowW = PAD * 2 + KEY + nameW + (descW ? 14 + descW : 0) + 18 + chipW_ + typeW + nullW;
+  const show = (part: CardPart): boolean => !v.hide.has(part);
+  // The name's column holds the name and its tags, so the descriptions all start at one place
+  const nameW = maxOf(v.shown.map((c) => sansW(c.name, 12.5) * (c.pk ? 1.04 : 1) + (show("tags") ? tagsW(chips(c, v)) : 0)), 48);
+  const descW = show("descriptions") ? maxOf(v.shown.map((c) => (c.description ? sansW(c.description, 11.5) : 0))) : 0;
+  const typeW = show("types") ? maxOf(v.shown.map((c) => monoW(c.type, 11)), 40) : 0;
+  const nullW = show("nulls") && v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
+  const rowW = PAD * 2 + (show("keys") ? KEY : 0) + nameW + (descW ? 14 + descW : 0) + 18 + typeW + nullW;
   const headW =
     PAD * 2 +
     sansW(t.label ?? t.name, 13.5) * 1.04 +
@@ -620,7 +629,9 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   if (!bare(v)) s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
   // rows. Types line up at the right edge, or just left of the NULL column when the card has one
-  const nullW = v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
+  const show = (part: CardPart): boolean => !v.hide.has(part);
+  const K = show("keys") ? KEY : 0;
+  const nullW = show("nulls") && v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
   v.shown.forEach((c, i) => {
     const cy = rowY(i);
     const by = cy + 4.2;
@@ -636,24 +647,21 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
       s.push(`<rect x="1" y="${f(cy - ROW / 2 + 3)}" width="3" height="${ROW - 6}" rx="1" fill="${hue}"/>`);
     }
     if (i > 0) s.push(`<rect x="${PAD}" y="${f(cy - ROW / 2)}" width="${w - PAD * 2}" height="1" ${fill(I.sep)} opacity=".7"/>`);
-    const key = keyLabel(c, v, I);
+    const key = show("keys") ? keyLabel(c, v, I) : null;
     if (key) s.push(`<text x="${PAD}" y="${f(by - 0.6)}" font-family="${MONO}" font-size="8.5" font-weight="600" ${fill(key[1])}>${key[0]}</text>`);
+    // The tags are in the name's text, so they follow the name exactly whatever its real width
+    const tags = show("tags") ? chips(c, v) : [];
     s.push(
-      `<text x="${PAD + KEY}" y="${f(by)}" font-size="12.5" ${fill(I.text)}${c.pk ? ' font-weight="600"' : ""}${c.change?.kind === "removed" ? ' text-decoration="line-through"' : ""}>${esc(c.name)}</text>`,
+      `<text x="${PAD + K}" y="${f(by)}" font-size="12.5" ${fill(I.text)}${c.pk ? ' font-weight="600"' : ""}${c.change?.kind === "removed" ? ' text-decoration="line-through"' : ""}>${esc(c.name)}` +
+        tags.map((x, j) => `<tspan dx="${j ? 6 : 7}" font-family="${MONO}" font-size="${TAG_SIZE}" font-weight="600" letter-spacing="0.04em" ${fill(I.faint)}>${esc(x)}</tspan>`).join("") +
+        "</text>",
     );
-    if (c.description) s.push(`<text x="${f(PAD + KEY + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
-    const right = w - PAD - nullW;
-    s.push(`<text x="${f(right)}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
-    if (isNull(c, t))
+    if (c.description && show("descriptions")) s.push(`<text x="${f(PAD + K + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
+    if (show("types")) s.push(`<text x="${f(w - PAD - nullW)}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
+    if (nullW && isNull(c, t))
       s.push(
-        `<text x="${w - PAD}" y="${f(by - 0.6)}" text-anchor="end" font-family="${MONO}" font-size="${NULL_SIZE}" font-weight="600" letter-spacing="0.02em" ${fill(I.nullable)}>NULL</text>`,
+        `<text x="${w - PAD}" y="${f(by - 0.6)}" text-anchor="end" font-family="${MONO}" font-size="${NULL_SIZE}" font-weight="600" letter-spacing="0.04em" ${fill(I.muted)}>NULL</text>`,
       );
-    let cx = right - monoW(c.type, 11) - 8;
-    for (const x of chips(c, v).reverse()) {
-      cx -= chipW(x);
-      s.push(chip(x, cx, cy - 7, I));
-      cx -= 4;
-    }
     s.push("</g>");
   });
 
@@ -731,7 +739,7 @@ function clean(pts: Point[]): Point[] {
  *  stand for several references and carries no 1 or N */
 type Drawn = Relation & { bundled?: boolean };
 
-function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand"; fold: ReadonlySet<string>; rows: boolean }): { views: View[]; relations: Drawn[] } {
+function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand"; fold: ReadonlySet<string>; hide: ReadonlySet<CardPart>; rows: boolean }): { views: View[]; relations: Drawn[] } {
   const expand = opts.audit === "expand";
   const tables = model.tables.filter((t) => expand || t.origin !== "audit");
   const names = new Set(tables.map((t) => t.name));
@@ -779,7 +787,7 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
     }));
     const n = inside.get(name) ?? 0;
     const table: ModelTable = { name: serviceCardId(name), label: name, description: sv.description, origin: external ? "external" : "table", columns: shown, constraints: [], audit: null, service: null };
-    const base = { table, shown, hidden: 0, refCols: new Set<string>(), tag: external ? "EXTERNAL" : null, foot: n ? [`${n} ${n === 1 ? "reference" : "references"} inside`] : [], fold: { service: name, hue: at, members, external, expand } };
+    const base = { table, shown, hidden: 0, refCols: new Set<string>(), tag: external ? "EXTERNAL" : null, foot: n ? [`${n} ${n === 1 ? "reference" : "references"} inside`] : [], fold: { service: name, hue: at, members, external, expand }, hide: opts.hide };
     return { ...base, ...measure(base) };
   };
 
@@ -807,7 +815,7 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
     const foot = opts.columns === "none" ? [] : table.constraints.map((k) => `${k.name ?? (k.kind === "unique" ? "unique" : "index")} (${k.columns.join(", ")})`);
     if (opts.columns !== "none") for (const fk of table.foreignKeys ?? []) foot.push(`${fk.name ?? "foreign"} (${fk.columns.join(", ")})`);
     if (hidden && opts.columns !== "none") foot.push(`+${hidden} ${hidden === 1 ? "column" : "columns"}`);
-    const base = { table, shown, hidden, refCols, tag, foot };
+    const base = { table, shown, hidden, refCols, tag, foot, hide: opts.hide };
     out.push({ ...base, ...measure(base) });
   }
   return { views: out, relations };
@@ -1027,7 +1035,7 @@ function serviceAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string
 }
 
 export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}): Promise<SvgResult> {
-  const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse", fold: new Set(options.fold ?? []) } as const;
+  const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse", fold: new Set(options.fold ?? []), hide: new Set(options.hide ?? []) } as const;
   const look = options.look ?? "graphite";
   const edges = options.edges ?? "angular";
   const down = options.direction === "down";

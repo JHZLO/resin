@@ -6,6 +6,17 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+### Added
+
+- Choose the parts of a row the cards show: `hide` in `toSvg` (`keys`, `tags`, `descriptions`,
+  `types`, `nulls`, listed in `CARD_PARTS`), `--hide` on the command line, `cardParts` in
+  `@jhzlo/resin/viewer` (a sample row to press), and Parts in the playground's view options.
+
+### Changed
+
+- Card rows: tags follow the column's name in small capitals instead of boxes before the type, and
+  `NULL` is in the description's ink.
+
 ## [0.2.3] - 2026-10-13
 
 ### Added

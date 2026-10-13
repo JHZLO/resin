@@ -141,6 +141,20 @@ describe("the command line", () => {
     expect(sqlite.stdout).toContain("CREATE INDEX ix_users_name ON users (name);");
   });
 
+  it("leaves the parts of the rows named in --hide out of the cards, and refuses other names", () => {
+    const described = join(dir, "described.erd");
+    writeFileSync(described, 'table t {\n  id    int          pk\n  name  varchar(20)  "Display name"\n}\n');
+    const shown = run(described);
+    const hidden = run(described, "--hide", "descriptions,types");
+    expect(hidden.status).toBe(0);
+    expect(shown.stdout).toContain(">Display name<");
+    expect(hidden.stdout).not.toContain(">Display name<");
+    expect(hidden.stdout).not.toContain(">varchar(20)<");
+    const wrong = run(described, "--hide", "colors");
+    expect(wrong.status).toBe(2);
+    expect(wrong.stderr).toContain("--hide takes keys, tags, descriptions, types, nulls");
+  });
+
   it("stacks the tables top to bottom with --down", () => {
     const pair = join(dir, "pair.erd");
     writeFileSync(pair, "table a {\n  id  int  pk\n}\n\ntable b {\n  id    int  pk\n  a_id  int  -> a\n}\n");

@@ -1,7 +1,8 @@
-/* @jhzlo/resin/viewer.css: the canvas (`Canvas`, on the element that gets .rz-viewer) and what the details
-   say about a table, a service or a column (inside an element the page marks .rz-details).
+/* @jhzlo/resin/viewer.css: the canvas (`Canvas`, on the element that gets .rz-viewer), what the details
+   say about a table, a service or a column (inside an element the page marks .rz-details), and the
+   parts of a row the cards show (`cardParts`, .rz-parts).
 
-   A page themes both with the custom properties below. These are light defaults of no specificity,
+   A page themes them with the custom properties below. These are light defaults of no specificity,
    so a page sets its own on :root or any ancestor, dark ones included, and they win. */
 :where(:root) {
   --rz-ink: #181C21;
@@ -126,3 +127,22 @@
 .rz-details .d-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 8px 0 0; }
 .rz-details .d-facts dt { font-size: 11.5px; color: var(--rz-faint); }
 .rz-details .d-facts dd { margin: 0; font-family: var(--rz-font-mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* ---- the parts of a row (`cardParts`): a sample row in the card's type and colors, each part a button.
+   A part left out of the cards fades; the column's name always stays ---- */
+.rz-parts { display: flex; align-items: stretch; padding: 4px; border: 1px solid var(--rz-rule); border-radius: 8px; }
+.rz-parts .p-part { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 6px; flex: none; width: auto; height: auto; min-width: 0; margin: 0; padding: 6px 8px 7px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; white-space: nowrap; }
+.rz-parts button.p-part { cursor: pointer; transition: background-color 120ms ease; }
+@media (hover: hover) and (pointer: fine) { .rz-parts button.p-part:hover { background: var(--rz-active-line); } }
+.rz-parts button.p-part:focus-visible { outline: 2px solid var(--rz-accent); outline-offset: -2px; }
+.rz-parts .p-cap { font-family: var(--rz-font-body); font-size: 10px; color: var(--rz-faint); }
+.rz-parts .p-val { line-height: 18px; transition: opacity 140ms ease; }
+.rz-parts [aria-pressed="false"] .p-val { opacity: 0.2; }
+.rz-parts .p-key { font-family: var(--rz-font-mono); font-size: 9.5px; font-weight: 700; color: var(--rz-k-fk); }
+.rz-parts .p-name { font-family: var(--rz-font-body); font-size: 12.5px; color: var(--rz-ink); }
+.rz-parts :is(.p-tag, .p-null) { font-family: var(--rz-font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.04em; }
+.rz-parts .p-tag { color: var(--rz-faint); }
+.rz-parts .p-null { color: var(--rz-muted); }
+.rz-parts .p-desc { font-family: var(--rz-font-body); font-size: 12px; color: var(--rz-muted); }
+.rz-parts .p-type { font-family: var(--rz-font-mono); font-size: 11.5px; color: var(--rz-muted); }
+@media (prefers-reduced-motion: reduce) { .rz-parts .p-val, .rz-parts button.p-part { transition: none; } }

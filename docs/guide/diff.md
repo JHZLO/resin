@@ -54,7 +54,7 @@ table refunds {
 - + table `refunds` added
 ```
 
-Without it, the command prints the drawing. The drawing options of the command line apply (`--look`, `--keys`, `--names`, `--curved`, `--down`). An empty file is an empty schema, so comparing with one shows a file that a change adds. When either version has an error, the command prints it and exits with status 1.
+Without it, the command prints the drawing. The drawing options of the command line apply (`--look`, `--keys`, `--names`, `--curved`, `--down`, `--hide`). An empty file is an empty schema, so comparing with one shows a file that a change adds. When either version has an error, the command prints it and exits with status 1.
 
 ## In the drawing
 

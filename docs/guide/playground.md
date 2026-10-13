@@ -91,12 +91,13 @@ A link can carry two versions of a document, as the one in a [pull request comme
 | Services | Each service as one card with a row per table; shown when the document has services (see [Services](#services)) |
 | Audit tables | Draws `revinfo` and the `*_aud` tables instead of folding them into a tag |
 | Angular, Curved | Right-angled connectors, or S-bends |
+| Parts | A sample row of a card: press a part (key labels, tags, descriptions, types, NULL) to leave it out of the cards or bring it back. The column's name always stays, and the side panel still lists everything |
 | Aurora, Silk, Caustic | The background behind the glass |
 | Grid | The dot grid |
 
 ## Sharing and exporting
 
-Copy link puts the document, column visibility, audit setting, connector style, related view, one service's view, path, service filter and comparison base in the address. Theme, grid, zoom and panel size remain local browser preferences. A link with an unchanged document can still apply different view options.
+Copy link puts the document, column visibility, audit setting, connector style, the parts of a row left out, related view, one service's view, path, service filter and comparison base in the address. Theme, grid, zoom and panel size remain local browser preferences. A link with an unchanged document can still apply different view options.
 
 Copy reading link in Documents opens with the source editor hidden. Recipients can explore the diagram and use Edit a copy to work on their own local document. The link contains the source, and anyone with the link can read it.
 

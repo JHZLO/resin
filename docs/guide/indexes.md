@@ -24,4 +24,4 @@ Index and unique names are shown, not checked against a database. A name used tw
 
 ## In the diagram
 
-A column with an index carries an `IX` tag before its type, and composite indexes are listed at the foot of the card. The playground's side panel lists every index of a table, with its name and its columns.
+A column with an index carries an `IX` tag after its name, and composite indexes are listed at the foot of the card. The playground's side panel lists every index of a table, with its name and its columns.

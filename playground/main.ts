@@ -4,13 +4,14 @@
 
 import orderExample from "../examples/order.erd";
 import shopExample from "../examples/shop.erd";
-import { type Diagnostic, type Model, type SqlDdl, type SqlDialect, type SvgLook, type SvgOptions, type SvgResult, SQL_DIALECTS, compile, diff, format, fromSql, looksLikeSql, parse, toSql } from "../src/index.ts";
+import { type CardPart, type Diagnostic, type Model, type SqlDdl, type SqlDialect, type SvgLook, type SvgOptions, type SvgResult, CARD_PARTS, SQL_DIALECTS, compile, diff, format, fromSql, looksLikeSql, parse, toSql } from "../src/index.ts";
 import { Documents, type LocalDocument } from "./documents.ts";
 import { AnalysisClient } from "./analysis-client.ts";
 import { RenderClient } from "./render-client.ts";
 import { createWorkspace, saveFile, fileName } from "./workspace.ts";
 import { relatedModel, relationPath, serviceModel, subset } from "./schema-tools.ts";
 import { columnDetails, serviceDetails, sqlDetails, tableDetails } from "../viewer/details.ts";
+import { cardParts } from "../viewer/parts.ts";
 import { type PasteConverter, createEditor } from "./editor.ts";
 import { type SharedState, decode, encode } from "./share.ts";
 import { showStars } from "./stars.ts";
@@ -97,7 +98,7 @@ async function writeHash(): Promise<boolean> {
   const generation = ++hashGeneration;
   clearTimeout(hashTimer);
   try {
-    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, related: state.related, service: state.service ?? null, base: state.base ?? null, view: state.view, reading: state.reading });
+    const hash = await encode({ code: state.code, columns: state.columns, audit: state.audit, edges: state.edges, ...(state.hide?.length ? { hide: state.hide } : {}), related: state.related, service: state.service ?? null, base: state.base ?? null, view: state.view, reading: state.reading });
     if (generation !== hashGeneration) return false;
     if (location.hash !== hash) history.replaceState({ resinDocument: documents.activeInfo.id }, "", hash);
     return true;
@@ -733,7 +734,7 @@ async function render(): Promise<void> {
       save();
       scheduleHash();
     }
-    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.related, state.service, state.view, ink.look, ink.stage]);
+    const key = JSON.stringify([result.modelKey, state.columns, state.audit, state.edges, state.hide, state.related, state.service, state.view, ink.look, ink.stage]);
     if (key === mountedKey) {
       layoutStatus(""); setStale(false);
       if (fitNext) { canvas.view.fit(); fitNext = false; }
@@ -748,6 +749,7 @@ async function render(): Promise<void> {
       audit: state.audit,
       ...ink,
       edges: state.edges,
+      hide: state.hide,
       idPrefix: "pg-",
     });
     if (seq !== renderSeq) return; // a newer render has started
@@ -812,6 +814,9 @@ function syncControls(): void {
   byId("toggle-audit").setAttribute("aria-pressed", String(state.audit === "expand"));
   byId("grid-toggle").setAttribute("aria-pressed", String(state.grid));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]")) b.setAttribute("aria-pressed", String(b.dataset.edges === state.edges));
+  const hidden = new Set(state.hide ?? []);
+  byId("parts-picker").replaceChildren(cardParts(hidden, togglePart));
+  byId("parts-count").textContent = hidden.size ? `${CARD_PARTS.length - hidden.size}/${CARD_PARTS.length}` : "";
   canvas.setGrid(state.grid);
   const select = byId<HTMLSelectElement>("example");
   const match = Object.entries(EXAMPLES).find(([, text]) => text === state.code);
@@ -1084,6 +1089,39 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-edges]"))
     render();
   });
 
+// ---- the parts of a row ----
+
+// A part left out of the cards narrows them, so the drawing is laid out again; the view stays where it is
+function togglePart(part: CardPart): void {
+  const hidden = new Set(state.hide ?? []);
+  if (!hidden.delete(part)) hidden.add(part);
+  // In the order of a row, so the link and the saved document do not depend on the order of the clicks
+  state.hide = CARD_PARTS.filter((p) => hidden.has(p));
+  syncControls();
+  byId("parts-picker").querySelector<HTMLElement>(`[data-part="${part}"]`)?.focus();
+  save();
+  scheduleHash();
+  render();
+}
+const partsButton = byId("parts");
+const partsMenu = byId("parts-menu");
+function setParts(open: boolean, returnFocus = false): void {
+  partsMenu.hidden = !open;
+  partsButton.setAttribute("aria-expanded", String(open));
+  if (open) partsMenu.querySelector<HTMLElement>("button")?.focus();
+  else if (returnFocus) partsButton.focus();
+}
+partsButton.addEventListener("click", () => setParts(partsMenu.hidden));
+partsMenu.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  e.stopPropagation();
+  setParts(false, true);
+});
+// Like the download menu, a press anywhere else closes it
+document.addEventListener("pointerdown", (e) => {
+  if (!partsMenu.hidden && !partsMenu.contains(e.target as Node) && !partsButton.contains(e.target as Node)) setParts(false);
+});
+
 byId<HTMLSelectElement>("example").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
   if (!EXAMPLES[key]) return;
@@ -1156,7 +1194,7 @@ async function exportSvg(look: SvgLook): Promise<string | null> {
   const full = base ? diff(base, model).model : model;
   const shown = modelForView(full, snapshot);
   try {
-    const { svg } = await exporter.render(shown, { ...drawing(full, snapshot), audit: snapshot.audit, edges: snapshot.edges, look, standalone: true });
+    const { svg } = await exporter.render(shown, { ...drawing(full, snapshot), audit: snapshot.audit, edges: snapshot.edges, hide: snapshot.hide, look, standalone: true });
     return svg + "\n";
   } catch {
     toast("Could not export the diagram. Please try again");
@@ -1539,7 +1577,7 @@ function syncReading(): void {
   byId("editor-show").hidden = !folded() || state.reading === true;
 }
 function openDocument(document: LocalDocument): void {
-  Object.assign(state, { base: null, related: null, service: null, view: {}, reading: false }, upgraded(document.state));
+  Object.assign(state, { base: null, related: null, service: null, view: {}, reading: false, hide: [] }, upgraded(document.state));
   editor.resetText(state.code);
   closeSqlBar(); closeInspector(); closePop(); fitNext = true;
   syncControls(); syncReading(); save(); scheduleHash(); void render();
@@ -1547,7 +1585,7 @@ function openDocument(document: LocalDocument): void {
 async function adopt(shared: Partial<typeof state> | null): Promise<void> {
   if (typeof shared?.code !== "string") return;
   // A link without one service's view shows the whole schema, whatever was open before
-  const next = { ...state, service: null, ...shared };
+  const next = { ...state, service: null, hide: [], ...shared };
   const active = documents.active;
   if (active.state.code !== next.code || state.reading !== next.reading) {
     documents.create("Shared schema", next);

@@ -54,15 +54,33 @@ A press reports `hit`: `table` (the card pressed, a folded service's card being 
 
 `tableDetails(model, table, open, pick, openService)`, `serviceDetails(model, service, open, pick, openService)` and `columnDetails(model, table, column, open)` return the playground's panels as elements: a table's columns (key, name, type, `NULL` or `NOT NULL`, description), indexes and references; a service's tables and what it depends on and is used by; one column's facts. They return `null` for a name the model does not have. `open`, `pick` and `openService` are called when a table name, a column or a service name in them is followed. Put them inside an element with the class `rz-details`.
 
+## Parts of a row
+
+`cardParts(hidden, toggle)` returns the control the playground uses to choose which parts of a row the cards show: one row of a card as a sample (`FK customer_id IX Customer bigint NULL`), in the card's type, colors and order, with the name of each part above it. Each part but the column's name is a button with `aria-pressed`; a part that is hidden fades. Pressing one calls `toggle` with the part (`keys`, `tags`, `descriptions`, `types` or `nulls`); keep the hidden parts, pass them to `toSvg` as `hide`, and build the control again.
+
+```ts
+import { CARD_PARTS, type CardPart } from "@jhzlo/resin";
+import { cardParts } from "@jhzlo/resin/viewer";
+
+const picker = document.querySelector("#parts")!;
+let hide: CardPart[] = [];
+const toggle = (part: CardPart) => {
+  hide = CARD_PARTS.filter((p) => (p === part) !== hide.includes(p));
+  picker.replaceChildren(cardParts(new Set(hide), toggle));
+  // draw again with toSvg(model, elk, { ...options, hide })
+};
+picker.replaceChildren(cardParts(new Set(hide), toggle));
+```
+
 ## Styles
 
-`@jhzlo/resin/viewer.css` styles the canvas and the details. It reads these custom properties, with light defaults; set them on `:root` or any ancestor, dark values included, to match the page:
+`@jhzlo/resin/viewer.css` styles the canvas, the details and the parts of a row. It reads these custom properties, with light defaults; set them on `:root` or any ancestor, dark values included, to match the page:
 
 | Property | Used for |
 |---|---|
 | `--rz-ink`, `--rz-muted`, `--rz-faint` | Text, from strongest to faintest |
 | `--rz-rule`, `--rz-panel`, `--rz-code` | Rules between rows, the panel's background, chips |
 | `--rz-accent`, `--rz-accent-soft`, `--rz-active-line` | Links and the picked row; rows under the pointer |
-| `--rz-k-pk`, `--rz-k-uk`, `--rz-k-fk`, `--rz-warn` | Key labels, `NULL`, a warning in the service panel |
+| `--rz-k-pk`, `--rz-k-uk`, `--rz-k-fk`, `--rz-warn` | Key labels, `NULL` in the panel, a warning in the service panel |
 | `--rz-stage` | Under the drawing before the first frame of the live background |
 | `--rz-font-body`, `--rz-font-mono` | The two typefaces |

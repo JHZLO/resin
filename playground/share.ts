@@ -1,6 +1,8 @@
 // Shareable links: the playground state, deflated and base64url-encoded into the URL hash,
 // so a link carries the whole document. Uses the browser's built-in compression streams.
 
+import { CARD_PARTS, type CardPart } from "../src/index.ts";
+
 const PREFIX = "#erd:";
 
 export interface SharedState {
@@ -9,6 +11,8 @@ export interface SharedState {
   columns: "all" | "keys" | "none" | "services";
   audit: "collapse" | "expand";
   edges: "angular" | "curved";
+  /** Parts of the rows left out of the cards. Optional, so older links open with every part */
+  hide?: readonly CardPart[];
   /** Only this table and the tables within `steps` references of it, or null for every table */
   related: { table: string; steps: 1 | 2 } | null;
   /** Only this service's tables, with the services they link to folded. Optional, so older links open */
@@ -32,6 +36,7 @@ export function readState(value: unknown): SharedState | null {
     columns: input.columns === "keys" || input.columns === "none" || input.columns === "services" ? input.columns : "all",
     audit: input.audit === "expand" ? "expand" : "collapse",
     edges: input.edges === "curved" ? "curved" : "angular",
+    ...(Array.isArray(input.hide) ? { hide: CARD_PARTS.filter((p) => (input.hide as unknown[]).includes(p)) } : {}),
     related: related && typeof related.table === "string" ? { table: related.table, steps: related.steps === 2 ? 2 : 1 } : null,
     ...(typeof input.service === "string" && !related ? { service: input.service } : {}),
     base: typeof input.base === "string" ? input.base : null,

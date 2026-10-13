@@ -15,6 +15,8 @@ usage: resin <file.erd> [options]
                    caustic-dark, caustic-light
     --curved       curved connectors instead of right-angled ones
     --down         stack tables top to bottom, connectors joining the cards
+    --hide <parts> leave parts of the rows out of the cards, comma separated:
+                   keys, tags, descriptions, types, nulls
     --keys         show key and reference columns only
     --names        show table names only
     --services     draw each service as one card that lists its tables
@@ -50,6 +52,7 @@ The result goes to standard output, and problems go to standard error in compile
 npx resin schema.erd > schema.svg
 npx resin schema.erd --keys --curved > schema.keys.svg
 npx resin schema.erd --down > schema.down.svg
+npx resin schema.erd --hide descriptions,tags > schema.compact.svg
 npx resin schema.erd --services > schema.services.svg
 npx resin schema.erd --model > schema.json
 ```

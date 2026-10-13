@@ -22,7 +22,9 @@ table payments {
 
 ## Cards
 
-A card has the table's name and description in its header, then one row per column: a key label in a gutter (`PK`, `UK` or `FK`), the column's name and description, and its type at the right edge. A nullable column is marked `NULL` after its type. Tags `ENUM`, `ENC`, `IX` and `FK` sit before the type, and composite constraints are listed under the rows.
+A card has the table's name and description in its header, then one row per column: a key label in a gutter (`PK`, `UK` or `FK`), the column's name with its tags (`ENUM`, `ENC`, `IX`, and `FK` on a primary key) after it in small capitals, its description, and its type at the right edge. The descriptions of a card all start at one place. A nullable column is marked `NULL` after its type, in the description's ink. Composite constraints are listed under the rows.
+
+The `hide` option leaves parts of the rows out: the key labels (`keys`), `tags`, `descriptions`, `types` and `nulls`. The column's name always stays, and a card narrows to what is left. [Embedding](embedding.md#parts-of-a-row) has a control for choosing them.
 
 External tables have a dashed border and an `EXTERNAL` tag. Audit tables are folded into an `ENVERS` tag unless they are expanded.
 
@@ -63,6 +65,7 @@ With a glass look the cards are frosted glass over the background, which the SVG
 | `fold` | Names of services to draw as one card each, a row per table | none |
 | `edges` | `angular` or `curved` | `angular` |
 | `direction` | `right`, or `down` to stack the tables top to bottom, connectors joining the cards | `right` |
+| `hide` | Parts of the rows to leave out: `keys`, `tags`, `descriptions`, `types`, `nulls` (`CARD_PARTS` lists them) | none |
 | `standalone` | Adds a style that picks the ink color from the reader's theme, for files embedded with `<img>` | `false` |
 | `stage` | `false` leaves out the background and the glass, for a page that paints them itself | `true` |
 | `idPrefix` | Prefixes every id, so several drawings can share a page | `rz-` |

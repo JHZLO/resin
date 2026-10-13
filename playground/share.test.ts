@@ -20,6 +20,13 @@ describe("saved and shared documents", () => {
     expect(readState({ code: "", service: "s", related: { table: "a", steps: 1 } })).not.toHaveProperty("service");
   });
 
+  it("keeps the parts of the rows a link leaves out, and only the parts there are", async () => {
+    const state = { code: "table a { id int pk }", columns: "all", audit: "collapse", edges: "angular", hide: ["tags", "types"], related: null, base: null } as const;
+    expect(await decode(await encode(state))).toEqual(state);
+    expect(readState({ code: "", hide: ["types", "colors", 3, "keys"] })?.hide).toEqual(["keys", "types"]);
+    expect(readState({ code: "" })).not.toHaveProperty("hide");
+  });
+
   it("opens older code-only links with valid defaults", () => {
     expect(readState({ code: "table a { id int pk }" })).toMatchObject({ columns: "all", related: null, base: null });
   });

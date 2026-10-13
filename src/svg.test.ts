@@ -3,7 +3,7 @@ import { join } from "node:path";
 import ELK from "elkjs";
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
-import { toSvg } from "./svg.ts";
+import { type CardPart, toSvg } from "./svg.ts";
 
 const EXAMPLES = join(import.meta.dirname, "../examples");
 const elk = new ELK();
@@ -180,6 +180,37 @@ describe("toSvg", () => {
       expect(c1.x).toBe(s.x);
       expect(c2.x).toBe(e.x);
     }
+  });
+
+  it("writes a row's tags after its name without a box, and NULL in the muted ink", async () => {
+    const { svg } = await toSvg(modelOf(ORDER), elk, { look: "aurora-dark" });
+    const row = (name: string) => svg.split(`data-c="${name}"`)[1].split("</g>")[0];
+    // The tags are in the name's text, so they follow the name whatever its width
+    expect(row("status")).toMatch(/>status<tspan dx="7"[^>]*>ENUM<\/tspan><tspan dx="6"[^>]*>IX<\/tspan><\/text>/);
+    expect(row("status")).not.toContain('rx="3"');
+    expect(row("buyer_name")).toMatch(/fill="#DDE2F0" fill-opacity="0\.62">NULL</);
+  });
+
+  it("leaves the parts it is told to hide out of the rows, keeps the names, and narrows the cards", async () => {
+    const some = await toSvg(modelOf(ORDER), elk, { hide: ["descriptions", "types"] });
+    const none = await toSvg(modelOf(ORDER), elk, { hide: ["keys", "tags", "descriptions", "types", "nulls"] });
+    // A card as wide as its rows (a short header), so each part left out shows in its width
+    const wide = 'table u {\n  id bigint pk\n}\ntable t {\n  id bigint pk\n  customer_id bigint -> u "The customer who placed the order" index\n  note varchar(200)? "A long note about the order"\n}';
+    const cardWidth = async (hide: CardPart[]) => (await toSvg(modelOf(wide), elk, { hide })).boxes.find((b) => b.table === "t")!.w;
+    const widths = [await cardWidth([]), await cardWidth(["descriptions"]), await cardWidth(["descriptions", "types"]), await cardWidth(["keys", "tags", "descriptions", "types", "nulls"])];
+    // Narrower with each part left out, down to the narrowest card there is (200)
+    expect(widths[0]).toBeGreaterThan(widths[1]);
+    expect(widths[1]).toBeGreaterThan(widths[2]);
+    expect(widths[3]).toBeLessThanOrEqual(widths[2]);
+    expect(widths[3]).toBe(200);
+    expect(some.svg).not.toContain(">Order number<");
+    expect(some.svg).not.toContain(">varchar(32)<");
+    expect(some.svg).toContain(">order_no<");
+    expect(some.svg).toContain(">NULL<");
+    for (const gone of [">PK<", ">UK<", ">FK<", ">ENUM<", ">IX<", ">NULL<", ">bigint<", ">Customer<"]) expect(none.svg).not.toContain(gone);
+    for (const name of [">id<", ">user_id", ">status<", ">created_at<"]) expect(none.svg).toContain(name);
+    // A hidden key label gives its room to the name
+    expect(none.svg).toMatch(/<text x="16" y="[\d.]+" font-size="12.5"[^>]*>order_no</);
   });
 
   it("measures Hangul as double width", async () => {

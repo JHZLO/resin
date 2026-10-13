@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Command-line entry: `resin <file.erd> [--look <look>] [--curved] [--down] [--keys | --names | --services] [--expand-audit] | --model | --ast | --lint`,
+// Command-line entry: `resin <file.erd> [--look <look>] [--curved] [--down] [--hide <parts>] [--keys | --names | --services] [--expand-audit] | --model | --ast | --lint`,
 // `resin diff <before.erd> <after.erd> [--markdown]`, `resin fmt <file.erd>... [--check]`, or
 // `resin <file.sql> --from-sql [--infer-refs]`, or `resin <file.erd> --to-sql <db> [--service <s>]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
 // from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { type Model, type SqlDialect, type SvgLook, SQL_DIALECTS, compile, diff, diffMarkdown, format, formatDiagnostic, fromSql, lint, toSql, toSvg } from "./index.ts";
+import { type CardPart, type Model, type SqlDialect, type SvgLook, CARD_PARTS, SQL_DIALECTS, compile, diff, diffMarkdown, format, formatDiagnostic, fromSql, lint, toSql, toSvg } from "./index.ts";
 
 const USAGE = `usage: resin <file.erd> [options]
        resin diff <before.erd> <after.erd> [--markdown] [drawing options]
@@ -20,6 +20,8 @@ const USAGE = `usage: resin <file.erd> [options]
                    caustic-dark, caustic-light
     --curved       curved connectors instead of right-angled ones
     --down         stack tables top to bottom, connectors joining the cards
+    --hide <parts> leave parts of the rows out of the cards, comma separated:
+                   keys, tags, descriptions, types, nulls
     --keys         show key and reference columns only
     --names        show table names only
     --services     draw each service as one card that lists its tables
@@ -54,8 +56,9 @@ const files: string[] = [];
 let look = "graphite";
 let dialect = "";
 let service: string | undefined;
+let hide: string[] = [];
 let positional = false;
-const OPTIONS = new Set(["--look", "--curved", "--down", "--keys", "--names", "--services", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check", "--to-sql", "--service"]);
+const OPTIONS = new Set(["--look", "--curved", "--down", "--hide", "--keys", "--names", "--services", "--expand-audit", "--model", "--ast", "--lint", "--from-sql", "--infer-refs", "--markdown", "--check", "--to-sql", "--service"]);
 function usageError(message: string): never {
   console.error(`resin: ${message}\n\n${USAGE}`);
   process.exit(2);
@@ -77,6 +80,9 @@ for (let i = 0; i < args.length; i++) {
     } else if (arg === "--to-sql") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) usageError("--to-sql needs a database");
       dialect = args[++i];
+    } else if (arg === "--hide") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) usageError("--hide needs parts of the rows");
+      hide = args[++i].split(",");
     } else if (arg === "--service") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) usageError("--service needs a service name");
       service = args[++i];
@@ -91,6 +97,7 @@ if (command === "fmt") {
 } else if (!file || files.length !== (command ? 3 : 1)) usageError(command ? "diff needs exactly two files" : "expected exactly one file");
 if (command !== "fmt" && flags.has("--check")) usageError("--check needs the fmt command");
 if (!LOOKS.includes(look as SvgLook)) usageError(`--look takes ${LOOKS.join(", ")}`);
+if (hide.some((part) => !CARD_PARTS.includes(part as CardPart))) usageError(`--hide takes ${CARD_PARTS.join(", ")}`);
 const modes = ["--model", "--ast", "--lint", "--from-sql", "--to-sql"].filter((flag) => flags.has(flag));
 if (modes.length > 1) usageError("choose only one output mode: --model, --ast, --lint, --from-sql or --to-sql");
 if (flags.has("--to-sql") && !SQL_DIALECTS.includes(dialect as SqlDialect)) usageError(`--to-sql takes ${SQL_DIALECTS.join(", ")}`);
@@ -99,13 +106,14 @@ if (command && modes.length) usageError("diff accepts --markdown and drawing opt
 if (!command && flags.has("--markdown")) usageError("--markdown needs the diff command");
 if (flags.has("--infer-refs") && !flags.has("--from-sql")) usageError("--infer-refs needs --from-sql");
 if (["--keys", "--names", "--services"].filter((flag) => flags.has(flag)).length > 1) usageError("choose one of --keys, --names or --services");
-const drawingFlags = ["--look", "--curved", "--down", "--keys", "--names", "--services", "--expand-audit"];
+const drawingFlags = ["--look", "--curved", "--down", "--hide", "--keys", "--names", "--services", "--expand-audit"];
 if ((modes.length || flags.has("--markdown")) && drawingFlags.some((flag) => flags.has(flag))) usageError("drawing options need SVG output");
 
 const drawing = {
   look: look as SvgLook,
   edges: flags.has("--curved") ? ("curved" as const) : ("angular" as const),
   direction: flags.has("--down") ? ("down" as const) : ("right" as const),
+  hide: hide as CardPart[],
   standalone: true,
   columns: flags.has("--names") || flags.has("--services") ? ("none" as const) : flags.has("--keys") ? ("keys" as const) : ("all" as const),
   audit: flags.has("--expand-audit") ? ("expand" as const) : ("collapse" as const),

@@ -543,6 +543,13 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   box-shadow: var(--shadow);
 }
 .float.view { left: 12px; top: 12px; }
+/* the parts of a row: a menu under the view controls, holding resin's sample row (viewer.css) */
+.parts-menu { left: 12px; right: auto; top: 52px; width: auto; max-width: calc(100% - 24px); padding: 8px; transform-origin: top left; }
+#parts-picker { overflow-x: auto; }
+.parts-head { margin: 2px 4px 8px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.parts-note { margin: 8px 4px 2px; max-width: 340px; font-size: 11.5px; line-height: 1.5; color: var(--faint); }
+.parts-count { margin-left: 4px; color: var(--faint); }
+.parts-count:empty { display: none; }
 .float.stages { left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 .float.zoom { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 .float button, .sql-dialects button {
@@ -832,6 +839,13 @@ body.is-resizing { cursor: col-resize; user-select: none; }
             <button type="button" data-edges="angular" aria-pressed="true" title="Right-angled lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h9v10h9"/></svg><span class="label-long">Angular</span></button>
             <button type="button" data-edges="curved" aria-pressed="false" title="Curved lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7c9 0 9 10 18 10"/></svg><span class="label-long">Curved</span></button>
           </span>
+          <span class="sep" aria-hidden="true"></span>
+          <button type="button" id="parts" aria-haspopup="dialog" aria-expanded="false" aria-controls="parts-menu" title="Choose the parts of a row the cards show">Parts<span class="parts-count" id="parts-count"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        </div>
+        <div class="menu parts-menu" id="parts-menu" role="dialog" aria-label="Parts of a row" hidden>
+          <p class="parts-head">Parts of a row</p>
+          <div id="parts-picker"></div>
+          <p class="parts-note">Press a part to leave it out of the cards, or to bring it back. The panel still lists everything.</p>
         </div>
         <div class="float stages" role="group" aria-label="Background">
           <button type="button" data-stage="aurora" aria-pressed="false" title="Aurora: ribbons of light under stars"><span class="sw sw-aurora" aria-hidden="true"></span><span class="label-long">Aurora</span></button>
