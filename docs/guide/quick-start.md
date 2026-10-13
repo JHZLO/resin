@@ -4,13 +4,13 @@ The quickest way to try resin is the [playground](https://jhzlo.github.io/resin/
 
 ## Install
 
-The command line runs from a clone of the repository. It needs Node 22.18 or newer, which runs its TypeScript sources directly, and [pnpm](https://pnpm.io). To use resin in code, install `@jhzlo/resin` from npm; see [Library](library.md).
+Install `@jhzlo/resin` from npm in the project that keeps your schemas. It needs Node 22.18 or newer. Drawing needs [elkjs](https://github.com/kieler/elkjs), the layout engine, installed next to it:
 
 ```bash
-git clone https://github.com/JHZLO/resin.git
-cd resin
-pnpm install
+npm install --save-dev @jhzlo/resin elkjs
 ```
+
+This puts the `resin` command in the project, run with `npx resin`. Install it first: in a project without it, `npx resin` fetches an unrelated npm package of that name. The same package is the [library](library.md), for using resin in code.
 
 ## Draw a file
 
@@ -32,8 +32,8 @@ table orders {
 Then draw it. resin prints the SVG to standard output:
 
 ```bash
-pnpm resin shop.erd > shop.svg
-pnpm resin shop.erd --look aurora-dark > shop.dark.svg
+npx resin shop.erd > shop.svg
+npx resin shop.erd --look aurora-dark > shop.dark.svg
 ```
 
 By default the SVG has no background, so it reads on light and dark pages alike. [Command line](cli.md) lists every option.

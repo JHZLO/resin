@@ -84,29 +84,29 @@ caustic), each dark or light. The same input always gives byte-identical output,
 has no runtime dependencies: it takes an [ELK](https://github.com/kieler/elkjs) instance that you
 pass in.
 
-For a schema split across services, `pnpm resin schema.erd --services` draws each service as one card
+For a schema split across services, `npx resin schema.erd --services` draws each service as one card
 that lists its tables, with references inside a service counted and the ones between services
 running from table to table, so the dependencies between services are the picture.
 
 Lint rules go further than compiling: they point at a reference column without an index, a table
 without a primary key or one nothing joins, a column name typed two ways, and an index another one
-covers. `pnpm resin schema.erd --lint` fails a CI step on any of them.
+covers. `npx resin schema.erd --lint` fails a CI step on any of them.
 
-resin has one layout, with columns lined up within each table. `pnpm resin fmt schema.erd`
+resin has one layout, with columns lined up within each table. `npx resin fmt schema.erd`
 rewrites a file in it, keeping every comment, and `--check` fails a CI step on a file that is not
 formatted. The playground formats with Shift + Alt + F.
 
-Schema changes can be reviewed as pictures. `pnpm resin diff old.erd new.erd` draws the newer
+Schema changes can be reviewed as pictures. `npx resin diff old.erd new.erd` draws the newer
 version with added, removed and changed tables and columns marked, and as a GitHub Action
 (`uses: JHZLO/resin@main`) resin keeps a comment with that drawing on every pull request that
 changes a `.erd` file.
 
-The other way works too: `pnpm resin schema.erd --to-sql postgres` writes the DDL for MySQL,
+The other way works too: `npx resin schema.erd --to-sql postgres` writes the DDL for MySQL,
 PostgreSQL, SQLite, SQL Server or Oracle, a schema per service, or one service's own database with
 `--service`. Importing that DDL gives the same document back.
 
 An existing schema does not have to be written by hand. Paste a `CREATE TABLE` script into the
-playground, or run `pnpm resin schema.sql --from-sql`, and it comes back as resin: keys, indexes,
+playground, or run `npx resin schema.sql --from-sql`, and it comes back as resin: keys, indexes,
 foreign keys, enum values and comments carry over, from MySQL, PostgreSQL, SQLite, SQL Server or
 Oracle DDL, dumps included. What resin cannot write yet stays as a comment in its table.
 
@@ -117,28 +117,25 @@ see what it owns, what it depends on and what uses it. Connectors can be angular
 
 ## Getting started
 
-The command line runs from a clone of the repository. It needs Node 22.18 or newer (the sources are
-TypeScript run directly by Node) and [pnpm](https://pnpm.io). To use resin in code, install it from
-npm instead; see [Using the library](#using-the-library).
+Install resin from npm in the project that keeps your schemas, with
+[elkjs](https://github.com/kieler/elkjs) for drawing. It needs Node 22.18 or newer.
 
 ```bash
-git clone https://github.com/JHZLO/resin.git
-cd resin
-pnpm install
+npm install --save-dev @jhzlo/resin elkjs
 ```
 
 Draw a file as SVG:
 
 ```bash
-pnpm resin examples/order.erd > order.svg
-pnpm resin examples/order.erd --look aurora-dark > order.aurora-dark.svg
-pnpm resin examples/shop.erd --keys --curved > shop.svg
+npx resin schema.erd > schema.svg
+npx resin schema.erd --look aurora-dark > schema.aurora-dark.svg
+npx resin schema.erd --keys --curved > schema.keys.svg
 ```
 
 Convert SQL DDL to resin:
 
 ```bash
-pnpm resin examples/sql/postgres.sql --from-sql > schema.erd
+npx resin schema.sql --from-sql > schema.erd
 ```
 
 Errors come out in compiler format:

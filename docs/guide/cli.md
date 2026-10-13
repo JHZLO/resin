@@ -1,6 +1,6 @@
 # Command line
 
-From a clone of the repository, `pnpm resin` compiles one file; see [Quick start](quick-start.md) to set it up.
+`resin` compiles one file. Installed from npm, it runs as `npx resin`; see [Quick start](quick-start.md) to set it up. In a clone of the repository, `pnpm resin` runs it from the sources.
 
 ```text
 usage: resin <file.erd> [options]
@@ -47,16 +47,18 @@ usage: resin <file.erd> [options]
 The result goes to standard output, and problems go to standard error in compiler format, so a redirect keeps them apart:
 
 ```bash
-pnpm resin schema.erd > schema.svg
-pnpm resin schema.erd --keys --curved > schema.keys.svg
-pnpm resin schema.erd --down > schema.down.svg
-pnpm resin schema.erd --services > schema.services.svg
-pnpm resin schema.erd --model > schema.json
+npx resin schema.erd > schema.svg
+npx resin schema.erd --keys --curved > schema.keys.svg
+npx resin schema.erd --down > schema.down.svg
+npx resin schema.erd --services > schema.services.svg
+npx resin schema.erd --model > schema.json
 ```
 
 The SVG is ready to embed with `<img>`: with the default look it picks its ink color from the reader's light or dark theme.
 
 An error leaves standard output empty, including with `--model` and `--ast`. `--help` prints the usage to standard output and exits successfully without a file. Use `--` before a file name that starts with `-`.
+
+Drawing needs elkjs. Without it, a drawing ends with `resin: drawing needs the elkjs package (npm install elkjs)` and status 1, while the modes that print no SVG still work.
 
 Unknown options, extra files and conflicting output modes are errors. Choose one of `--model`, `--ast`, `--lint`, `--from-sql` or `--to-sql`, or omit them for SVG. Drawing options require SVG output; only one of `--keys`, `--names` and `--services` can be given. `--markdown` requires `diff`, `--check` requires `fmt`, `--service` requires `--to-sql`, and `--infer-refs` requires `--from-sql`.
 
@@ -65,7 +67,7 @@ Unknown options, extra files and conflicting output modes are errors. Choose one
 `--lint` checks the file against the [lint rules](lint.md) as well, prints nothing but the problems and exits with status 1 when there is an error or a finding, which makes it a CI step:
 
 ```bash
-pnpm resin schema.erd --lint
+npx resin schema.erd --lint
 ```
 
 ## Format
@@ -73,8 +75,8 @@ pnpm resin schema.erd --lint
 `fmt` rewrites files in resin's one layout and prints the names of the files it changed. With `--check` it changes nothing, prints the files that are not formatted and exits with status 1 when there is one, for CI. A file with syntax errors is left as it is, and its errors are printed. See [Formatting](formatting.md).
 
 ```bash
-pnpm resin fmt schema.erd
-pnpm resin fmt --check schemas/*.erd
+npx resin fmt schema.erd
+npx resin fmt --check schemas/*.erd
 ```
 
 ## Diff
@@ -82,7 +84,7 @@ pnpm resin fmt --check schemas/*.erd
 `diff` compares two versions of a file and draws the newer one with the changes marked, or lists them with `--markdown`. See [Comparing versions](diff.md).
 
 ```bash
-pnpm resin diff old.erd new.erd > diff.svg
+npx resin diff old.erd new.erd > diff.svg
 ```
 
 ## From SQL
@@ -90,7 +92,7 @@ pnpm resin diff old.erd new.erd > diff.svg
 `--from-sql` reads a SQL file and prints it as resin. What did not convert is listed on standard error, with its line in the SQL:
 
 ```bash
-pnpm resin schema.sql --from-sql > schema.erd
+npx resin schema.sql --from-sql > schema.erd
 ```
 
 For the PostgreSQL dump in the repository, `pnpm resin examples/sql/postgres.sql --from-sql` notes, among others:
@@ -107,8 +109,8 @@ examples/sql/postgres.sql:68:5: note: table `order_items`: not converted: compos
 `--to-sql <db>` prints the schema as SQL DDL for `mysql`, `postgres`, `sqlite`, `sqlserver` or `oracle`, with notes on standard error. `--service <s>` writes only one service's tables, for its own database. See [Generating SQL](generating-sql.md).
 
 ```bash
-pnpm resin schema.erd --to-sql postgres > schema.sql
-pnpm resin schema.erd --to-sql mysql --service ordering > ordering.sql
+npx resin schema.erd --to-sql postgres > schema.sql
+npx resin schema.erd --to-sql mysql --service ordering > ordering.sql
 ```
 
 ## Exit status

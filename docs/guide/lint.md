@@ -7,7 +7,7 @@ Lint rules point at schema design that compiles but is likely a mistake: a refer
 The playground runs the rules on every change: the status bar counts the findings, pressing the count lists them, and each has a dotted underline in the editor (see [Playground](playground.md#lint)). On the command line, `--lint` checks a file and prints only the problems, so it fits a CI step:
 
 ```bash
-pnpm resin schema.erd --lint
+npx resin schema.erd --lint
 ```
 
 ```text

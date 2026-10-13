@@ -26,11 +26,12 @@ jobs:
         run: pnpm build
       - name: Build the site (every docs example must compile)
         run: pnpm build:site
-      - name: Run the CLI on the examples
+      - name: Run the CLI on the examples, from source and as built for npm
         run: |
           for f in examples/*.erd; do
             pnpm -s resin "$f" > /dev/null
             pnpm -s resin "$f" --model > /dev/null
+            node dist/src/cli.js "$f" > /dev/null
           done
 
   browsers:

@@ -6,6 +6,11 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+### Added
+
+- The command line ships in the npm package: `npm install --save-dev @jhzlo/resin elkjs`, then
+  `npx resin schema.erd`. A drawing without elkjs installed says so instead of failing to import it.
+
 ## [0.2.2] - 2026-10-13
 
 ### Fixed

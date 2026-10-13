@@ -3,7 +3,7 @@
 resin has one layout. `resin fmt` and the playground's Format button rewrite a document in it, so two people who write the same schema write the same text, and a change to a file shows only the lines it changes.
 
 ```bash
-pnpm resin fmt schema.erd
+npx resin fmt schema.erd
 ```
 
 This document:
@@ -69,7 +69,7 @@ Names, strings, backtick names and comments are kept exactly as written, and mod
 `--check` changes nothing. It prints the files that are not formatted and exits with status 1 when there is one:
 
 ```bash
-pnpm resin fmt --check schemas/*.erd
+npx resin fmt --check schemas/*.erd
 ```
 
 ## In the playground

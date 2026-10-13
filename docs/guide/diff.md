@@ -5,8 +5,8 @@
 ## From the command line
 
 ```bash
-pnpm resin diff old.erd new.erd > diff.svg
-pnpm resin diff old.erd new.erd --markdown
+npx resin diff old.erd new.erd > diff.svg
+npx resin diff old.erd new.erd --markdown
 ```
 
 With these two versions:

@@ -1,0 +1,12 @@
+{
+  // The command line for the npm package's bin. A program of its own because it needs Node's types,
+  // which the library build leaves out so the published library cannot come to depend on them.
+  // `exclude` is emptied because the library build's own exclude names this very file
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "declaration": false
+  },
+  "include": ["src/cli.ts"],
+  "exclude": []
+}

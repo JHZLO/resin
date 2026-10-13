@@ -3,7 +3,7 @@
 resin writes a schema as SQL DDL for MySQL, PostgreSQL, SQLite, SQL Server or Oracle. It is [Importing SQL](sql.md) run backwards: every fact goes where the import reads it from, so importing what resin writes gives the same document back, apart from the few things SQL cannot hold.
 
 ```bash
-pnpm resin shop.erd --to-sql postgres > schema.sql
+npx resin shop.erd --to-sql postgres > schema.sql
 ```
 
 ```erd example file=shop.erd "Two services: the accounts service owns users, the order service owns orders and their items"
@@ -88,7 +88,7 @@ Without `--service`, the whole document goes into one database, with a schema fo
 With `--service <name>`, only that service's tables are written, without a schema: the DDL of the service's own database. A foreign key into another service cannot exist there, so it becomes a comment and a note:
 
 ```bash
-pnpm resin shop.erd --to-sql mysql --service ordering
+npx resin shop.erd --to-sql mysql --service ordering
 ```
 
 ```sql

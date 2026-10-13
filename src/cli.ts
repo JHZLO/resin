@@ -1,6 +1,7 @@
-// Command-line entry: `pnpm resin <file.erd> [--look <look>] [--curved] [--down] [--keys | --names | --services] [--expand-audit] | --model | --ast | --lint`,
-// `pnpm resin diff <before.erd> <after.erd> [--markdown]`, `pnpm resin fmt <file.erd>... [--check]`, or
-// `pnpm resin <file.sql> --from-sql [--infer-refs]`, or `pnpm resin <file.erd> --to-sql <db> [--service <s>]`.
+#!/usr/bin/env node
+// Command-line entry: `resin <file.erd> [--look <look>] [--curved] [--down] [--keys | --names | --services] [--expand-audit] | --model | --ast | --lint`,
+// `resin diff <before.erd> <after.erd> [--markdown]`, `resin fmt <file.erd>... [--check]`, or
+// `resin <file.sql> --from-sql [--infer-refs]`, or `resin <file.erd> --to-sql <db> [--service <s>]`.
 // Diagnostics go to stderr in compiler format; the result (the SVG, model JSON, syntax tree JSON or,
 // from SQL, resin source) goes to stdout. Exits with 1 when there are errors.
 
@@ -112,7 +113,10 @@ const drawing = {
 
 /** Draw a model as SVG. Layout needs elkjs: the core does not depend on it, only this entry point loads it */
 async function draw(model: Model): Promise<string> {
-  const { default: ELK } = await import("elkjs");
+  const { default: ELK } = await import("elkjs").catch((error: NodeJS.ErrnoException) => {
+    // elkjs is an optional peer of the package, so an npm install of resin alone lacks it
+    throw error.code === "ERR_MODULE_NOT_FOUND" ? new Error("drawing needs the elkjs package (npm install elkjs)") : error;
+  });
   // Every service folded; a table outside every service keeps its name only
   const fold = flags.has("--services") ? model.services.map((s) => s.name) : undefined;
   return (await toSvg(model, new ELK(), { ...drawing, fold })).svg + "\n";

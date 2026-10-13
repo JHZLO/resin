@@ -37,6 +37,9 @@
     }
   },
   "types": "./dist/src/index.d.ts",
+  "bin": {
+    "resin": "dist/src/cli.js"
+  },
   "files": [
     "dist",
     "LICENSE",
@@ -57,7 +60,7 @@
     "check": "pnpm typecheck && vitest run",
     "resin": "node src/cli.ts",
     "build:site": "node scripts/build-site.mjs",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp viewer/viewer.css dist/viewer/viewer.css && echo 'export {};' > dist/viewer/viewer.css.d.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.cli.json && cp viewer/viewer.css dist/viewer/viewer.css && echo 'export {};' > dist/viewer/viewer.css.d.ts",
     "prepack": "pnpm build"
   },
   "engines": {
