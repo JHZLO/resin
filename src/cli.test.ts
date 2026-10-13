@@ -141,6 +141,20 @@ describe("the command line", () => {
     expect(sqlite.stdout).toContain("CREATE INDEX ix_users_name ON users (name);");
   });
 
+  it("stacks the tables top to bottom with --down", () => {
+    const pair = join(dir, "pair.erd");
+    writeFileSync(pair, "table a {\n  id  int  pk\n}\n\ntable b {\n  id    int  pk\n  a_id  int  -> a\n}\n");
+    const size = (stdout: string) => /viewBox="0 0 (\d+) (\d+)"/.exec(stdout)!.slice(1).map(Number);
+    const right = run(pair);
+    const down = run(pair, "--down");
+    expect(down.status).toBe(0);
+    expect(down.stderr).toBe("");
+    const [rw, rh] = size(right.stdout);
+    const [dw, dh] = size(down.stdout);
+    expect(rw).toBeGreaterThan(rh);
+    expect(dh).toBeGreaterThan(dw);
+  });
+
   it("draws each service as one card with --services", () => {
     const services = join(dir, "folded.erd");
     writeFileSync(services, "service a {\n  table t {\n    id  int  pk\n  }\n}\n\ntable u {\n  id    int  pk\n  t_id  int  ~> t\n}\n");

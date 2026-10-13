@@ -6,6 +6,11 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+### Added
+
+- Top to bottom drawings (`direction: "down"`, `--down`): a referenced table above the tables that
+  reference it, connectors joining the cards.
+
 ## [0.2.0] - 2026-10-13
 
 The first public version of the language, grammar v0.2, and the first release on npm as

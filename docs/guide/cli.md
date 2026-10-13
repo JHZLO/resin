@@ -14,6 +14,7 @@ usage: resin <file.erd> [options]
                    aurora-dark, aurora-light, silk-dark, silk-light,
                    caustic-dark, caustic-light
     --curved       curved connectors instead of right-angled ones
+    --down         stack tables top to bottom, connectors joining the cards
     --keys         show key and reference columns only
     --names        show table names only
     --services     draw each service as one card that lists its tables
@@ -48,6 +49,7 @@ The result goes to standard output, and problems go to standard error in compile
 ```bash
 pnpm resin schema.erd > schema.svg
 pnpm resin schema.erd --keys --curved > schema.keys.svg
+pnpm resin schema.erd --down > schema.down.svg
 pnpm resin schema.erd --services > schema.services.svg
 pnpm resin schema.erd --model > schema.json
 ```

@@ -200,6 +200,12 @@ the primary key row it points at.
   rather than at the chevron, because many relations can share one primary key. `edges: "curved"`
   draws S-bends with level ends instead, and keeps the routed path, with wide bends, wherever an
   S-bend would cross another card.
+- **Direction**: left to right by default, a referenced table to the left of the tables that
+  reference it, each connector joining the two rows. `direction: "down"` runs top to bottom instead:
+  a referenced table above, each connector from the bottom of its card to the top of the other card,
+  because a row has ends only at the sides of its card. The chevron then points up into the
+  referenced card, the `N` or `1` sits beside the line above the referencing card, and curved
+  connectors have upright ends.
 - **Services** are areas around their tables, laid out by ELK as nodes that hold the cards, so a
   service keeps its tables together and connectors cross from one service to another. An area has a faint
   tint, an even edge with corners of 12 units, and its name and description at the top left. The

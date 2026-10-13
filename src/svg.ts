@@ -38,6 +38,10 @@ export interface SvgOptions {
   stage?: boolean;
   /** Connectors: angular (right-angled, the default) or curved */
   edges?: "angular" | "curved";
+  /** Which way references run. right (the default): a referenced table to the left of the tables that
+   *  reference it, each connector joining the two rows. down: a referenced table above them, each
+   *  connector joining the two cards, since a row has ends only at the sides of its card */
+  direction?: "right" | "down";
   /** Services drawn as one card each, a row per table: references inside a folded service are
    *  counted under its card, references out of it join its rows. Other tables follow `columns` */
   fold?: readonly string[];
@@ -680,16 +684,16 @@ function pathD(pts: Point[], r: number): string {
   return `${d} L${f(last.x)},${f(last.y)}`;
 }
 
-/** A curved connector: an S-bend with level ends when no other card is in the way, otherwise ELK's
- *  route (which goes around the cards) with wide, smooth bends */
-function curved(route: Point[], others: SvgBox[]): string {
+/** A curved connector: an S-bend with level ends (upright ones top to bottom) when no other card is in
+ *  the way, otherwise ELK's route (which goes around the cards) with wide, smooth bends */
+function curved(route: Point[], others: SvgBox[], down = false): string {
   const s = route[0];
   const e = route[route.length - 1];
-  const dx = e.x - s.x;
-  if (dx > 24) {
-    const k = Math.max(32, Math.min(180, dx * 0.5));
-    const c1 = { x: s.x + k, y: s.y };
-    const c2 = { x: e.x - k, y: e.y };
+  const gap = down ? e.y - s.y : e.x - s.x;
+  if (gap > 24) {
+    const k = Math.max(32, Math.min(180, gap * 0.5));
+    const c1 = down ? { x: s.x, y: s.y + k } : { x: s.x + k, y: s.y };
+    const c2 = down ? { x: e.x, y: e.y - k } : { x: e.x - k, y: e.y };
     const blocked = others.some((b) => {
       for (let i = 1; i < 24; i++) {
         const t = i / 24;
@@ -1017,6 +1021,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const opts = { columns: options.columns ?? "all", audit: options.audit ?? "collapse", fold: new Set(options.fold ?? []) } as const;
   const look = options.look ?? "graphite";
   const edges = options.edges ?? "angular";
+  const down = options.direction === "down";
   const L = LOOKS[look];
   const prefix = options.idPrefix ?? "rz-";
   const id = (name: string) => prefix + name;
@@ -1025,13 +1030,22 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const portId = (table: string, column: string, side: "E" | "W") => `${table}::${column}::${side}`;
   const portFor = (table: string, column: string, side: "E" | "W") => portId(table, portOf(byName.get(table)!, column), side);
   const used = new Set(relations.flatMap((r) => [portFor(r.parent, r.parentColumn, "E"), portFor(r.child, r.childColumn, "W")]));
+  // Top to bottom, a connector leaves the bottom of the referenced card and enters the top of the
+  // referencing one. Every connector has its own end, and ELK spreads them along the edge
+  const endId = (table: string, i: number, side: "N" | "S") => `${table}::e${i}::${side}`;
+  const cardPorts = (v: View): ElkPortIn[] =>
+    relations.flatMap((r, i) => [
+      ...(r.parent === v.table.name ? [{ id: endId(r.parent, i, "S"), x: v.w / 2, y: v.h, width: 0, height: 0, layoutOptions: { "elk.port.side": "SOUTH" } }] : []),
+      ...(r.child === v.table.name ? [{ id: endId(r.child, i, "N"), x: v.w / 2, y: 0, width: 0, height: 0, layoutOptions: { "elk.port.side": "NORTH" } }] : []),
+    ]);
 
   const tableNode = (v: View): ElkNodeIn => ({
     id: v.table.name,
     width: v.w,
     height: v.h,
-    layoutOptions: { "elk.portConstraints": "FIXED_POS" },
-    ports: (bare(v) ? [{ name: "", y: HEAD / 2 }] : v.shown.map((c, i) => ({ name: c.name, y: rowY(i) }))).flatMap((row) =>
+    // Room beside each end for its 1 or N
+    layoutOptions: down ? { "elk.portConstraints": "FIXED_SIDE", "elk.spacing.portPort": "24" } : { "elk.portConstraints": "FIXED_POS" },
+    ports: down ? cardPorts(v) : (bare(v) ? [{ name: "", y: HEAD / 2 }] : v.shown.map((c, i) => ({ name: c.name, y: rowY(i) }))).flatMap((row) =>
       (
         [
           ["W", 0, "WEST"],
@@ -1079,7 +1093,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
       // ELK's hub treatment avoids expensive leaf placement around highly referenced tables.
       ...(hasHub ? { "elk.layered.highDegreeNodes.treatment": "true", "elk.layered.highDegreeNodes.threshold": "32" } : {}),
       "elk.algorithm": "layered",
-      "elk.direction": "RIGHT",
+      "elk.direction": down ? "DOWN" : "RIGHT",
       "elk.edgeRouting": "ORTHOGONAL",
       "elk.layered.spacing.nodeNodeBetweenLayers": "88",
       "elk.layered.spacing.edgeNodeBetweenLayers": "36",
@@ -1094,8 +1108,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     children,
     edges: relations.map((r, i) => ({
       id: `e${i}`,
-      sources: [portFor(r.parent, r.parentColumn, "E")],
-      targets: [portFor(r.child, r.childColumn, "W")],
+      sources: [down ? endId(r.parent, i, "S") : portFor(r.parent, r.parentColumn, "E")],
+      targets: [down ? endId(r.child, i, "N") : portFor(r.child, r.childColumn, "W")],
     })),
   };
 
@@ -1158,22 +1172,31 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const cv = byName.get(r.child)!;
     const pp = pos.get(r.parent)!;
     const cp = pos.get(r.child)!;
-    // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor
-    const start = { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) };
-    const end = { x: cp.x, y: cp.y + anchorY(cv, r.childColumn) };
+    // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor.
+    // Top to bottom, the anchors are the ends ELK spread along the card edges
+    const at = (p: Point) => ({ x: p.x + route!.offset.x, y: p.y + route!.offset.y });
+    const start = down
+      ? sec ? at(sec.startPoint) : { x: pp.x + pv.w / 2, y: pp.y + pv.h }
+      : { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) };
+    const end = down
+      ? sec ? at(sec.endPoint) : { x: cp.x + cv.w / 2, y: cp.y }
+      : { x: cp.x, y: cp.y + anchorY(cv, r.childColumn) };
     const path = clean([start, ...bends, end]);
-    const d = edges === "curved" ? curved(path, boxes.filter((b) => b.table !== r.parent && b.table !== r.child)) : pathD(path, 3);
+    const d = edges === "curved" ? curved(path, boxes.filter((b) => b.table !== r.parent && b.table !== r.child), down) : pathD(path, 3);
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
     const ink: Ink = r.change ? [diffHue(L, r.change.kind), r.change.kind === "removed" ? 0.6 : 1] : L.ink.line;
     const composite = r.childColumns ? ` data-acs="${esc(JSON.stringify(r.parentColumns))}" data-bcs="${esc(JSON.stringify(r.childColumns))}"` : "";
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}"${composite}>`);
     s.push(`<path d="${d}" fill="none" ${stroke(ink)} stroke-width="1.2"${dash}/>`);
-    // Primary key end: a chevron, like resin's `->`. Foreign key end: a square port and N (many) or 1 (one)
-    s.push(
-      `<path d="M${f(start.x + 6.5)},${f(start.y - 4.5)} L${f(start.x + 1.5)},${f(start.y)} L${f(start.x + 6.5)},${f(start.y + 4.5)}" fill="none" ${stroke(ink)} stroke-width="1.3"/>`,
-    );
+    // Primary key end: a chevron, like resin's `->`, pointing into the card. Foreign key end: a square
+    // port and N (many) or 1 (one), beside the line just outside the card
+    const chevron = down
+      ? `M${f(start.x - 4.5)},${f(start.y + 6.5)} L${f(start.x)},${f(start.y + 1.5)} L${f(start.x + 4.5)},${f(start.y + 6.5)}`
+      : `M${f(start.x + 6.5)},${f(start.y - 4.5)} L${f(start.x + 1.5)},${f(start.y)} L${f(start.x + 6.5)},${f(start.y + 4.5)}`;
+    s.push(`<path d="${chevron}" fill="none" ${stroke(ink)} stroke-width="1.3"/>`);
     s.push(`<rect x="${f(end.x - 2.5)}" y="${f(end.y - 2.5)}" width="5" height="5" ${fill(ink)}/>`);
-    if (!r.bundled) s.push(`<text x="${f(end.x - 9)}" y="${f(end.y - 5)}" text-anchor="end" font-family="${MONO}" font-size="9" ${fill(ink)}>${r.one ? "1" : "N"}</text>`);
+    const mark = down ? { x: end.x - 5, y: end.y - 6 } : { x: end.x - 9, y: end.y - 5 };
+    if (!r.bundled) s.push(`<text x="${f(mark.x)}" y="${f(mark.y)}" text-anchor="end" font-family="${MONO}" font-size="9" ${fill(ink)}>${r.one ? "1" : "N"}</text>`);
     s.push("</g>");
   });
   s.push("</g>", '<g class="rz-tables">');

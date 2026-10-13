@@ -128,6 +128,39 @@ describe("toSvg", () => {
     expect(curved.width).toBe(angular.width);
   });
 
+  it("stacks tables top to bottom with direction down, each connector from the bottom of one card to the top of the other", async () => {
+    const { svg, boxes } = await toSvg(modelOf(ORDER), elk, { direction: "down" });
+    const box = new Map(boxes.map((b) => [b.table, b]));
+    const groups = svg.split('<g class="rz-r"').slice(1);
+    expect(groups).toHaveLength(4);
+    for (const g of groups) {
+      const a = box.get(/data-a="([^"]+)"/.exec(g)![1])!;
+      const b = box.get(/data-b="([^"]+)"/.exec(g)![1])!;
+      const [line, chevron] = [...g.matchAll(/<path d="([^"]+)"/g)].map((m) => [...m[1].matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => ({ x: Number(p[1]), y: Number(p[2]) })));
+      const [start, end] = [line[0], line[line.length - 1]];
+      expect(a.y + a.h).toBeLessThan(b.y);
+      expect(start.y).toBeCloseTo(a.y + a.h, 0);
+      expect(start.x).toBeGreaterThan(a.x);
+      expect(start.x).toBeLessThan(a.x + a.w);
+      expect(end.y).toBeCloseTo(b.y, 0);
+      expect(end.x).toBeGreaterThan(b.x);
+      expect(end.x).toBeLessThan(b.x + b.w);
+      // The chevron points up into the referenced card
+      expect(chevron[1].y).toBeLessThan(chevron[0].y);
+    }
+  });
+
+  it("curves top to bottom connectors with upright ends", async () => {
+    const { svg } = await toSvg(modelOf(ORDER), elk, { direction: "down", edges: "curved" });
+    const bends = svg.split('<g class="rz-r"').slice(1).map((r) => /<path d="([^"]+)"/.exec(r)![1]).filter((d) => d.includes(" C"));
+    expect(bends.length).toBeGreaterThan(0);
+    for (const d of bends) {
+      const [s, c1, c2, e] = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => ({ x: Number(p[1]), y: Number(p[2]) }));
+      expect(c1.x).toBe(s.x);
+      expect(c2.x).toBe(e.x);
+    }
+  });
+
   it("measures Hangul as double width", async () => {
     const latin = await toSvg(modelOf('table t "abcdefghijklmnopqrstuvwxyz abcdefghij" {\n id bigint pk\n}'), elk);
     const hangul = await toSvg(modelOf('table t "주문 주문 주문 주문 주문 주문 주문 주문 주문 주문" {\n id bigint pk\n}'), elk);

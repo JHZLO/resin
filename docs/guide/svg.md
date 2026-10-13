@@ -40,6 +40,8 @@ A model from [`diff`](diff.md) carries what changed, and the drawing marks it: a
 
 Solid for foreign keys, dashed for logical references. A chevron marks the primary key end, as in `->`; a square port and `N` or `1` mark the foreign key end. Connectors are right-angled by default, or S-bends with `edges: "curved"`, which keep the routed path wherever an S-bend would cross another card.
 
+The drawing runs left to right: a referenced table sits to the left of the tables that reference it, and a connector joins the two rows. With `direction: "down"` it runs top to bottom: a referenced table sits above them, and a connector joins the two cards, from the bottom of one to the top of the other, since a row has ends only at the sides of its card. Which columns a connector joins is then in the details of either table.
+
 ## Looks
 
 | Look | Background |
@@ -60,6 +62,7 @@ With a glass look the cards are frosted glass over the background, which the SVG
 | `audit` | `collapse`, or `expand` to draw `revinfo` and `*_aud` | `collapse` |
 | `fold` | Names of services to draw as one card each, a row per table | none |
 | `edges` | `angular` or `curved` | `angular` |
+| `direction` | `right`, or `down` to stack the tables top to bottom, connectors joining the cards | `right` |
 | `standalone` | Adds a style that picks the ink color from the reader's theme, for files embedded with `<img>` | `false` |
 | `stage` | `false` leaves out the background and the glass, for a page that paints them itself | `true` |
 | `idPrefix` | Prefixes every id, so several drawings can share a page | `rz-` |
