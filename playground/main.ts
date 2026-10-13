@@ -577,6 +577,8 @@ function fitFloats(): void {
   const viewRight = viewFloat.offsetLeft + viewFloat.offsetWidth;
   const pill = !inspector.hidden || centeredLeft < viewRight + 8 ? "below" : "";
   if ((diagramPanel.dataset.pill ?? "") !== pill) diagramPanel.dataset.pill = pill;
+  // Below the view controls, which take two lines on a phone
+  relatedFloat.style.top = pill ? `${viewFloat.offsetTop + viewFloat.offsetHeight + 4}px` : "";
 }
 
 // The panel's left edge: drag it, or use the arrow keys when it has focus
