@@ -98,7 +98,7 @@ capitalized, no trailing period, at most 70 characters. Types: `feat` `fix` `ref
 Releases go to npm as `@jhzlo/resin`, from GitHub Actions.
 
 1. Set the new version in `package.json` and move the `Unreleased` notes in `CHANGELOG.md` under it.
-2. Commit, then tag the commit `v<version>` and push the tag.
+2. Commit, tag the commit `v<version>` and push `main` with the tag: `git push origin main v<version>`.
 3. The `Publish` workflow checks that the tag is on `main` and matches `package.json`, runs
    `pnpm check`, builds `dist/` and publishes. npm trusts the workflow through OIDC (trusted
    publishing), so there is no npm token to keep, and each version it publishes carries provenance
