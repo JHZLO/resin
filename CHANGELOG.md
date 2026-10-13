@@ -6,6 +6,8 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-13
+
 ### Fixed
 
 - Top to bottom drawings: a composite reference is one connector rather than one per pair of
