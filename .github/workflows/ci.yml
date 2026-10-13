@@ -36,6 +36,8 @@ jobs:
   browsers:
     name: Browser workflows
     runs-on: ubuntu-latest
+    # usually 4 to 6 minutes; a stalled apt mirror can hang the browser install for hours
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
