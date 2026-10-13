@@ -75,7 +75,7 @@ A reference to or from a table outside every service is not checked.
 
 Each service is an area with a faint tint, an even edge and its name and description at the top left. The tables of a service are laid out together, and connectors run between services as they do inside one. In the glass looks services take hues in the order they are declared (teal, violet, amber, rose, sky, lime); the plain `graphite` look draws them in ink.
 
-To see how the services depend on each other, fold them: `resin --services`, or Services in the playground's view options, draws each service as one card with a row per table, in the service's hue. References inside a service are counted under its card; a reference that leaves the service runs from the row of its table to the row of the table it points at. See [SVG](svg.md#services).
+To see how the services depend on each other, fold them: `resin --services`, or Services in the playground's view options, draws each service as one card with a row per table, in the service's hue. References inside a service are counted under its card; a reference that leaves the service runs from the row of its table to the row of the table it points at (with `--down`, between the cards). See [SVG](svg.md#services).
 
 In the [playground](playground.md#services), a service's name, on its area or its folded card, opens a side panel with what the service owns, what it depends on and what uses it. Service only, in that panel, draws the service's tables with the services they link to folded around them. A table's panel says which service the table is in, with a link to the service.
 

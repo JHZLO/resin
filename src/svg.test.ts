@@ -150,6 +150,27 @@ describe("toSvg", () => {
     }
   });
 
+  it("draws a composite reference as one connector top to bottom, and one per pair of columns left to right", async () => {
+    const model = modelOf(readFileSync(join(EXAMPLES, "composite.erd"), "utf8"));
+    const right = await toSvg(model, elk);
+    const down = await toSvg(model, elk, { direction: "down" });
+    expect(count(right.svg, 'class="rz-r"')).toBe(2);
+    expect(count(down.svg, 'class="rz-r"')).toBe(1);
+    expect(down.svg).toContain(`data-acs="${'["tenant_id","id"]'.replace(/"/g, "&quot;")}"`);
+  });
+
+  it("breaks top to bottom connectors behind a service's name, where they cross the top of its area", async () => {
+    const shop = modelOf(readFileSync(join(EXAMPLES, "shop.erd"), "utf8"));
+    const { svg } = await toSvg(shop, elk, { direction: "down" });
+    const heads = [...svg.matchAll(/<g class="rz-svc-head"><rect class="rz-hit" (x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+")/g)].map((m) => m[1]);
+    const names = /<mask id="rz-names"[^>]*>([\s\S]*?)<\/mask>/.exec(svg)![1];
+    expect(heads).toHaveLength(4);
+    for (const at of heads) expect(names).toContain(`<rect ${at} fill="black"/>`);
+    expect(svg).toContain('<g class="rz-rels" mask="url(#rz-names)">');
+    // Left to right, connectors come in from the sides and nothing is masked
+    expect((await toSvg(shop, elk)).svg).not.toContain("rz-names");
+  });
+
   it("curves top to bottom connectors with upright ends", async () => {
     const { svg } = await toSvg(modelOf(ORDER), elk, { direction: "down", edges: "curved" });
     const bends = svg.split('<g class="rz-r"').slice(1).map((r) => /<path d="([^"]+)"/.exec(r)![1]).filter((d) => d.includes(" C"));

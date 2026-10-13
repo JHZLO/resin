@@ -1,6 +1,7 @@
 // Model → SVG: the ERD resin draws itself.
 //
-// Steps: size every card → lay out with ELK (a port on every column row, orthogonal routing) → SVG string.
+// Steps: size every card → lay out with ELK (left to right a port on every column row, top to bottom one
+// on a card's edge for each connector; orthogonal routing) → SVG string.
 //
 // Every look shares one layout and one card anatomy: a panel with modest corners, key labels (PK, UK,
 // FK) in a gutter, rectangular tags, and orthogonal connectors with square ends.
@@ -38,7 +39,7 @@ export interface SvgOptions {
   stage?: boolean;
   /** Connectors: angular (right-angled, the default) or curved */
   edges?: "angular" | "curved";
-  /** Which way references run. right (the default): a referenced table to the left of the tables that
+  /** Which way the drawing runs. right (the default): a referenced table to the left of the tables that
    *  reference it, each connector joining the two rows. down: a referenced table above them, each
    *  connector joining the two cards, since a row has ends only at the sides of its card */
   direction?: "right" | "down";
@@ -730,7 +731,7 @@ function clean(pts: Point[]): Point[] {
  *  stand for several references and carries no 1 or N */
 type Drawn = Relation & { bundled?: boolean };
 
-function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand"; fold: ReadonlySet<string> }): { views: View[]; relations: Drawn[] } {
+function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand"; fold: ReadonlySet<string>; rows: boolean }): { views: View[]; relations: Drawn[] } {
   const expand = opts.audit === "expand";
   const tables = model.tables.filter((t) => expand || t.origin !== "audit");
   const names = new Set(tables.map((t) => t.name));
@@ -752,7 +753,9 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
   }
   const relations: Drawn[] = [];
   const seen = new Set<string>();
-  for (const r of flat) {
+  // Joining rows (left to right), a composite reference is a connector per pair of columns. Joining
+  // cards (top to bottom), it stays one
+  for (const r of opts.rows ? flat : kept) {
     const p = rowOf.get(r.parent);
     const c = rowOf.get(r.child);
     if (!p && !c) relations.push(r);
@@ -993,10 +996,16 @@ const serviceLabelW = (sv: ModelService): number => sansW(sv.name, 13) * 1.04 + 
 
 /** Areas under the cards: a faint tint, an even edge and the name at the top left. The tint is masked
  *  out where the cards are, because on a live canvas the glass is painted below this SVG */
-function serviceAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string) => string): string {
+function serviceAreas(areas: Area[], boxes: SvgBox[], L: Look, id: (name: string) => string, down: boolean): string {
   const s: string[] = [];
   const holes = boxes.map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${RX}" fill="black"/>`).join("");
   s.push(`<mask id="${id("areas")}" maskUnits="userSpaceOnUse"><rect x="-1e5" y="-1e5" width="2e5" height="2e5" fill="white"/>${holes}</mask>`);
+  // Top to bottom, connectors from other services come in across the top of an area, where its name
+  // is. They break behind the name rather than run through it (the connectors use this mask)
+  if (down) {
+    const names = areas.map((a) => `<rect x="${f(a.x + SERVICE_PAD - 8)}" y="${f(a.y + 13)}" width="${f(serviceLabelW(a.service) + 16)}" height="26" fill="black"/>`).join("");
+    s.push(`<mask id="${id("names")}" maskUnits="userSpaceOnUse"><rect x="-1e5" y="-1e5" width="2e5" height="2e5" fill="white"/>${names}</mask>`);
+  }
   s.push('<g class="rz-services">');
   for (const a of areas) {
     const hue = serviceHue(L, a.hue);
@@ -1025,14 +1034,15 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const L = LOOKS[look];
   const prefix = options.idPrefix ?? "rz-";
   const id = (name: string) => prefix + name;
-  const { views: vs, relations } = views(model, opts);
+  const { views: vs, relations } = views(model, { ...opts, rows: !down });
   const byName = new Map(vs.map((v) => [v.table.name, v]));
   const portId = (table: string, column: string, side: "E" | "W") => `${table}::${column}::${side}`;
   const portFor = (table: string, column: string, side: "E" | "W") => portId(table, portOf(byName.get(table)!, column), side);
   const used = new Set(relations.flatMap((r) => [portFor(r.parent, r.parentColumn, "E"), portFor(r.child, r.childColumn, "W")]));
   // Top to bottom, a connector leaves the bottom of the referenced card and enters the top of the
-  // referencing one. Every connector has its own end, and ELK spreads them along the edge
-  const endId = (table: string, i: number, side: "N" | "S") => `${table}::e${i}::${side}`;
+  // referencing one. Every connector has its own end, and ELK spreads them along the edge. An end's id
+  // starts with \u0000, as a service's node does, so no table name can take it
+  const endId = (table: string, i: number, side: "N" | "S") => `\u0000${table}::e${i}::${side}`;
   const cardPorts = (v: View): ElkPortIn[] =>
     relations.flatMap((r, i) => [
       ...(r.parent === v.table.name ? [{ id: endId(r.parent, i, "S"), x: v.w / 2, y: v.h, width: 0, height: 0, layoutOptions: { "elk.port.side": "SOUTH" } }] : []),
@@ -1043,8 +1053,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     id: v.table.name,
     width: v.w,
     height: v.h,
-    // Room beside each end for its 1 or N
-    layoutOptions: down ? { "elk.portConstraints": "FIXED_SIDE", "elk.spacing.portPort": "24" } : { "elk.portConstraints": "FIXED_POS" },
+    layoutOptions: { "elk.portConstraints": down ? "FIXED_SIDE" : "FIXED_POS" },
     ports: down ? cardPorts(v) : (bare(v) ? [{ name: "", y: HEAD / 2 }] : v.shown.map((c, i) => ({ name: c.name, y: rowY(i) }))).flatMap((row) =>
       (
         [
@@ -1161,20 +1170,20 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     s.push("</g>");
   }
   if (stage) s.push(stage.frost);
-  if (areas.length) s.push(serviceAreas(areas, boxes, L, id));
+  if (areas.length) s.push(serviceAreas(areas, boxes, L, id, down));
 
-  s.push('<g class="rz-rels">');
+  s.push(down && areas.length ? `<g class="rz-rels" mask="url(#${id("names")})">` : '<g class="rz-rels">');
   relations.forEach((r, i) => {
     const route = routes.get(`e${i}`);
     const sec = route?.sections?.[0];
-    const bends = (sec?.bendPoints ?? []).map((p) => ({ x: p.x + route!.offset.x, y: p.y + route!.offset.y }));
+    const at = (p: Point) => ({ x: p.x + route!.offset.x, y: p.y + route!.offset.y });
+    const bends = (sec?.bendPoints ?? []).map(at);
     const pv = byName.get(r.parent)!;
     const cv = byName.get(r.child)!;
     const pp = pos.get(r.parent)!;
     const cp = pos.get(r.child)!;
-    // Endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is always an anchor.
-    // Top to bottom, the anchors are the ends ELK spread along the card edges
-    const at = (p: Point) => ({ x: p.x + route!.offset.x, y: p.y + route!.offset.y });
+    // Left to right, endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is
+    // always an anchor. Top to bottom, the anchors are the ends ELK spread along the card edges
     const start = down
       ? sec ? at(sec.startPoint) : { x: pp.x + pv.w / 2, y: pp.y + pv.h }
       : { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) };

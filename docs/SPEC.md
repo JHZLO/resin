@@ -184,8 +184,8 @@ database. The description is for people.
 ## 5. SVG rendering
 
 `toSvg(model, elk, options)` draws the model itself. Layout uses [ELK](https://eclipse.dev/elk/)'s
-layered algorithm with a port on every column row, so each connector runs from a foreign key row to
-the primary key row it points at.
+layered algorithm. Left to right, the default, there is a port on every column row, so each connector
+runs from a foreign key row to the primary key row it points at; top to bottom, see Direction.
 
 - **Cards**: the table name and description in the header, then one row per column: a key label
   (`PK`, `UK` or `FK`) in a gutter, the column name, its description, and the type at the right edge.
@@ -205,7 +205,8 @@ the primary key row it points at.
   a referenced table above, each connector from the bottom of its card to the top of the other card,
   because a row has ends only at the sides of its card. The chevron then points up into the
   referenced card, the `N` or `1` sits beside the line above the referencing card, and curved
-  connectors have upright ends.
+  connectors have upright ends. A composite reference is one connector, and a connector that crosses
+  the top of a service's area breaks behind the service's name.
 - **Services** are areas around their tables, laid out by ELK as nodes that hold the cards, so a
   service keeps its tables together and connectors cross from one service to another. An area has a faint
   tint, an even edge with corners of 12 units, and its name and description at the top left. The
@@ -219,15 +220,15 @@ the primary key row it points at.
   row per table with its number of columns and its `EXTERNAL` or `ENVERS` tag. A service whose
   tables are all external is dashed and tagged `EXTERNAL`. References inside a folded service are
   counted under its rows (`3 references inside`); a reference that leaves it joins the row of its
-  table, once per pair of rows and kind of reference, with no `N` or `1` at a row's end because the
+  table (top to bottom, its card), once per pair of rows and kind of reference, with no `N` or `1` at a row's end because the
   connector may stand for several references. The card is `g.rz-t[data-svc]` with `service` and the
   service's name in backticks as `data-t` (`` service `ordering` ``), which no table's identity can
   be, and each row has its table's identity in `data-table`.
 - **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
   an `ENVERS` tag by default; `audit: "expand"` draws `revinfo` and `*_aud` as tables.
 - `columns: "keys"` shows only key and reference columns and folds the rest into `+N columns`.
-  `columns: "none"` draws the headers alone, sized to the name, with each connector between the
-  middles of two headers; a header shared by several connectors gathers them there.
+  `columns: "none"` draws the headers alone, sized to the name. Left to right, each connector runs
+  between the middles of two headers, and a header shared by several connectors gathers them there.
 - **Looks** (`look`), one layout and one card anatomy in different finishes:
   - `graphite` (the default) paints no background. Ink is `currentColor` with a fixed ramp of
     opacities, so the drawing reads on any page. `standalone: true` adds a `<style>` that picks the

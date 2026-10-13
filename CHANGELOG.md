@@ -6,6 +6,12 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+### Fixed
+
+- Top to bottom drawings: a composite reference is one connector rather than one per pair of
+  columns, and a connector that crosses the top of a service's area breaks behind the service's name
+  instead of running through it.
+
 ## [0.2.1] - 2026-10-13
 
 ### Added

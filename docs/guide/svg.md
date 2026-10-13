@@ -1,6 +1,6 @@
 # SVG
 
-The command line, and `toSvg` in code, draw the diagram with resin's own renderer. It lays out the tables with ELK's layered algorithm, with a port on every column row, so each connector runs from a foreign key row to the primary key row it points at.
+The command line, and `toSvg` in code, draw the diagram with resin's own renderer. It lays out the tables with ELK's layered algorithm. Left to right, the default, there is a port on every column row, so each connector runs from a foreign key row to the primary key row it points at.
 
 ```erd example file=shop.erd
 external table users "Accounts service" {
@@ -30,7 +30,7 @@ External tables have a dashed border and an `EXTERNAL` tag. Audit tables are fol
 
 A [service](services.md) is an area around its tables, with a faint tint, an even edge and its name and description at the top left. ELK lays a service out as a node that holds its cards, so the tables of a service stay together and connectors cross from one service to another. With a glass look, services take hues in the order they are declared (teal, violet, amber, rose, sky, lime, then again); `graphite` draws them in ink alone. The tint stops at the cards, so glass painted under the SVG is never tinted.
 
-The `fold` option draws the services it names as one card each, to see how a schema's services depend on each other. A folded card has the service's name and description in its header, in the service's hue, with an edge in the same hue, and one row per table: the table's name and its number of columns, with `EXTERNAL` or `ENVERS` where the table's own card would have them. A service whose tables are all external has a dashed border and an `EXTERNAL` tag, as an external table does. References inside the service are counted under the rows, as `5 references inside`. A reference that leaves the service runs from the row of its table, and references of one kind between the same two tables share one connector, which then has no `N` or `1`. Tables of services that are not folded are drawn as usual, so a drawing can open one service and fold the ones around it. `resin --services` folds every service and draws the tables outside every service by name only.
+The `fold` option draws the services it names as one card each, to see how a schema's services depend on each other. A folded card has the service's name and description in its header, in the service's hue, with an edge in the same hue, and one row per table: the table's name and its number of columns, with `EXTERNAL` or `ENVERS` where the table's own card would have them. A service whose tables are all external has a dashed border and an `EXTERNAL` tag, as an external table does. References inside the service are counted under the rows, as `5 references inside`. A reference that leaves the service runs from the row of its table (top to bottom, from its card), and references of one kind between the same two tables share one connector, which then has no `N` or `1`. Tables of services that are not folded are drawn as usual, so a drawing can open one service and fold the ones around it. `resin --services` folds every service and draws the tables outside every service by name only.
 
 ## Changes
 
@@ -40,7 +40,7 @@ A model from [`diff`](diff.md) carries what changed, and the drawing marks it: a
 
 Solid for foreign keys, dashed for logical references. A chevron marks the primary key end, as in `->`; a square port and `N` or `1` mark the foreign key end. Connectors are right-angled by default, or S-bends with `edges: "curved"`, which keep the routed path wherever an S-bend would cross another card.
 
-The drawing runs left to right: a referenced table sits to the left of the tables that reference it, and a connector joins the two rows. With `direction: "down"` it runs top to bottom: a referenced table sits above them, and a connector joins the two cards, from the bottom of one to the top of the other, since a row has ends only at the sides of its card. Which columns a connector joins is then in the details of either table.
+The drawing runs left to right: a referenced table sits to the left of the tables that reference it, and a connector joins the two rows. With `direction: "down"` it runs top to bottom: a referenced table sits above them, and a connector joins the two cards, from the bottom of one to the top of the other, since a row has ends only at the sides of its card. A connector still names the columns it joins in `data-ac` and `data-bc`, a composite reference is one connector, and a connector that crosses the top of a service's area breaks behind the service's name.
 
 ## Looks
 
@@ -77,4 +77,4 @@ Text is never measured. Widths follow fixed rules, so the same input gives the s
 
 ## Composite constraints
 
-Composite references draw one connector per ordered column pair while retaining one semantic relation in the model. Their connectors carry `data-acs` and `data-bcs` JSON arrays for coordinated focus. Cards include the constraint in their footer, and Keys keeps every member column. Service-owned cards display the short table label and use the qualified identity in `data-t` and layout boxes.
+Left to right, composite references draw one connector per ordered column pair while retaining one semantic relation in the model; top to bottom, they draw one. Their connectors carry `data-acs` and `data-bcs` JSON arrays for coordinated focus. Cards include the constraint in their footer, and Keys keeps every member column. Service-owned cards display the short table label and use the qualified identity in `data-t` and layout boxes.
