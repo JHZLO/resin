@@ -1,6 +1,6 @@
 {
   "name": "@jhzlo/resin",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "A small language for entity-relationship diagrams, drawn as SVG.",
   "keywords": [
     "erd",

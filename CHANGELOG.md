@@ -6,6 +6,13 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-10-15
+
+### Changed
+
+- Card rows: `NULL` is a square chip, the same one as a table's tags, instead of bold small capitals.
+  The Parts sample in `@jhzlo/resin/viewer` shows it the same way.
+
 ## [0.2.5] - 2026-10-15
 
 ### Changed
