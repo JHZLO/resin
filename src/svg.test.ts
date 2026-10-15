@@ -34,12 +34,15 @@ describe("toSvg", () => {
     const { svg } = await toSvg(modelOf(src), elk);
     expect(count(svg, ">NULL</text>")).toBe(1);
     expect(svg).not.toContain(">?<");
-    // In t, both types end where the NULL column starts; u has no nullable column and keeps none
+    // In t, both types start at one place left of the NULL column; u has no nullable column and keeps none
     const [t, u] = svg.split('class="rz-t"').slice(1);
-    const typeEnds = (card: string) => [...card.matchAll(/<text x="([\d.]+)" y="[\d.]+" text-anchor="end" font-family="[^"]+" font-size="11"/g)].map((m) => Number(m[1]));
-    const [idEnd, noteEnd] = typeEnds(t);
-    expect(idEnd).toBe(noteEnd);
-    expect(typeEnds(u)[0]).toBeGreaterThan(0);
+    const typeStarts = (card: string) => [...card.matchAll(/<text x="([\d.]+)" y="[\d.]+" font-family="[^"]+" font-size="11"/g)].map((m) => Number(m[1]));
+    const [idStart, noteStart] = typeStarts(t);
+    expect(idStart).toBe(noteStart);
+    expect(idStart).toBeLessThan(Number(/<text x="([\d.]+)"[^>]*>NULL</.exec(t)![1]));
+    expect(typeStarts(u)[0]).toBeGreaterThan(0);
+    // Left-aligned: a type is never anchored at its end
+    expect(svg).not.toMatch(/text-anchor="end" font-family="[^"]+" font-size="11"/);
     expect(count(u, ">NULL</text>")).toBe(0);
     // The row's tooltip says it in words either way
     expect(svg).toContain("<title>note varchar NULL</title>");

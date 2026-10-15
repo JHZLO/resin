@@ -628,10 +628,12 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
   s.push("</g>");
   if (!bare(v)) s.push(`<rect x="1" y="${HEAD - 0.5}" width="${w - 2}" height="1" ${fill(I.sep)}/>`);
 
-  // rows. Types line up at the right edge, or just left of the NULL column when the card has one
+  // rows. The types are one left-aligned column against the right edge, or just left of the NULL
+  // column when the card has one, so a short type starts where a long one does
   const show = (part: CardPart): boolean => !v.hide.has(part);
   const K = show("keys") ? KEY : 0;
   const nullW = show("nulls") && v.shown.some((c) => isNull(c, t)) ? NULL_W : 0;
+  const typeX = w - PAD - nullW - maxOf(v.shown.map((c) => monoW(c.type, 11)), 40);
   v.shown.forEach((c, i) => {
     const cy = rowY(i);
     const by = cy + 4.2;
@@ -657,7 +659,7 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
         "</text>",
     );
     if (c.description && show("descriptions")) s.push(`<text x="${f(PAD + K + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
-    if (show("types")) s.push(`<text x="${f(w - PAD - nullW)}" y="${f(by)}" text-anchor="end" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
+    if (show("types")) s.push(`<text x="${f(typeX)}" y="${f(by)}" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
     if (nullW && isNull(c, t))
       s.push(
         `<text x="${w - PAD}" y="${f(by - 0.6)}" text-anchor="end" font-family="${MONO}" font-size="${NULL_SIZE}" font-weight="600" letter-spacing="0.04em" ${fill(I.muted)}>NULL</text>`,

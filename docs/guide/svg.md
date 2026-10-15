@@ -22,7 +22,7 @@ table payments {
 
 ## Cards
 
-A card has the table's name and description in its header, then one row per column: a key label in a gutter (`PK`, `UK` or `FK`), the column's name with its tags (`ENUM`, `ENC`, `IX`, and `FK` on a primary key) after it in small capitals, its description, and its type at the right edge. The descriptions of a card all start at one place. A nullable column is marked `NULL` after its type, in the description's ink. Composite constraints are listed under the rows.
+A card has the table's name and description in its header, then one row per column: a key label in a gutter (`PK`, `UK` or `FK`), the column's name with its tags (`ENUM`, `ENC`, `IX`, and `FK` on a primary key) after it in small capitals, its description, and its type in a left-aligned column at the right. The descriptions of a card all start at one place, and so do its types. A nullable column is marked `NULL` after its type, in the description's ink. Composite constraints are listed under the rows.
 
 The `hide` option leaves parts of the rows out: the key labels (`keys`), `tags`, `descriptions`, `types` and `nulls`. The column's name always stays, and a card narrows to what is left. [Embedding](embedding.md#parts-of-a-row) has a control for choosing them.
 
