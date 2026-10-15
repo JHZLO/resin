@@ -505,10 +505,9 @@ const tagW = (text: string): number => monoW(text, TAG_SIZE) + text.length * 0.3
 const tagsW = (list: string[]): number => (list.length ? list.reduce((w, x) => w + tagW(x), 0) + 7 + 6 * (list.length - 1) : 0);
 /** Nullability is spelled out the way DDL does: `varchar NULL`. Generated audit tables leave it out */
 const isNull = (c: ModelColumn, t: ModelTable): boolean => c.nullable && t.origin !== "audit";
-const NULL_SIZE = 8.5;
 /** The NULL column at a card's right edge, kept only by cards that have a nullable column, so the
- *  types stay aligned */
-const NULL_W = monoW("NULL", NULL_SIZE) + 7;
+ *  types stay aligned. NULL is a chip, the same square one as a table's tags */
+const NULL_W = chipW("NULL") + 8;
 
 function rowTitle(c: ModelColumn, t: ModelTable, member: ModelTable | null): string {
   if (member) return [member.label ?? member.name, member.description, c.type].filter(Boolean).join("\n");
@@ -660,10 +659,7 @@ function card(v: View, L: Look, id: (name: string) => string, painted: boolean):
     );
     if (c.description && show("descriptions")) s.push(`<text x="${f(PAD + K + v.nameW + 14)}" y="${f(by)}" font-size="11.5" ${fill(I.muted)}>${esc(c.description)}</text>`);
     if (show("types")) s.push(`<text x="${f(typeX)}" y="${f(by)}" font-family="${MONO}" font-size="11" ${fill(I.type)}>${esc(c.type)}</text>`);
-    if (nullW && isNull(c, t))
-      s.push(
-        `<text x="${w - PAD}" y="${f(by - 0.6)}" text-anchor="end" font-family="${MONO}" font-size="${NULL_SIZE}" font-weight="600" letter-spacing="0.04em" ${fill(I.muted)}>NULL</text>`,
-      );
+    if (nullW && isNull(c, t)) s.push(chip("NULL", w - PAD - chipW("NULL"), cy - 7, I));
     s.push("</g>");
   });
 

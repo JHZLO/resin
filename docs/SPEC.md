@@ -192,8 +192,8 @@ runs from a foreign key row to the primary key row it points at; top to bottom, 
   primary key) after it in small capitals without a box, its description, and the type in a
   left-aligned column against the right edge. The name and its tags are one column, so the
   descriptions of a card start at one place, and so do its types. A nullable column is marked `NULL`
-  after its type, as in DDL, in the description's ink; a card with any nullable column keeps a narrow
-  column for it at the right edge, so the types stay aligned. Composite constraints
+  after its type, as in DDL, in the same square chip as the header's tag; a card with any nullable
+  column keeps a narrow column for it at the right edge, so the types stay aligned. Composite constraints
   are listed under the rows. Corners are small (8 units), the header's tag (`EXTERNAL`, `ENVERS`) is a
   rectangle and the edge is one even line. `hide` leaves parts of the rows out (`keys`, `tags`,
   `descriptions`, `types`, `nulls`); the name always stays and the card narrows to what is left.

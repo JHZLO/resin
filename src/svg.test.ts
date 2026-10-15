@@ -39,7 +39,8 @@ describe("toSvg", () => {
     const typeStarts = (card: string) => [...card.matchAll(/<text x="([\d.]+)" y="[\d.]+" font-family="[^"]+" font-size="11"/g)].map((m) => Number(m[1]));
     const [idStart, noteStart] = typeStarts(t);
     expect(idStart).toBe(noteStart);
-    expect(idStart).toBeLessThan(Number(/<text x="([\d.]+)"[^>]*>NULL</.exec(t)![1]));
+    // NULL is a tag chip at the right edge, after the types
+    expect(idStart).toBeLessThan(Number(/<g transform="translate\(([\d.]+),[\d.]+\)"><rect[^>]*\/><text[^>]*>NULL</.exec(t)![1]));
     expect(typeStarts(u)[0]).toBeGreaterThan(0);
     // Left-aligned: a type is never anchored at its end
     expect(svg).not.toMatch(/text-anchor="end" font-family="[^"]+" font-size="11"/);
@@ -185,13 +186,14 @@ describe("toSvg", () => {
     }
   });
 
-  it("writes a row's tags after its name without a box, and NULL in the muted ink", async () => {
+  it("writes a row's tags after its name without a box, and NULL as a tag chip", async () => {
     const { svg } = await toSvg(modelOf(ORDER), elk, { look: "aurora-dark" });
     const row = (name: string) => svg.split(`data-c="${name}"`)[1].split("</g>")[0];
     // The tags are in the name's text, so they follow the name whatever its width
     expect(row("status")).toMatch(/>status<tspan dx="7"[^>]*>ENUM<\/tspan><tspan dx="6"[^>]*>IX<\/tspan><\/text>/);
     expect(row("status")).not.toContain('rx="3"');
-    expect(row("buyer_name")).toMatch(/fill="#DDE2F0" fill-opacity="0\.62">NULL</);
+    // NULL is the same square chip as a table's tags (EXTERNAL, ENVERS)
+    expect(row("buyer_name")).toMatch(/<rect width="[\d.]+" height="14" rx="3"[^>]*\/><text[^>]*fill="#E6EAF6" fill-opacity="0\.8">NULL</);
   });
 
   it("leaves the parts it is told to hide out of the rows, keeps the names, and narrows the cards", async () => {
