@@ -6,6 +6,13 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-15
+
+### Changed
+
+- Card rows: the types are a left-aligned column at the card's right, so a short type starts where a
+  long one does. The `NULL` column stays at the right edge.
+
 ## [0.2.4] - 2026-10-13
 
 ### Added
