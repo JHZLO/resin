@@ -460,6 +460,11 @@ const FOOT = 18;
 const RX = CARD_RADIUS;
 /** Room for the key label (PK, UK, FK) before the column name */
 const KEY = 26;
+/** How far the first stretches of a row's connectors are drawn above and below its middle, when both NOT
+ *  NULL and nullable columns reference it */
+const SPLIT = 6;
+/** How far a curved connector runs straight out of each card before it bends */
+const LEAD = 18;
 
 interface View {
   table: ModelTable;
@@ -694,8 +699,11 @@ function pathD(pts: Point[], r: number): string {
 /** A curved connector: an S-bend with level ends (upright ones top to bottom) when no other card is in
  *  the way, otherwise ELK's route (which goes around the cards) with wide, smooth bends */
 function curved(route: Point[], others: SvgBox[], down = false): string {
-  const s = route[0];
-  const e = route[route.length - 1];
+  // Each end runs straight before the bend, so the marks and numbers at the ends sit on a level line
+  const a = route[0];
+  const z = route[route.length - 1];
+  const s = down ? { x: a.x, y: a.y + LEAD } : { x: a.x + LEAD, y: a.y };
+  const e = down ? { x: z.x, y: z.y - LEAD } : { x: z.x - LEAD, y: z.y };
   const gap = down ? e.y - s.y : e.x - s.x;
   if (gap > 24) {
     const k = Math.max(32, Math.min(180, gap * 0.5));
@@ -711,7 +719,7 @@ function curved(route: Point[], others: SvgBox[], down = false): string {
       }
       return false;
     });
-    if (!blocked) return `M${f(s.x)},${f(s.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(e.x)},${f(e.y)}`;
+    if (!blocked) return `M${f(a.x)},${f(a.y)} L${f(s.x)},${f(s.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(e.x)},${f(e.y)} L${f(z.x)},${f(z.y)}`;
   }
   return pathD(route, 40);
 }
@@ -734,7 +742,8 @@ function clean(pts: Point[]): Point[] {
 // ---- assembly ----
 
 /** A relation as drawn. `bundled`: its child end is a row of a folded service, so the connector may
- *  stand for several references and carries no 1 or N */
+ *  stand for several references and carries no mark or number at that end. Its parent is optional when
+ *  any of theirs is */
 type Drawn = Relation & { bundled?: boolean };
 
 function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "collapse" | "expand"; fold: ReadonlySet<string>; hide: ReadonlySet<CardPart>; rows: boolean }): { views: View[]; relations: Drawn[] } {
@@ -758,7 +767,7 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
     if (p && p.service === rowOf.get(r.child)?.service) inside.set(p.service, (inside.get(p.service) ?? 0) + 1);
   }
   const relations: Drawn[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, Drawn>();
   // Joining rows (left to right), a composite reference is a connector per pair of columns. Joining
   // cards (top to bottom), it stays one
   for (const r of opts.rows ? flat : kept) {
@@ -768,8 +777,12 @@ function views(model: Model, opts: { columns: "all" | "keys" | "none"; audit: "c
     else if (p?.service !== c?.service) {
       const drawn: Drawn = { ...r, parent: p?.card ?? r.parent, parentColumn: p?.row ?? r.parentColumn, child: c?.card ?? r.child, childColumn: c?.row ?? r.childColumn, parentColumns: undefined, childColumns: undefined, bundled: c !== undefined };
       const key = JSON.stringify([drawn.parent, drawn.parentColumn, drawn.child, drawn.childColumn, drawn.kind]);
-      if (!seen.has(key)) relations.push(drawn);
-      seen.add(key);
+      const first = seen.get(key);
+      if (first) first.optional ||= drawn.optional;
+      else {
+        relations.push(drawn);
+        seen.set(key, drawn);
+      }
     }
   }
 
@@ -1045,6 +1058,15 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   const portId = (table: string, column: string, side: "E" | "W") => `${table}::${column}::${side}`;
   const portFor = (table: string, column: string, side: "E" | "W") => portId(table, portOf(byName.get(table)!, column), side);
   const used = new Set(relations.flatMap((r) => [portFor(r.parent, r.parentColumn, "E"), portFor(r.child, r.childColumn, "W")]));
+  // Connectors from one primary key row share their first stretch, where the parent end is marked. On a
+  // row that both NOT NULL and nullable columns reference, each kind's first stretch is drawn apart, so
+  // each carries one mark. ELK keeps one port there: two ports of a hub slow its routing many times over
+  const optional = new Map<string, Set<boolean>>();
+  for (const r of relations) {
+    const k = portFor(r.parent, r.parentColumn, "E");
+    optional.set(k, (optional.get(k) ?? new Set<boolean>()).add(r.optional));
+  }
+  const apart = (r: Drawn): number => (!down && optional.get(portFor(r.parent, r.parentColumn, "E"))!.size > 1 ? (r.optional ? SPLIT : -SPLIT) : 0);
   // Top to bottom, a connector leaves the bottom of the referenced card and enters the top of the
   // referencing one. Every connector has its own end, and ELK spreads them along the edge. An end's id
   // starts with \u0000, as a service's node does, so no table name can take it
@@ -1093,6 +1115,11 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
           "elk.padding": `[top=${SERVICE_HEAD},left=${SERVICE_PAD},bottom=${SERVICE_PAD},right=${SERVICE_PAD}]`,
           "elk.nodeSize.constraints": "MINIMUM_SIZE",
           "elk.nodeSize.minimum": `(${Math.ceil(serviceLabelW(sv) + SERVICE_PAD * 2)}, 0)`,
+          // The spacing set on the root does not reach the cards inside a service, and ELK's defaults
+          // leave no room for the marks and numbers at a connector's ends before it turns
+          "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+          "elk.layered.spacing.edgeNodeBetweenLayers": "36",
+          "elk.spacing.nodeSelfLoop": "36",
         },
         children: vs.filter((x) => serviceOf(x) === sv).map(tableNode),
       });
@@ -1112,6 +1139,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
       "elk.edgeRouting": "ORTHOGONAL",
       "elk.layered.spacing.nodeNodeBetweenLayers": "88",
       "elk.layered.spacing.edgeNodeBetweenLayers": "36",
+      // A reference to its own table keeps its ends clear of its turns, as other connectors do
+      "elk.spacing.nodeSelfLoop": "36",
       "elk.spacing.nodeNode": "40",
       "elk.spacing.edgeEdge": "14",
       "elk.spacing.edgeNode": "24",
@@ -1188,30 +1217,53 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     const cv = byName.get(r.child)!;
     const pp = pos.get(r.parent)!;
     const cp = pos.get(r.child)!;
+    const dy = apart(r);
     // Left to right, endpoints snap to the row anchors rather than ELK's coordinates: an endpoint is
     // always an anchor. Top to bottom, the anchors are the ends ELK spread along the card edges
     const start = down
       ? sec ? at(sec.startPoint) : { x: pp.x + pv.w / 2, y: pp.y + pv.h }
-      : { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) };
+      : { x: pp.x + pv.w, y: pp.y + anchorY(pv, r.parentColumn) + dy };
     const end = down
       ? sec ? at(sec.endPoint) : { x: cp.x + cv.w / 2, y: cp.y }
       : { x: cp.x, y: cp.y + anchorY(cv, r.childColumn) };
     const path = clean([start, ...bends, end]);
-    const d = edges === "curved" ? curved(path, boxes.filter((b) => b.table !== r.parent && b.table !== r.child), down) : pathD(path, 3);
+    // A first stretch drawn apart stays level: the corner it reaches moves with it, or, on a straight
+    // connector, a step brings it back to the row it joins
+    if (dy && path.length > 2) path[1] = { x: path[1].x, y: path[1].y + dy };
+    else if (dy) path.splice(1, 0, { x: start.x + 24, y: start.y }, { x: start.x + 24, y: start.y - dy });
+    // Away from each card along the line: the marks are drawn across it at a distance from the card
+    const out = down ? { x: 0, y: 1 } : { x: 1, y: 0 };
+    const back = { x: -out.x, y: -out.y };
+    const along = (p: Point, u: Point, k: number, side = 0): Point => ({ x: p.x + u.x * k - u.y * side, y: p.y + u.y * k + u.x * side });
+    const xy = (p: Point) => `${f(p.x)},${f(p.y)}`;
+    const bar = (p: Point, u: Point, k: number) => `M${xy(along(p, u, k, 4.5))} L${xy(along(p, u, k, -4.5))}`;
+    // A nullable column's ring sits on the line, so the line breaks around it where there is room
+    const gap = r.optional && path.length > 1 && Math.hypot(path[1].x - start.x, path[1].y - start.y) > 22;
+    const rest = gap ? [along(start, out, 15.5), ...path.slice(1)] : path;
+    const line = edges === "curved" ? curved(rest, boxes.filter((b) => b.table !== r.parent && b.table !== r.child), down) : pathD(rest, 3);
+    const d = gap ? `M${xy(start)} L${xy(along(start, out, 8.5))} ${line}` : line;
     const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
     const ink: Ink = r.change ? [diffHue(L, r.change.kind), r.change.kind === "removed" ? 0.6 : 1] : L.ink.line;
     const composite = r.childColumns ? ` data-acs="${esc(JSON.stringify(r.parentColumns))}" data-bcs="${esc(JSON.stringify(r.childColumns))}"` : "";
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}"${composite}>`);
     s.push(`<path d="${d}" fill="none" ${stroke(ink)} stroke-width="1.2"${dash}/>`);
-    // Primary key end: a chevron, like resin's `->`, pointing into the card. Foreign key end: a square
-    // port and N (many) or 1 (one), beside the line just outside the card
-    const chevron = down
-      ? `M${f(start.x - 4.5)},${f(start.y + 6.5)} L${f(start.x)},${f(start.y + 1.5)} L${f(start.x + 4.5)},${f(start.y + 6.5)}`
-      : `M${f(start.x + 6.5)},${f(start.y - 4.5)} L${f(start.x + 1.5)},${f(start.y)} L${f(start.x + 6.5)},${f(start.y + 4.5)}`;
-    s.push(`<path d="${chevron}" fill="none" ${stroke(ink)} stroke-width="1.3"/>`);
-    s.push(`<rect x="${f(end.x - 2.5)}" y="${f(end.y - 2.5)}" width="5" height="5" ${fill(ink)}/>`);
-    const mark = down ? { x: end.x - 5, y: end.y - 6 } : { x: end.x - 9, y: end.y - 5 };
-    if (!r.bundled) s.push(`<text x="${f(mark.x)}" y="${f(mark.y)}" text-anchor="end" font-family="${MONO}" font-size="9" ${fill(ink)}>${r.one ? "1" : "N"}</text>`);
+    // Crow's foot, with the number beside each mark. Primary key end: two bars for exactly one parent,
+    // a bar and a ring for zero or one. Foreign key end: a crow's foot for many, a bar for one
+    const mark = `fill="none" ${stroke(ink)} stroke-width="1.3"`;
+    const number = (p: Point, text: string, anchor: "start" | "end") =>
+      `<text x="${f(p.x)}" y="${f(p.y)}" text-anchor="${anchor}" font-family="${MONO}" font-size="9.5" font-weight="500" ${fill(ink)}>${text}</text>`;
+    s.push(`<path d="${bar(start, out, 5)}${r.optional ? "" : ` ${bar(start, out, 9)}`}" ${mark}/>`);
+    if (r.optional) {
+      const c = along(start, out, 12);
+      s.push(`<circle cx="${f(c.x)}" cy="${f(c.y)}" r="3.5" ${mark}/>`);
+    }
+    // The lower of a row's two first stretches has its number under the line, clear of the upper one's
+    const under = dy > 0;
+    s.push(number(down ? { x: start.x + 7, y: start.y + 16 } : { x: start.x + 6, y: start.y + (under ? 15 : -8) }, r.optional ? "0..1" : "1", "start"));
+    if (!r.bundled) {
+      s.push(`<path d="${r.one ? bar(end, back, 7) : `M${xy(along(end, back, 0, 6))} L${xy(along(end, back, 12))} L${xy(along(end, back, 0, -6))}`}" ${mark}/>`);
+      s.push(number(down ? { x: end.x + 8, y: end.y - 9 } : { x: end.x - 6, y: end.y - 8 }, r.one ? "1" : "N", down ? "start" : "end"));
+    }
     s.push("</g>");
   });
   s.push("</g>", '<g class="rz-tables">');

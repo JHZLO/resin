@@ -36,7 +36,7 @@ table order_items "Order lines" {
 
 ## One or many
 
-```erd example file=payments.erd "order_id is unique, so each order has at most one payment: the child end reads 1"
+```erd example file=payments.erd "order_id is unique, so each order has at most one payment: the payments end has a bar and 1"
 table orders {
   id  bigint  pk
 }
@@ -47,11 +47,11 @@ table payments "Payments" {
 }
 ```
 
-A reference is one-to-many unless the referencing column is unique. When it has `uk`, or is its table's only primary key, each parent has at most one child, and the relation is one-to-one. The diagram marks the child end `N` or `1`.
+A reference is one-to-many unless the referencing column is unique. When it has `uk`, or is its table's only primary key, each parent has at most one child, and the relation is one-to-one. In the diagram the referencing end has a crow's foot and `N`, or a bar and `1`.
 
 ## Must a parent exist?
 
-```erd example file=checkout.erd "payer_id is nullable: a payment may have no payer, and its row says NULL"
+```erd example file=checkout.erd "payer_id is nullable: a payment may have no payer, so the users end has a ring and 0..1"
 table users {
   id  bigint  pk
 }
@@ -62,7 +62,7 @@ table payments {
 }
 ```
 
-A NOT NULL referencing column means every row has exactly one parent. Make it nullable with `?` and the parent becomes optional: zero or one. The diagram shows `NULL` on that row.
+A NOT NULL referencing column means every row has exactly one parent. Make it nullable with `?` and the parent becomes optional: zero or one. The diagram shows `NULL` on that row, and the connector's referenced end has a bar, a ring and `0..1` where a NOT NULL reference has two bars and `1`.
 
 ## Composite references
 

@@ -63,13 +63,36 @@ describe("toSvg", () => {
     expect(svg).not.toContain('data-c="buyer_name"');
   });
 
-  it("dashes logical references and labels one-to-one 1 and one-to-many N", async () => {
-    const { svg } = await toSvg(modelOf("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n a_id bigint uk ~> a\n c_id bigint -> a\n}"), elk);
-    const rels = svg.split('<g class="rz-r"').slice(1);
-    expect(rels.map((r) => [r.includes("stroke-dasharray"), />(1|N)<\/text>/.exec(r)?.[1]])).toEqual([
-      [true, "1"],
-      [false, "N"],
+  it("dashes logical references and marks both ends in crow's foot, the number beside each mark", async () => {
+    const { svg } = await toSvg(modelOf("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n a_id bigint uk ~> a\n c_id bigint? -> a\n}"), elk);
+    const rels = svg.split('<g class="rz-r"').slice(1).map((r) => r.slice(0, r.indexOf("</g>")));
+    // The primary key end, then the foreign key end: a NOT NULL one-to-one, a nullable one-to-many
+    expect(rels.map((r) => [r.includes("stroke-dasharray"), [...r.matchAll(/>([^<]+)<\/text>/g)].map((m) => m[1])])).toEqual([
+      [true, ["1", "1"]],
+      [false, ["0..1", "N"]],
     ]);
+    // Zero or one is a bar and a ring; many is a crow's foot, three points meeting on the line
+    const crowsFoot = (r: string) => [...r.matchAll(/<path d="([^"]+)"/g)].some((m) => /^M\S+ L\S+ L\S+$/.test(m[1]));
+    expect(rels.map((r) => [r.includes("<circle"), crowsFoot(r)])).toEqual([
+      [false, false],
+      [true, true],
+    ]);
+  });
+
+  it("leaves a primary key row by two points when both NOT NULL and nullable columns reference it", async () => {
+    const starts = async (src: string) =>
+      (await toSvg(modelOf(src), elk)).svg.split('<g class="rz-r"').slice(1).map((r) => Number(/<path d="M[\d.]+,([\d.]+)/.exec(r)![1]));
+    // The NOT NULL ones leave above, the nullable ones below
+    const both = await starts("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n x bigint -> a\n y bigint? -> a\n}");
+    expect(both[1] - both[0]).toBe(12);
+    const same = await starts("table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n x bigint -> a\n y bigint -> a\n}");
+    expect(same[1]).toBe(same[0]);
+  });
+
+  it("keeps room for both ends between the columns of cards in a service", async () => {
+    const { boxes } = await toSvg(modelOf("service s {\n  table a {\n    id  bigint  pk\n  }\n  table b {\n    id    bigint  pk\n    a_id  bigint  -> a\n  }\n}"), elk);
+    const [a, b] = ["s.a", "s.b"].map((t) => boxes.find((x) => x.table === t)!);
+    expect(b.x - (a.x + a.w)).toBeGreaterThanOrEqual(48);
   });
 
   it("paints no background: ink is currentColor, and only standalone output picks colors", async () => {
@@ -94,8 +117,10 @@ describe("toSvg", () => {
   });
 
   it("puts stars only in the aurora sky", async () => {
-    expect((await toSvg(modelOf(ORDER), elk, { look: "aurora-dark" })).svg).toContain("<circle");
-    expect((await toSvg(modelOf(ORDER), elk, { look: "silk-dark" })).svg).not.toContain("<circle");
+    // A star is a filled circle; the ring at a nullable reference's end is not
+    const star = /<circle(?![^>]*fill="none")/;
+    expect((await toSvg(modelOf(ORDER), elk, { look: "aurora-dark" })).svg).toMatch(star);
+    expect((await toSvg(modelOf(ORDER), elk, { look: "silk-dark" })).svg).not.toMatch(star);
   });
 
   it("prefixes every id so several drawings can share a page", async () => {
@@ -140,7 +165,7 @@ describe("toSvg", () => {
     for (const g of groups) {
       const a = box.get(/data-a="([^"]+)"/.exec(g)![1])!;
       const b = box.get(/data-b="([^"]+)"/.exec(g)![1])!;
-      const [line, chevron] = [...g.matchAll(/<path d="([^"]+)"/g)].map((m) => [...m[1].matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => ({ x: Number(p[1]), y: Number(p[2]) })));
+      const [line, mark] = [...g.matchAll(/<path d="([^"]+)"/g)].map((m) => [...m[1].matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => ({ x: Number(p[1]), y: Number(p[2]) })));
       const [start, end] = [line[0], line[line.length - 1]];
       expect(a.y + a.h).toBeLessThan(b.y);
       expect(start.y).toBeCloseTo(a.y + a.h, 0);
@@ -149,8 +174,8 @@ describe("toSvg", () => {
       expect(end.y).toBeCloseTo(b.y, 0);
       expect(end.x).toBeGreaterThan(b.x);
       expect(end.x).toBeLessThan(b.x + b.w);
-      // The chevron points up into the referenced card
-      expect(chevron[1].y).toBeLessThan(chevron[0].y);
+      // The primary key end's mark lies across the line below the referenced card
+      expect(mark.every((p) => p.y > start.y)).toBe(true);
     }
   });
 
@@ -175,14 +200,20 @@ describe("toSvg", () => {
     expect((await toSvg(shop, elk)).svg).not.toContain("rz-names");
   });
 
-  it("curves top to bottom connectors with upright ends", async () => {
+  it("curves top to bottom connectors with upright ends, straight out of each card before the bend", async () => {
     const { svg } = await toSvg(modelOf(ORDER), elk, { direction: "down", edges: "curved" });
     const bends = svg.split('<g class="rz-r"').slice(1).map((r) => /<path d="([^"]+)"/.exec(r)![1]).filter((d) => d.includes(" C"));
     expect(bends.length).toBeGreaterThan(0);
     for (const d of bends) {
-      const [s, c1, c2, e] = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => ({ x: Number(p[1]), y: Number(p[2]) }));
+      const points = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => ({ x: Number(p[1]), y: Number(p[2]) }));
+      const [first, last] = [points[0], points[points.length - 1]];
+      const [s, c1, c2, e] = points.slice(-5, -1);
       expect(c1.x).toBe(s.x);
       expect(c2.x).toBe(e.x);
+      // The ends run straight, so the marks and numbers there sit on a level line
+      expect(s.x).toBe(first.x);
+      expect(e.x).toBe(last.x);
+      expect(last.y - e.y).toBe(18);
     }
   });
 
@@ -364,10 +395,17 @@ table shipments {
     // user_id and buyer_id both reach users: one connector. shipments, outside every service, keeps its own
     expect(count(svg, 'class="rz-r"')).toBe(2);
     const users = /<g class="rz-r" data-a="service `accounts`" data-ac="users" data-b="service `ordering`" data-bc="orders">[\s\S]*?<\/g>/.exec(svg)![0];
-    // A connector into a row may stand for several references, so it carries no 1 or N
-    expect(users).not.toMatch(/>(1|N)<\/text>/);
+    // A connector into a row may stand for several references, so its row end has no mark or number
+    expect([...users.matchAll(/>([^<]+)<\/text>/g)].map((m) => m[1])).toEqual(["1"]);
     const shipments = /<g class="rz-r" data-a="service `ordering`" data-ac="orders" data-b="shipments" data-bc="order_id">[\s\S]*?<\/g>/.exec(svg)![0];
     expect(shipments).toContain(">N</text>");
+  });
+
+  it("says 0..1 at the primary key end of a joined connector when any reference it stands for is nullable", async () => {
+    const { svg } = await toSvg(modelOf(SRC.replace("buyer_id  bigint  ~> users", "buyer_id  bigint? ~> users")), elk, { columns: "none", fold: ["ordering", "accounts"] });
+    const users = /<g class="rz-r" data-a="service `accounts`" data-ac="users" data-b="service `ordering`" data-bc="orders">[\s\S]*?<\/g>/.exec(svg)![0];
+    expect([...users.matchAll(/>([^<]+)<\/text>/g)].map((m) => m[1])).toEqual(["0..1"]);
+    expect(users).toContain("<circle");
   });
 
   it("names and edges a folded card in its service's hue, and in ink in graphite", async () => {

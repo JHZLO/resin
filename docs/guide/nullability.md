@@ -15,7 +15,7 @@ A column without `?` is a claim, not a default you forgot to fill in: resin read
 
 ## In the diagram
 
-A nullable column is marked `NULL` after its type, as in DDL. A card with any nullable column keeps a narrow column for the mark, so the types stay aligned. In the playground's side panel the Null column says `NULL` or `NOT NULL` for every column.
+A nullable column is marked `NULL` after its type, as in DDL. A card with any nullable column keeps a narrow column for the mark, so the types stay aligned. A nullable reference also marks its connector: a ring and `0..1` at the referenced table's end. In the playground's side panel the Null column says `NULL` or `NOT NULL` for every column.
 
 ## Keys and references
 

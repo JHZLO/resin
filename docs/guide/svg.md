@@ -32,7 +32,7 @@ External tables have a dashed border and an `EXTERNAL` tag. Audit tables are fol
 
 A [service](services.md) is an area around its tables, with a faint tint, an even edge and its name and description at the top left. ELK lays a service out as a node that holds its cards, so the tables of a service stay together and connectors cross from one service to another. With a glass look, services take hues in the order they are declared (teal, violet, amber, rose, sky, lime, then again); `graphite` draws them in ink alone. The tint stops at the cards, so glass painted under the SVG is never tinted.
 
-The `fold` option draws the services it names as one card each, to see how a schema's services depend on each other. A folded card has the service's name and description in its header, in the service's hue, with an edge in the same hue, and one row per table: the table's name and its number of columns, with `EXTERNAL` or `ENVERS` where the table's own card would have them. A service whose tables are all external has a dashed border and an `EXTERNAL` tag, as an external table does. References inside the service are counted under the rows, as `5 references inside`. A reference that leaves the service runs from the row of its table (top to bottom, from its card), and references of one kind between the same two tables share one connector, which then has no `N` or `1`. Tables of services that are not folded are drawn as usual, so a drawing can open one service and fold the ones around it. `resin --services` folds every service and draws the tables outside every service by name only.
+The `fold` option draws the services it names as one card each, to see how a schema's services depend on each other. A folded card has the service's name and description in its header, in the service's hue, with an edge in the same hue, and one row per table: the table's name and its number of columns, with `EXTERNAL` or `ENVERS` where the table's own card would have them. A service whose tables are all external has a dashed border and an `EXTERNAL` tag, as an external table does. References inside the service are counted under the rows, as `5 references inside`. A reference that leaves the service runs from the row of its table (top to bottom, from its card), and references of one kind between the same two tables share one connector, which then has no mark or number at the row's end. Tables of services that are not folded are drawn as usual, so a drawing can open one service and fold the ones around it. `resin --services` folds every service and draws the tables outside every service by name only.
 
 ## Changes
 
@@ -40,7 +40,41 @@ A model from [`diff`](diff.md) carries what changed, and the drawing marks it: a
 
 ## Connectors
 
-Solid for foreign keys, dashed for logical references. A chevron marks the primary key end, as in `->`; a square port and `N` or `1` mark the foreign key end. Connectors are right-angled by default, or S-bends with `edges: "curved"`, which keep the routed path wherever an S-bend would cross another card.
+Solid for foreign keys, dashed for logical references. Both ends are marked in crow's foot, with the number beside the mark:
+
+```erd example file=ends.erd "Every kind of end on one primary key: NOT NULL above, nullable below"
+table users {
+  id  bigint  pk
+}
+
+table profiles "At most one per user" {
+  user_id  bigint  pk  -> users
+}
+
+table orders "Any number per user" {
+  id       bigint  pk
+  user_id  bigint  -> users  index
+}
+
+table reviews "Edited by a user, or by no one" {
+  id         bigint   pk
+  editor_id  bigint?  -> users  index
+}
+
+table avatars "At most one per user, or none" {
+  id       bigint   pk
+  user_id  bigint?  uk  -> users
+}
+```
+
+| End | Mark | Number | Means |
+|---|---|---|---|
+| Primary key | Two bars | `1` | The referencing column is NOT NULL: every row has exactly one parent |
+| Primary key | A bar and a ring | `0..1` | The referencing column is nullable: a row may have no parent |
+| Foreign key | A crow's foot | `N` | One-to-many: a parent may have many rows |
+| Foreign key | A bar | `1` | One-to-one: the referencing column is `uk` or its table's only primary key |
+
+Left to right, connectors from one primary key row share their first stretch. When both NOT NULL and nullable columns reference a row, the two kinds leave it 12 units apart, the NOT NULL ones above, so each stretch carries one mark. Connectors are right-angled by default, or S-bends with `edges: "curved"`, which run straight out of each card before they bend and keep the routed path wherever an S-bend would cross another card.
 
 The drawing runs left to right: a referenced table sits to the left of the tables that reference it, and a connector joins the two rows. With `direction: "down"` it runs top to bottom: a referenced table sits above them, and a connector joins the two cards, from the bottom of one to the top of the other, since a row has ends only at the sides of its card. A connector still names the columns it joins in `data-ac` and `data-bc`, a composite reference is one connector, and a connector that crosses the top of a service's area breaks behind the service's name.
 

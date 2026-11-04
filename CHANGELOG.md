@@ -6,6 +6,15 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+### Changed
+
+- Connector ends are drawn in crow's foot with the number beside each mark: two bars and `1`, or a
+  bar, a ring and `0..1` for a nullable reference, at the primary key end; a crow's foot and `N`, or
+  a bar and `1`, at the foreign key end. They replace the chevron and the small `N` or `1`, and a
+  nullable reference now shows on its connector. Cards inside a service are further apart, a
+  reference to its own table turns further from its card, and curved connectors run straight out of
+  each card, to make room for the marks.
+
 ## [0.2.6] - 2026-10-15
 
 ### Changed

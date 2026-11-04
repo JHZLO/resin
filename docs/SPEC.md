@@ -198,20 +198,26 @@ runs from a foreign key row to the primary key row it points at; top to bottom, 
   rectangle and the edge is one even line. `hide` leaves parts of the rows out (`keys`, `tags`,
   `descriptions`, `types`, `nulls`); the name always stays and the card narrows to what is left.
 - **Connectors**: orthogonal with tight bends. Solid for physical FKs, dashed for logical
-  references. A chevron at the primary key end, as in `->`; a square port and `N` (one-to-many) or
-  `1` (one-to-one) at the foreign key end. Nullability is shown by the `NULL` on the foreign key row
-  rather than at the chevron, because many relations can share one primary key. `edges: "curved"`
-  draws S-bends with level ends instead, and keeps the routed path, with wide bends, wherever an
-  S-bend would cross another card.
+  references. Both ends are marked in crow's foot, with the number beside the mark. The primary key
+  end says how many parents a referencing row has: two bars and `1` when the referencing column is
+  NOT NULL, a bar, a ring and `0..1` when it is nullable. The foreign key end says how many
+  referencing rows a parent has: a crow's foot and `N` (one-to-many), or a bar and `1`
+  (one-to-one). Left to right, connectors from one primary key row share their first stretch, so a
+  row that both NOT NULL and nullable columns reference leaves by two points 12 units apart, the NOT
+  NULL ones above. `edges: "curved"` draws S-bends with level ends instead, straight for 18 units out
+  of each card, and keeps the routed path, with wide bends, wherever an S-bend would cross another
+  card.
 - **Direction**: left to right by default, a referenced table to the left of the tables that
   reference it, each connector joining the two rows. `direction: "down"` runs top to bottom instead:
   a referenced table above, each connector from the bottom of its card to the top of the other card,
-  because a row has ends only at the sides of its card. The chevron then points up into the
-  referenced card, the `N` or `1` sits beside the line above the referencing card, and curved
-  connectors have upright ends. A composite reference is one connector, and a connector that crosses
+  because a row has ends only at the sides of its card. The marks then lie across the line below
+  the referenced card and above the referencing one, with the numbers to the right of the line, and
+  curved connectors have upright ends. A composite reference is one connector, and a connector that crosses
   the top of a service's area breaks behind the service's name.
 - **Services** are areas around their tables, laid out by ELK as nodes that hold the cards, so a
-  service keeps its tables together and connectors cross from one service to another. An area has a faint
+  service keeps its tables together and connectors cross from one service to another. Inside a
+  service, cards in neighboring layers are at least 48 units apart, room for both ends, and a
+  reference to its own table turns 36 units from its card, as it does outside. An area has a faint
   tint, an even edge with corners of 12 units, and its name and description at the top left. The
   tint stops at the cards, so glass painted below the SVG is never tinted. In a glass look the
   services take hues in the order they are declared: teal, violet, amber, rose, sky, lime, then
@@ -223,8 +229,9 @@ runs from a foreign key row to the primary key row it points at; top to bottom, 
   row per table with its number of columns and its `EXTERNAL` or `ENVERS` tag. A service whose
   tables are all external is dashed and tagged `EXTERNAL`. References inside a folded service are
   counted under its rows (`3 references inside`); a reference that leaves it joins the row of its
-  table (top to bottom, its card), once per pair of rows and kind of reference, with no `N` or `1` at a row's end because the
-  connector may stand for several references. The card is `g.rz-t[data-svc]` with `service` and the
+  table (top to bottom, its card), once per pair of rows and kind of reference, with no mark or
+  number at a row's end because the connector may stand for several references; its primary key end
+  says `0..1` when any of them is nullable. The card is `g.rz-t[data-svc]` with `service` and the
   service's name in backticks as `data-t` (`` service `ordering` ``), which no table's identity can
   be, and each row has its table's identity in `data-table`.
 - **External tables** have a dashed border and an `EXTERNAL` tag. **Audit tables** are folded into
