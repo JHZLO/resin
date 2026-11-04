@@ -6,6 +6,8 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-11-04
+
 ### Changed
 
 - Connector ends are drawn in crow's foot with the number beside each mark: two bars and `1`, or a
