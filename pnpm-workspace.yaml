@@ -1,0 +1,3 @@
+# Only esbuild may run an install script: it fetches its native binary
+allowBuilds:
+  esbuild: true
