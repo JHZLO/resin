@@ -6,6 +6,15 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-11-05
+
+### Changed
+
+- Built with TypeScript 7 and pnpm 12, and the development dependencies are updated, which clears
+  the advisories `pnpm audit` reported against the test tools. None of them reached the package: it
+  has no runtime dependencies, and the files it ships are the same as in 0.2.7. The GitHub Action
+  draws with elkjs 0.12.1.
+
 ## [0.2.7] - 2026-11-04
 
 ### Changed
