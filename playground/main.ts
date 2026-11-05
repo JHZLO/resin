@@ -1116,7 +1116,7 @@ function setParts(open: boolean, returnFocus = false): void {
   if (open) partsMenu.querySelector<HTMLElement>("button")?.focus();
   else if (returnFocus) partsButton.focus();
 }
-partsButton.addEventListener("click", () => setParts(partsMenu.hidden));
+partsButton.addEventListener("click", () => setParts(Boolean(partsMenu.hidden)));
 partsMenu.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   e.stopPropagation();
@@ -1250,7 +1250,7 @@ function setMenu(open: boolean, returnFocus = false): void {
   if (open) menuItems[0].focus();
   else if (returnFocus) downloadButton.focus();
 }
-downloadButton.addEventListener("click", () => setMenu(downloadMenu.hidden));
+downloadButton.addEventListener("click", () => setMenu(Boolean(downloadMenu.hidden)));
 for (const item of variantItems)
   item.addEventListener("click", () => {
     setMenu(false, true);
