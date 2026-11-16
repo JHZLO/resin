@@ -267,7 +267,7 @@ test("reveals a folded column selected from the table panel", async ({ page }) =
   await open(page);
   await page.locator('.rz-t[data-t="users"] .rz-head').click();
   await page.locator('[data-columns="none"]').click();
-  await page.locator('#inspector-body tr[data-c="name"] button').click();
+  await page.locator('#inspector-body tr[data-c="name"] .d-col-name').click();
   await expect(page.locator('[data-columns="all"]')).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#pop")).toBeVisible();
 });

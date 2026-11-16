@@ -83,7 +83,7 @@ test("lays out a 500-table hub with all columns within the load budget", async (
   expect(elapsed).toBeLessThan(15_000);
   await expect(page.locator("#content .rz-r")).toHaveCount(499);
   await page.locator("#find").click(); await page.locator("#palette-input").fill("t0"); await page.locator("#palette-input").press("Enter");
-  await page.locator('#inspector-body tr[data-c="id"] button').first().click();
+  await page.locator('#inspector-body tr[data-c="id"] .d-col-name').first().click();
   await expect(page.locator("#content .rz-r.is-on")).toHaveCount(499);
 });
 
@@ -94,7 +94,7 @@ test("keeps animated pan, zoom, and composite focus aligned", async ({ page, bro
   await page.goto(`/playground/${await encode(shared(code))}`);
   await ready(page, 2);
   await page.locator('.rz-t[data-t="orders"] .rz-head').click();
-  await page.locator('#inspector-body tr[data-c="account_id"] button').click();
+  await page.locator('#inspector-body tr[data-c="account_id"] .d-col-name').click();
   await expect(page.locator('#content .rz-t[data-t="accounts"] .rz-c.is-on')).toHaveCount(2);
   await expect(page.locator('#content .rz-t[data-t="orders"] .rz-c.is-on')).toHaveCount(2);
   await page.locator("#zoom-in").click();
