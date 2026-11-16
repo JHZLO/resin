@@ -121,6 +121,16 @@
 .rz-details .t-cols tbody tr.is-on td { background: var(--rz-accent-soft); }
 .rz-details .d-link { padding: 0; border: 0; background: none; font-family: var(--rz-font-mono); font-size: 12px; color: var(--rz-accent); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .rz-details .d-link:hover { text-decoration-color: currentColor; } }
+/* copying a column's name: in the columns, on the row under the pointer and the picked row */
+.rz-details .d-copy { display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -3px 0 -3px 6px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--rz-faint); vertical-align: middle; cursor: pointer; transition: background-color 120ms ease, color 120ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+.rz-details .d-copy svg { width: 13px; height: 13px; }
+.rz-details .d-copy:active { transform: scale(0.97); }
+.rz-details .d-copy.is-done { color: var(--rz-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .rz-details .d-copy:hover { background: var(--rz-active-line); color: var(--rz-ink); }
+  .rz-details .t-cols tbody tr:not(:hover, .is-on, :focus-within) .d-copy { visibility: hidden; }
+}
+.rz-details .d-pop-head .d-copy { align-self: center; margin: -3px -4px -3px auto; }
 /* a column on its own (`columnDetails`): its name, description and facts */
 .rz-details .d-pop-head { display: flex; align-items: baseline; gap: 8px; }
 .rz-details .d-pop-name { font-family: var(--rz-font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }

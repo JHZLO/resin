@@ -46,6 +46,37 @@ function link(name: string, open: OpenTable | OpenService): HTMLButtonElement {
   return b;
 }
 
+const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+const COPY_ICON = `${ICON}<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+const DONE_ICON = `${ICON}<path d="M20 6 9 17l-5-5"/></svg>`;
+
+/** Copies a column's name, to paste into a query, and shows a check for a moment. In a row it copies
+ *  without picking the column */
+function copyButton(text: string): HTMLButtonElement {
+  const b = h("button", "d-copy");
+  b.type = "button";
+  b.title = "Copy column name";
+  b.setAttribute("aria-label", b.title);
+  b.innerHTML = COPY_ICON;
+  let reset: ReturnType<typeof setTimeout> | undefined;
+  const say = (done: boolean, label: string) => {
+    b.innerHTML = done ? DONE_ICON : COPY_ICON;
+    b.classList.toggle("is-done", done);
+    b.setAttribute("aria-label", label);
+  };
+  b.addEventListener("click", (event) => {
+    event.stopPropagation();
+    navigator.clipboard?.writeText(text).then(
+      () => say(true, "Copied"),
+      () => say(false, "Copying is blocked in this browser"),
+    ).finally(() => {
+      clearTimeout(reset);
+      reset = setTimeout(() => say(false, b.title), 1200);
+    });
+  });
+  return b;
+}
+
 const key = (k: Key | null): Child => h("span", k ? `d-key k-${k.toLowerCase()}` : "d-key", k ?? "");
 
 /** A row pressed as a whole (its name is a button, for the keyboard). Selecting text in it does not press it */
@@ -118,7 +149,7 @@ export function tableDetails(model: Model, name: string, open: OpenTable, pick: 
       "tr",
       null,
       h("td", "t-key", key(keyOf(c, outgoing.filter((r) => columnsOf(r, "child").includes(c.name)), t))),
-      h("td", "t-name", nameButton),
+      h("td", "t-name", nameButton, copyButton(c.name)),
       h("td", "t-type", c.type),
       h("td", null, nullity(c)),
       h("td", "t-desc", c.description ? h("span", "t-desc-text", c.description) : null, ...notes),
@@ -367,7 +398,7 @@ export function columnDetails(model: Model, table: string, column: string, open:
   return h(
     "div",
     "d-pop",
-    h("div", "d-pop-head", key(keyOf(c, outgoing, t)), h("span", "d-pop-name", c.name), h("span", "d-type", c.type)),
+    h("div", "d-pop-head", key(keyOf(c, outgoing, t)), h("span", "d-pop-name", c.name), h("span", "d-type", c.type), copyButton(c.name)),
     c.description ? h("p", "d-desc", c.description) : null,
     h("dl", "d-facts", ...facts.flatMap(([k, v]) => [h("dt", null, k), h("dd", null, ...v)])),
   );

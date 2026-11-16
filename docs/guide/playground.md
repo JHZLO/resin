@@ -34,7 +34,7 @@ The playground runs the [lint rules](lint.md) on every change. The status bar un
 
 ## Reading a diagram
 
-Click a table's name for a side panel that lists its columns, indexes and references as tables. Its left edge resizes it. Click a column, on the diagram or in the panel, for a small card with its details; its text can be selected and copied. A column that holds or receives a reference also highlights that reference.
+Click a table's name for a side panel that lists its columns, indexes and references as tables. Its left edge resizes it. Click a column, on the diagram or in the panel, for a small card with its details; its text can be selected and copied. A column that holds or receives a reference also highlights that reference. The copy button on the card, and on a column's row in the panel (on the row under the pointer and on the picked row), copies the column's name.
 
 A service's name, on its area or on its card in the Services view, opens the service in the side panel instead (see [Services](#services)).
 

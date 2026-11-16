@@ -54,7 +54,7 @@ A press reports `hit`: `table` (the card pressed, a folded service's card being 
 
 ## Details
 
-`tableDetails(model, table, open, pick, openService)`, `serviceDetails(model, service, open, pick, openService)` and `columnDetails(model, table, column, open)` return the playground's panels as elements: a table's columns (key, name, type, `NULL` or `NOT NULL`, description), indexes and references; a service's tables and what it depends on and is used by; one column's facts. They return `null` for a name the model does not have. `open`, `pick` and `openService` are called when a table name, a column or a service name in them is followed. Put them inside an element with the class `rz-details`.
+`tableDetails(model, table, open, pick, openService)`, `serviceDetails(model, service, open, pick, openService)` and `columnDetails(model, table, column, open)` return the playground's panels as elements: a table's columns (key, name, type, `NULL` or `NOT NULL`, description), indexes and references; a service's tables and what it depends on and is used by; one column's facts. They return `null` for a name the model does not have. `open`, `pick` and `openService` are called when a table name, a column or a service name in them is followed. A column's row in a table's panel, and a column's card, carry a button that copies the column's name to the clipboard. Put them inside an element with the class `rz-details`.
 
 ## Parts of a row
 

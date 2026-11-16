@@ -12,6 +12,8 @@ the grammar; the parser then points old syntax at its new form.
   by its header moves it. Its connectors are drawn again between the sides of the two cards that face
   each other, and a service's area follows its tables. A drag anywhere else still pans. Pages that
   draw for themselves get `moveCard`, and `toSvg` results carry the `scene` it works from.
+- Copying a column's name: a button on a column's card and on its row in a table's panel copies the
+  name, for pasting into a query.
 
 ## [0.2.8] - 2026-11-05
 

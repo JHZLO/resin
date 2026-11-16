@@ -11,6 +11,11 @@ class ElementStub extends EventTarget {
   scope = "";
   constructor(tag: string) { super(); this.tag = tag; }
   append(...children: (ElementStub | string)[]) { this.children.push(...children); }
+  title = "";
+  innerHTML = "";
+  attributes: Record<string, string> = {};
+  classList = { add: () => {}, remove: () => {}, toggle: () => {} };
+  setAttribute(name: string, value: string) { this.attributes[name] = value; }
   get textContent(): string { return this.children.map((c) => typeof c === "string" ? c : c.textContent).join(""); }
 }
 
@@ -91,6 +96,27 @@ describe("table and column details", () => {
     expect(pick).not.toHaveBeenCalled();
     click(row, 0);
     expect(pick).toHaveBeenLastCalledWith("children", "parent_id", false);
+  });
+
+  it("copies a column's name from its row in the panel and from its popover", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const copyIn = (el: ElementStub) => descendants(el).find((x) => x.className === "d-copy")!;
+    const panel = element(tableDetails(model(), "children", vi.fn(), vi.fn(), vi.fn()));
+    const row = descendants(panel).find((el) => el.dataset.c === "parent_id")!;
+    const button = copyIn(row);
+    expect(button.title).toBe("Copy column name");
+    click(button);
+    expect(writeText).toHaveBeenLastCalledWith("parent_id");
+    await Promise.resolve();
+    expect(button.attributes["aria-label"]).toBe("Copied");
+    writeText.mockImplementationOnce(() => Promise.reject(new Error("denied")));
+    click(button);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(button.attributes["aria-label"]).toBe("Copying is blocked in this browser");
+    click(copyIn(element(columnDetails(model(), "parents", "tenant", vi.fn()))));
+    expect(writeText).toHaveBeenLastCalledWith("tenant");
   });
 
   it("passes immediate motion for keyboard reference links", () => {
