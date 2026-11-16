@@ -37,7 +37,11 @@ Parses, checks and resolves a document in one step. It returns:
 
 ## toSvg(model, elk, options)
 
-Draws a model and resolves to `{ svg, width, height, background, boxes }`. `boxes` gives every card's position, for pages that decorate or navigate the drawing; `background` is the look's base color, or `null` for `graphite`. A service drawn folded (the `fold` option) has one box, whose `table` is `serviceCardId(service)`: `service` and the service's name in backticks, as in `` service `ordering` ``. The options are listed on the [SVG](svg.md) page.
+Draws a model and resolves to `{ svg, width, height, background, boxes, scene }`. `boxes` gives every card's position, for pages that decorate or navigate the drawing; `background` is the look's base color, or `null` for `graphite`; `scene` is the drawing as laid out (its cards, connectors and service areas), for `moveCard`. A service drawn folded (the `fold` option) has one box, whose `table` is `serviceCardId(service)`: `service` and the service's name in backticks, as in `` service `ordering` ``. The options are listed on the [SVG](svg.md) page.
+
+## moveCard(scene, boxes, table, x, y)
+
+Moves a card of a drawing to `(x, y)` without laying it out again, for a page that lets the cards be dragged (the viewer's canvas does). It replaces the card's box in `boxes` and returns what to draw again: `box`, the card's new place; `links`, its connectors as `[n, svg]`, the content of the drawing's `n`th `.rz-r` group; `areas`, the service areas (their masks and the `.rz-services` group) or `null` when the drawing has none; and `width` and `height`, the size the drawing now needs. A connector between two cards moved by as much keeps its route. Any other connector of the card runs between the sides of the two cards that face each other, with one turn halfway, or out of the same side and back when the cards are side by side. A card stays clear of the drawing's top and left edges, and a service's area wraps its cards where they are now.
 
 resin itself has no runtime dependencies. Layout needs [elkjs](https://github.com/kieler/elkjs), which you pass in, so code that only checks a document never loads it.
 

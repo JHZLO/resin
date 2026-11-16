@@ -1,6 +1,6 @@
 # Embedding the viewer
 
-`@jhzlo/resin/viewer` is the playground's diagram, for a page of your own: the canvas that pans, zooms and focuses, with the live glass under the cards, and the panels that describe a table, a service or a column. A page that embeds it shows a schema the way the playground does. It keeps its own controls and layout; the viewer tells it what was pressed.
+`@jhzlo/resin/viewer` is the playground's diagram, for a page of your own: the canvas that pans, zooms and focuses, moves a card dragged by its header, with the live glass under the cards, and the panels that describe a table, a service or a column. A page that embeds it shows a schema the way the playground does. It keeps its own controls and layout; the viewer tells it what was pressed.
 
 It needs a browser. The language (`@jhzlo/resin`) does not, and a page that only compiles or draws to a file never loads the viewer.
 
@@ -39,7 +39,7 @@ The element given to `Canvas` is the page's to size; the canvas fills it. Lay ou
 | `setLook(stage, dark)` | The background: `aurora`, `silk` or `caustic` (`CANVAS_STAGES`), dark or light. Draw again after changing it |
 | `drawOptions()` | The `look` and `stage` to pass to `toSvg`. Over the live glass the SVG carries only what sits on it; without WebGL2, or with `live: false`, it is the still look |
 | `look()` | The look as a still drawing has it, for exporting what the canvas shows |
-| `show(drawing, fit)` | Puts a `toSvg` result on the canvas, or a drawing it returned before, and fits it when `fit` is true. Returns the drawing as shown, which can be shown again later without drawing it anew |
+| `show(drawing, fit)` | Puts a `toSvg` result on the canvas, or a drawing it returned before, and fits it when `fit` is true. Returns the drawing as shown, which can be shown again later without drawing it anew, cards where they were moved included |
 | `focus` | `table(name)`, `row(table, column)` and `clear()`: keep a table or a relation and fade the rest |
 | `focusTable(name)`, `focusService(name)` | Focus a table, or its row where its service is folded; focus a service where it is one card |
 | `reveal(name, covered, onlyIfCovered, animate)` | Brings a table to the middle of what is visible. `covered` is the width of a panel over the right edge |
@@ -47,6 +47,8 @@ The element given to `Canvas` is the page's to size; the canvas fills it. Lay ou
 | `card(name)`, `row(table, column)`, `foldedRow(table)`, `serviceElement(name)` | Where things are drawn |
 | `view` | The pan and zoom: `fit()`, `zoomBy(factor)`, `actualSize()`, `centerOn(x, y, covered)` and `scale` |
 | `setGrid(on)`, `refresh(instant)`, `pause(paused)`, `destroy()` | The dot grid; drawing the glass again after the focus changed outside a press; stopping while out of sight; letting go of the element, its listeners and the GPU context |
+
+A drag that starts on a card's header moves the card instead of panning: its connectors are drawn again (`moveCard`, on the [library](library.md) page), and so are the service areas and the glass. `boxes` follows the cards. While a card moves, the viewport has the class `is-moving`. A drag anywhere else pans, and a press that does not move reports what it landed on.
 
 A press reports `hit`: `table` (the card pressed, a folded service's card being `serviceCardId(service)`), `column` (the row pressed), `rowTable` (in a folded service's card, the table of the row), `service` (a folded service's card, or the label of a service's area) and `header` (the press was on a card's header or on an area's label). What it does is up to the page; the playground opens the table panel from a header, the column popover from a row, and the service panel from a service.
 

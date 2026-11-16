@@ -3,7 +3,7 @@ import { join } from "node:path";
 import ELK from "elkjs";
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
-import { type CardPart, toSvg } from "./svg.ts";
+import { type CardPart, moveCard, toSvg } from "./svg.ts";
 
 const EXAMPLES = join(import.meta.dirname, "../examples");
 const elk = new ELK();
@@ -433,6 +433,74 @@ table shipments {
     const users = /<g class="rz-r" data-a="service `accounts`" data-ac="users" data-b="ordering.orders" data-bc="user_id">[\s\S]*?<\/g>/.exec(svg)![0];
     expect(users).toContain(">N</text>");
     expect(cardOf(svg, "ordering.orders")).toMatch(/>FK<\/text><text[^>]*>user_id</);
+  });
+});
+
+describe("moveCard", () => {
+  const PAIR = "table a {\n id bigint pk\n}\ntable b {\n id bigint pk\n a_id bigint? -> a index\n}";
+  const SERVICES = "service ordering {\n table orders {\n  id bigint pk\n  user_id bigint ~> users index\n }\n}\nservice accounts {\n external table users {\n  id bigint pk\n }\n}\ntable shipments {\n id bigint pk\n order_id bigint -> orders index\n}";
+  const inner = (svg: string) => [...svg.matchAll(/<g class="rz-r"[^>]*>(.*?)<\/g>/g)].map((m) => m[1]);
+  const start = (link: string) => /^<path d="M([-\d.]+),([-\d.]+)/.exec(link)!.slice(1).map(Number);
+
+  it("draws a moved card's connectors again between the sides that face each other", async () => {
+    const r = await toSvg(modelOf(PAIR), elk);
+    const [a, b] = r.boxes;
+    const moved = moveCard(r.scene, r.boxes, "a", b.x + b.w + 200, b.y)!;
+    expect(r.boxes[0]).toEqual(moved.box);
+    expect(moved.links.map(([n]) => n)).toEqual([0]);
+    const link = moved.links[0][1];
+    // a is now right of b: the connector leaves a's left side and enters b's right side
+    expect(start(link)[0]).toBe(moved.box.x);
+    expect(link).toContain(`L${b.x + b.w},`);
+    expect(link).toMatch(/text-anchor="end"[^>]*>0\.\.1</);
+    expect(link).toMatch(/text-anchor="start"[^>]*>N</);
+    expect(moved.width).toBe(Math.ceil(moved.box.x + a.w + 40));
+    expect(moved.height).toBe(r.height);
+    expect(moved.areas).toBeNull();
+  });
+
+  it("draws a card moved back where it was as it was laid out, curved connectors too", async () => {
+    for (const edges of ["angular", "curved"] as const) {
+      const r = await toSvg(modelOf(ORDER), elk, { edges });
+      const was = inner(r.svg);
+      const { table, x, y } = r.boxes[1];
+      moveCard(r.scene, r.boxes, table, x + 300, y + 120);
+      const back = moveCard(r.scene, r.boxes, table, x, y)!;
+      expect(back.links.length).toBeGreaterThan(0);
+      for (const [n, link] of back.links) expect(link).toBe(was[n]);
+      expect([back.width, back.height]).toEqual([r.width, r.height]);
+    }
+  });
+
+  it("keeps the route of a reference to its own table, which moves with its card", async () => {
+    const r = await toSvg(modelOf("table t {\n id bigint pk\n parent_id bigint? -> t index\n}"), elk);
+    const [x0, y0] = start(inner(r.svg)[0]);
+    const moved = moveCard(r.scene, r.boxes, "t", r.boxes[0].x + 100, r.boxes[0].y + 50)!;
+    expect(start(moved.links[0][1])).toEqual([x0 + 100, y0 + 50]);
+  });
+
+  it("keeps a card clear of the edges, inside a service clear of its name, and moves the area with its cards", async () => {
+    const r = await toSvg(modelOf(SERVICES), elk);
+    const area = (svg: string) => /<g class="rz-svc" data-svc="ordering"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(svg)!.slice(1).map(Number);
+    const was = area(r.svg);
+    const corner = moveCard(r.scene, r.boxes, "ordering.orders", -50, -50)!;
+    expect([corner.box.x, corner.box.y]).toEqual([24, 52]);
+    const low = moveCard(r.scene, r.boxes, "ordering.orders", 24, r.height + 100)!;
+    // As laid out, the area held its one card with the same room around it
+    expect(area(low.areas!)).toEqual([0, low.box.y - 52, was[2], was[3]]);
+    expect(low.height).toBe(Math.ceil(low.box.y + low.box.h + 40));
+    // The area keeps a hole in its tint where every card is now
+    expect(low.areas).toContain(`<rect x="${low.box.x}" y="${low.box.y}" width="${low.box.w}"`);
+  });
+
+  it("draws a top to bottom connector out of the top of a card moved below the other", async () => {
+    const r = await toSvg(modelOf(PAIR), elk, { direction: "down" });
+    const [a, b] = r.boxes;
+    const moved = moveCard(r.scene, r.boxes, "a", a.x, b.y + b.h + 200)!;
+    const [sx, sy] = start(moved.links[0][1]);
+    expect(sy).toBe(moved.box.y);
+    expect(sx).toBe(moved.box.x + r.scene.links[0].from.x);
+    expect(moved.links[0][1]).toContain(`,${b.y + b.h}"`);
   });
 });
 

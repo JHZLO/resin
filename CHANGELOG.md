@@ -6,6 +6,13 @@ the grammar; the parser then points old syntax at its new form.
 
 ## [Unreleased]
 
+### Added
+
+- Moving a table: on the playground's canvas, and on any page that embeds the viewer, dragging a card
+  by its header moves it. Its connectors are drawn again between the sides of the two cards that face
+  each other, and a service's area follows its tables. A drag anywhere else still pans. Pages that
+  draw for themselves get `moveCard`, and `toSvg` results carry the `scene` it works from.
+
 ## [0.2.8] - 2026-11-05
 
 ### Changed

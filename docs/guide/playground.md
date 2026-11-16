@@ -42,6 +42,8 @@ Clicking the same table name again keeps the panel open. Close it with its Close
 
 The wheel zooms around the pointer, dragging pans, and a double click fits the drawing to the screen.
 
+Dragging a table by its header moves it. Its connectors are drawn again between the sides of the two cards that face each other, and a service's area follows its tables. A moved table stays where you put it while you look; editing the document, or changing how it is drawn (All, Keys, Names, Services, audit tables, Angular or Curved, the parts of a row), lays the diagram out again.
+
 ## Finding a table
 
 Find a table, in the diagram's header, or Ctrl or Cmd + K opens a search over the tables. It matches table names first, then descriptions, then column names; a table found by a column shows which one. Up and Down move through the results, Enter goes to the table and opens its side panel, and Shift Enter shows the table with only its related tables. Esc closes the search.

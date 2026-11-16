@@ -102,6 +102,44 @@ describe("PanZoom", () => {
     expect(tapped).toHaveBeenCalledTimes(1);
   });
 
+  it("moves a card instead of panning when a drag starts where the page lets one move", () => {
+    const viewport = new Surface();
+    const tapped = vi.fn();
+    const drag = { start: vi.fn(() => true), move: vi.fn(), end: vi.fn() };
+    const view = new PanZoom(element(viewport), element(new Surface()), vi.fn(), tapped, drag);
+    view.setSize(1200, 900);
+    view.zoomBy(2, 0, 0);
+    const x = view.x;
+    pointer(viewport, "pointerdown", 1, 10, 10);
+    pointer(viewport, "pointermove", 1, 12, 10);
+    expect(drag.start).not.toHaveBeenCalled();
+    pointer(viewport, "pointermove", 1, 30, 50);
+    expect(drag.start).toHaveBeenCalledWith(viewport);
+    expect(viewport.classList.contains("is-moving")).toBe(true);
+    // In the drawing's units, from where the press began
+    expect(drag.move).toHaveBeenLastCalledWith(10, 20);
+    pointer(viewport, "pointerup", 1, 30, 50);
+    expect(drag.end).toHaveBeenCalledTimes(1);
+    expect(viewport.classList.contains("is-moving")).toBe(false);
+    expect(view.x).toBe(x);
+    expect(tapped).not.toHaveBeenCalled();
+    // A second finger turns the drag into a pinch, and the card stays where it was taken
+    pointer(viewport, "pointerdown", 2, 10, 10);
+    pointer(viewport, "pointermove", 2, 30, 10);
+    pointer(viewport, "pointerdown", 3, 200, 10);
+    expect(drag.end).toHaveBeenCalledTimes(2);
+    pointer(viewport, "pointermove", 3, 260, 10);
+    expect(drag.move).toHaveBeenCalledTimes(2);
+    // Where the page says no, a drag pans
+    drag.start.mockReturnValue(false);
+    pointer(viewport, "pointerup", 2, 30, 10);
+    pointer(viewport, "pointerup", 3, 260, 10);
+    pointer(viewport, "pointerdown", 4, 10, 10);
+    pointer(viewport, "pointermove", 4, 40, 10);
+    expect(viewport.classList.contains("is-panning")).toBe(true);
+    expect(drag.move).toHaveBeenCalledTimes(2);
+  });
+
   it("pans with a two-finger midpoint and ignores a third finger until the gesture rebases", () => {
     const { viewport, view, tapped } = setup();
     pointer(viewport, "pointerdown", 1, 100, 100);

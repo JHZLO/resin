@@ -75,6 +75,65 @@ export interface SvgResult {
   background: string | null;
   /** Every card, for pages that paint the glass themselves */
   boxes: SvgBox[];
+  /** What a page needs to move the cards without laying the drawing out again (`moveCard`) */
+  scene: SvgScene;
+}
+
+/** A connector as drawn, kept so it can be drawn again when a card it joins moves */
+export interface SvgLink {
+  /** The referenced card and the referencing one */
+  parent: string;
+  child: string;
+  /** Where it meets each card, from that card's top left */
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  /** Its route as laid out, from the parent end to the child end */
+  route: { x: number; y: number }[];
+  /** How far its first stretch is drawn below (or above) the middle of its row */
+  apart: number;
+  optional: boolean;
+  one: boolean;
+  logical: boolean;
+  /** Its child end is a row of a folded service, and carries no mark or number */
+  bundled: boolean;
+  /** Its color and opacity */
+  ink: readonly [string, number];
+}
+
+/** A service's area as laid out, with the cards inside it */
+export interface SvgArea {
+  service: ModelService;
+  /** The service's place among the services of the model, which picks its hue */
+  hue: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tables: string[];
+}
+
+/** A drawing as laid out: the cards, the connectors (in the order of the `.rz-r` groups) and the areas */
+export interface SvgScene {
+  look: SvgLook;
+  edges: "angular" | "curved";
+  direction: "right" | "down";
+  idPrefix: string;
+  width: number;
+  height: number;
+  boxes: SvgBox[];
+  links: SvgLink[];
+  areas: SvgArea[];
+}
+
+/** What changed when a card moved: the card's new box, the connectors of the card drawn again (each
+ *  with its place among the `.rz-r` groups, as their content), the service areas drawn again (masks and
+ *  the `.rz-services` group) when the drawing has any, and the size the drawing now needs */
+export interface MovedCard {
+  box: SvgBox;
+  links: [number, string][];
+  areas: string | null;
+  width: number;
+  height: number;
 }
 
 // Only the parts of ELK's graph format used here, declared structurally to avoid depending on elkjs types
@@ -697,31 +756,42 @@ function pathD(pts: Point[], r: number): string {
 }
 
 /** A curved connector: an S-bend with level ends (upright ones top to bottom) when no other card is in
- *  the way, otherwise ELK's route (which goes around the cards) with wide, smooth bends */
-function curved(route: Point[], others: SvgBox[], down = false): string {
+ *  the way, otherwise ELK's route (which goes around the cards) with wide, smooth bends. `out` points
+ *  away from the card at the first end, `back` away from the card at the last */
+function curved(route: Point[], others: SvgBox[], out: Point, back: Point): string {
   // Each end runs straight before the bend, so the marks and numbers at the ends sit on a level line
   const a = route[0];
   const z = route[route.length - 1];
-  const s = down ? { x: a.x, y: a.y + LEAD } : { x: a.x + LEAD, y: a.y };
-  const e = down ? { x: z.x, y: z.y - LEAD } : { x: z.x - LEAD, y: z.y };
-  const gap = down ? e.y - s.y : e.x - s.x;
-  if (gap > 24) {
-    const k = Math.max(32, Math.min(180, gap * 0.5));
-    const c1 = down ? { x: s.x, y: s.y + k } : { x: s.x + k, y: s.y };
-    const c2 = down ? { x: e.x, y: e.y - k } : { x: e.x - k, y: e.y };
-    const blocked = others.some((b) => {
-      for (let i = 1; i < 24; i++) {
-        const t = i / 24;
-        const u = 1 - t;
-        const x = u * u * u * s.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * e.x;
-        const y = u * u * u * s.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * e.y;
-        if (x > b.x - 6 && x < b.x + b.w + 6 && y > b.y - 6 && y < b.y + b.h + 6) return true;
-      }
-      return false;
-    });
-    if (!blocked) return `M${f(a.x)},${f(a.y)} L${f(s.x)},${f(s.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(e.x)},${f(e.y)} L${f(z.x)},${f(z.y)}`;
+  const s = { x: a.x + out.x * LEAD, y: a.y + out.y * LEAD };
+  const e = { x: z.x + back.x * LEAD, y: z.y + back.y * LEAD };
+  const dot = (p: Point, u: Point) => p.x * u.x + p.y * u.y;
+  let k1: number;
+  let k2: number;
+  if (out.x === -back.x && out.y === -back.y) {
+    const gap = (e.x - s.x) * out.x + (e.y - s.y) * out.y;
+    if (gap <= 24) return pathD(route, 40);
+    k1 = k2 = Math.max(32, Math.min(180, gap * 0.5));
+  } else {
+    // Both ends leave the same way (cards moved over each other): a loop out past the farther end
+    const reach = Math.max(dot(s, out), dot(e, out));
+    const k = Math.max(32, Math.min(180, Math.hypot(e.x - s.x, e.y - s.y) * 0.5));
+    k1 = reach - dot(s, out) + k;
+    k2 = reach - dot(e, out) + k;
   }
-  return pathD(route, 40);
+  const c1 = { x: s.x + out.x * k1, y: s.y + out.y * k1 };
+  const c2 = { x: e.x + back.x * k2, y: e.y + back.y * k2 };
+  const blocked = others.some((b) => {
+    for (let i = 1; i < 24; i++) {
+      const t = i / 24;
+      const u = 1 - t;
+      const x = u * u * u * s.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * e.x;
+      const y = u * u * u * s.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * e.y;
+      if (x > b.x - 6 && x < b.x + b.w + 6 && y > b.y - 6 && y < b.y + b.h + 6) return true;
+    }
+    return false;
+  });
+  if (blocked) return pathD(route, 40);
+  return `M${f(a.x)},${f(a.y)} L${f(s.x)},${f(s.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(e.x)},${f(e.y)} L${f(z.x)},${f(z.y)}`;
 }
 
 /** Drop repeated points and points in the middle of a straight run, so no corner is rounded mid-line */
@@ -737,6 +807,119 @@ function clean(pts: Point[]): Point[] {
     if ((same(a.x, b.x) && same(b.x, c.x)) || (same(a.y, b.y) && same(b.y, c.y))) out.splice(i, 1);
   }
   return out;
+}
+
+const RIGHT: Point = { x: 1, y: 0 };
+const LEFT: Point = { x: -1, y: 0 };
+const DOWN: Point = { x: 0, y: 1 };
+const UP: Point = { x: 0, y: -1 };
+
+/** A connector's line, its end marks and their numbers, along `path` from the parent end to the child
+ *  end. `out` points away from the parent's card at the first end, `back` away from the child's card at
+ *  the last */
+function linkSvg(k: SvgLink, path: Point[], out: Point, back: Point, edges: "angular" | "curved", others: () => SvgBox[]): string {
+  const start = path[0];
+  const end = path[path.length - 1];
+  // Away from each card along the line: the marks are drawn across it at a distance from the card
+  const along = (p: Point, u: Point, d: number, side = 0): Point => ({ x: p.x + u.x * d - u.y * side, y: p.y + u.y * d + u.x * side });
+  const xy = (p: Point) => `${f(p.x)},${f(p.y)}`;
+  const bar = (p: Point, u: Point, d: number) => `M${xy(along(p, u, d, 4.5))} L${xy(along(p, u, d, -4.5))}`;
+  // A nullable column's ring sits on the line, so the line breaks around it where there is room
+  const gap = k.optional && path.length > 1 && Math.hypot(path[1].x - start.x, path[1].y - start.y) > 22;
+  const rest = gap ? [along(start, out, 15.5), ...path.slice(1)] : path;
+  const line = edges === "curved" ? curved(rest, others(), out, back) : pathD(rest, 3);
+  const d = gap ? `M${xy(start)} L${xy(along(start, out, 8.5))} ${line}` : line;
+  const dash = k.logical ? ' stroke-dasharray="4 3"' : "";
+  const s: string[] = [`<path d="${d}" fill="none" ${stroke(k.ink)} stroke-width="1.2"${dash}/>`];
+  // Crow's foot, with the number beside each mark. Primary key end: two bars for exactly one parent,
+  // a bar and a ring for zero or one. Foreign key end: a crow's foot for many, a bar for one
+  const mark = `fill="none" ${stroke(k.ink)} stroke-width="1.3"`;
+  const number = (p: Point, text: string, anchor: "start" | "end") =>
+    `<text x="${f(p.x)}" y="${f(p.y)}" text-anchor="${anchor}" font-family="${MONO}" font-size="9.5" font-weight="500" ${fill(k.ink)}>${text}</text>`;
+  s.push(`<path d="${bar(start, out, 5)}${k.optional ? "" : ` ${bar(start, out, 9)}`}" ${mark}/>`);
+  if (k.optional) {
+    const c = along(start, out, 12);
+    s.push(`<circle cx="${f(c.x)}" cy="${f(c.y)}" r="3.5" ${mark}/>`);
+  }
+  // A level end has its number above the line (the lower of a row's two first stretches, under it), an
+  // upright end beside it
+  const first = out.x ? { x: start.x + 6 * out.x, y: start.y + (k.apart > 0 ? 15 : -8) } : { x: start.x + 7, y: start.y + (out.y > 0 ? 16 : -9) };
+  s.push(number(first, k.optional ? "0..1" : "1", out.x < 0 ? "end" : "start"));
+  if (!k.bundled) {
+    s.push(`<path d="${k.one ? bar(end, back, 7) : `M${xy(along(end, back, 0, 6))} L${xy(along(end, back, 12))} L${xy(along(end, back, 0, -6))}`}" ${mark}/>`);
+    const last = back.x ? { x: end.x + 6 * back.x, y: end.y - 8 } : { x: end.x + 8, y: end.y + (back.y < 0 ? -9 : 16) };
+    s.push(number(last, k.one ? "1" : "N", back.x < 0 ? "end" : "start"));
+  }
+  return s.join("");
+}
+
+/** Room between two cards for a connector's end marks, before it runs between the sides that face each other */
+const ROOM = 36;
+
+/** A connector of a moved card, drawn plainly: between the sides of its cards that face each other, with
+ *  one turn halfway, or out of the same side and back when the cards are side by side. Left to right its
+ *  ends stay on their rows; top to bottom they keep their place along the edge, or meet a card beside
+ *  the other at its header */
+function reroute(k: SvgLink, a: SvgBox, b: SvgBox, down: boolean): { path: Point[]; out: Point; back: Point } {
+  if (down && (b.y >= a.y + a.h + ROOM || b.y + b.h <= a.y - ROOM)) {
+    const below = b.y > a.y;
+    const s = { x: a.x + k.from.x, y: below ? a.y + a.h : a.y };
+    const e = { x: b.x + k.to.x, y: below ? b.y : b.y + b.h };
+    const mid = (s.y + e.y) / 2;
+    return { path: clean([s, { x: s.x, y: mid }, { x: e.x, y: mid }, e]), out: below ? DOWN : UP, back: below ? UP : DOWN };
+  }
+  const after = b.x >= a.x + a.w + ROOM;
+  const before = b.x + b.w <= a.x - ROOM;
+  const s = { x: before ? a.x : a.x + a.w, y: a.y + (down ? HEAD / 2 : k.from.y) };
+  const e = { x: after ? b.x : b.x + b.w, y: b.y + (down ? HEAD / 2 : k.to.y) };
+  const turn = after || before ? (s.x + e.x) / 2 : Math.max(s.x, e.x) + 24;
+  return { path: clean([s, { x: turn, y: s.y }, { x: turn, y: e.y }, e]), out: before ? LEFT : RIGHT, back: after ? LEFT : RIGHT };
+}
+
+/** Move a card of a drawing to (x, y) without laying the drawing out again. The card's box in `boxes`
+ *  (the drawing's boxes, as `toSvg` gave them or as moved since) is replaced, and what has to be drawn
+ *  again comes back. A card stays clear of the drawing's top and left edges, and inside a service, of its
+ *  area's edge and name. A connector to a card moved by as much keeps its route; the others of the card
+ *  are drawn again plainly. A service's area follows its cards */
+export function moveCard(scene: SvgScene, boxes: SvgBox[], table: string, x: number, y: number): MovedCard | null {
+  const i = boxes.findIndex((b) => b.table === table);
+  if (i < 0) return null;
+  const inArea = scene.areas.some((a) => a.tables.includes(table));
+  const box = { ...boxes[i], x: f(Math.max(inArea ? SERVICE_PAD : 0, x)), y: f(Math.max(inArea ? SERVICE_HEAD : 0, y)) };
+  boxes[i] = box;
+  const now = new Map(boxes.map((b) => [b.table, b]));
+  const laid = new Map(scene.boxes.map((b) => [b.table, b]));
+  const shift = (name: string): Point => ({ x: now.get(name)!.x - laid.get(name)!.x, y: now.get(name)!.y - laid.get(name)!.y });
+  const down = scene.direction === "down";
+  const links: [number, string][] = [];
+  scene.links.forEach((k, n) => {
+    if (k.parent !== table && k.child !== table) return;
+    const da = shift(k.parent);
+    const db = shift(k.child);
+    const r =
+      da.x === db.x && da.y === db.y
+        ? { path: k.route.map((p) => ({ x: p.x + da.x, y: p.y + da.y })), out: down ? DOWN : RIGHT, back: down ? UP : LEFT }
+        : reroute(k, now.get(k.parent)!, now.get(k.child)!, down);
+    links.push([n, linkSvg(k, r.path, r.out, r.back, scene.edges, () => boxes.filter((b) => b.table !== k.parent && b.table !== k.child))]);
+  });
+  // An area with a moved card wraps its cards where they are now, with the room ELK gives it
+  const areas = scene.areas.map((a) => {
+    const cards = a.tables.map((name) => now.get(name)!);
+    if (cards.every((b) => b.x === laid.get(b.table)!.x && b.y === laid.get(b.table)!.y)) return a;
+    const x0 = Math.min(...cards.map((b) => b.x)) - SERVICE_PAD;
+    const y0 = Math.min(...cards.map((b) => b.y)) - SERVICE_HEAD;
+    const x1 = Math.max(Math.max(...cards.map((b) => b.x + b.w)) + SERVICE_PAD, x0 + Math.ceil(serviceLabelW(a.service) + SERVICE_PAD * 2));
+    const y1 = Math.max(...cards.map((b) => b.y + b.h)) + SERVICE_PAD;
+    return { ...a, x: f(x0), y: f(y0), w: f(x1 - x0), h: f(y1 - y0) };
+  });
+  const id = (name: string) => scene.idPrefix + name;
+  return {
+    box,
+    links,
+    areas: areas.length ? serviceAreas(areas, boxes, LOOKS[scene.look], id, down) : null,
+    width: Math.max(scene.width, Math.ceil(maxOf(boxes.map((b) => b.x + b.w + 40)))),
+    height: Math.max(scene.height, Math.ceil(maxOf(boxes.map((b) => b.y + b.h + 40)))),
+  };
 }
 
 // ---- assembly ----
@@ -1000,16 +1183,9 @@ const DIFF_HUES: Record<"dark" | "light" | "ink", Record<ChangeKind, string>> = 
 const DIFF_LABEL: Record<ChangeKind, string> = { added: "NEW", removed: "REMOVED", changed: "CHANGED" };
 const diffHue = (L: Look, kind: ChangeKind): string => DIFF_HUES[L.stage ? (L.stage.dark ? "dark" : "light") : "ink"][kind];
 
-interface Area {
-  service: ModelService;
-  /** Index into the hues: the service's place among every service of the model, so a part of a model
-   *  draws a service in the same color as the whole */
-  hue: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+/** `hue` indexes the hues by the service's place among every service of the model, so a part of a
+ *  model draws a service in the same color as the whole */
+type Area = SvgArea;
 
 const serviceLabelW = (sv: ModelService): number => sansW(sv.name, 13) * 1.04 + (sv.description ? 10 + sansW(sv.description, 12) : 0);
 
@@ -1170,7 +1346,7 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     }
     offsets.set(n.id, at);
     const sv = drawnServices.find((x) => SERVICE + x.name === n.id)!;
-    areas.push({ service: sv, hue: model.services.indexOf(sv), x: f(at.x), y: f(at.y), w: f(n.width ?? 0), h: f(n.height ?? 0) });
+    areas.push({ service: sv, hue: model.services.indexOf(sv), x: f(at.x), y: f(at.y), w: f(n.width ?? 0), h: f(n.height ?? 0), tables: (n.children ?? []).map((c) => c.id) });
     for (const c of n.children ?? []) pos.set(c.id, { x: at.x + (c.x ?? 0), y: at.y + (c.y ?? 0) });
   }
   const routes = new Map<string, { sections: ElkEdgeOut["sections"]; offset: Point }>();
@@ -1208,6 +1384,8 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
   if (areas.length) s.push(serviceAreas(areas, boxes, L, id, down));
 
   s.push(down && areas.length ? `<g class="rz-rels" mask="url(#${id("names")})">` : '<g class="rz-rels">');
+  const links: SvgLink[] = [];
+  const boxOf = new Map(boxes.map((b) => [b.table, b]));
   relations.forEach((r, i) => {
     const route = routes.get(`e${i}`);
     const sec = route?.sections?.[0];
@@ -1231,39 +1409,26 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     // connector, a step brings it back to the row it joins
     if (dy && path.length > 2) path[1] = { x: path[1].x, y: path[1].y + dy };
     else if (dy) path.splice(1, 0, { x: start.x + 24, y: start.y }, { x: start.x + 24, y: start.y - dy });
-    // Away from each card along the line: the marks are drawn across it at a distance from the card
-    const out = down ? { x: 0, y: 1 } : { x: 1, y: 0 };
-    const back = { x: -out.x, y: -out.y };
-    const along = (p: Point, u: Point, k: number, side = 0): Point => ({ x: p.x + u.x * k - u.y * side, y: p.y + u.y * k + u.x * side });
-    const xy = (p: Point) => `${f(p.x)},${f(p.y)}`;
-    const bar = (p: Point, u: Point, k: number) => `M${xy(along(p, u, k, 4.5))} L${xy(along(p, u, k, -4.5))}`;
-    // A nullable column's ring sits on the line, so the line breaks around it where there is room
-    const gap = r.optional && path.length > 1 && Math.hypot(path[1].x - start.x, path[1].y - start.y) > 22;
-    const rest = gap ? [along(start, out, 15.5), ...path.slice(1)] : path;
-    const line = edges === "curved" ? curved(rest, boxes.filter((b) => b.table !== r.parent && b.table !== r.child), down) : pathD(rest, 3);
-    const d = gap ? `M${xy(start)} L${xy(along(start, out, 8.5))} ${line}` : line;
-    const dash = r.kind === "logical" ? ' stroke-dasharray="4 3"' : "";
     const ink: Ink = r.change ? [diffHue(L, r.change.kind), r.change.kind === "removed" ? 0.6 : 1] : L.ink.line;
+    const pb = boxOf.get(r.parent)!;
+    const cb = boxOf.get(r.child)!;
+    const link: SvgLink = {
+      parent: r.parent,
+      child: r.child,
+      from: { x: start.x - pb.x, y: start.y - pb.y },
+      to: { x: end.x - cb.x, y: end.y - cb.y },
+      route: path,
+      apart: dy,
+      optional: r.optional,
+      one: r.one,
+      logical: r.kind === "logical",
+      bundled: r.bundled === true,
+      ink,
+    };
+    links.push(link);
     const composite = r.childColumns ? ` data-acs="${esc(JSON.stringify(r.parentColumns))}" data-bcs="${esc(JSON.stringify(r.childColumns))}"` : "";
     s.push(`<g class="rz-r" data-a="${esc(r.parent)}" data-ac="${esc(r.parentColumn)}" data-b="${esc(r.child)}" data-bc="${esc(r.childColumn)}"${composite}>`);
-    s.push(`<path d="${d}" fill="none" ${stroke(ink)} stroke-width="1.2"${dash}/>`);
-    // Crow's foot, with the number beside each mark. Primary key end: two bars for exactly one parent,
-    // a bar and a ring for zero or one. Foreign key end: a crow's foot for many, a bar for one
-    const mark = `fill="none" ${stroke(ink)} stroke-width="1.3"`;
-    const number = (p: Point, text: string, anchor: "start" | "end") =>
-      `<text x="${f(p.x)}" y="${f(p.y)}" text-anchor="${anchor}" font-family="${MONO}" font-size="9.5" font-weight="500" ${fill(ink)}>${text}</text>`;
-    s.push(`<path d="${bar(start, out, 5)}${r.optional ? "" : ` ${bar(start, out, 9)}`}" ${mark}/>`);
-    if (r.optional) {
-      const c = along(start, out, 12);
-      s.push(`<circle cx="${f(c.x)}" cy="${f(c.y)}" r="3.5" ${mark}/>`);
-    }
-    // The lower of a row's two first stretches has its number under the line, clear of the upper one's
-    const under = dy > 0;
-    s.push(number(down ? { x: start.x + 7, y: start.y + 16 } : { x: start.x + 6, y: start.y + (under ? 15 : -8) }, r.optional ? "0..1" : "1", "start"));
-    if (!r.bundled) {
-      s.push(`<path d="${r.one ? bar(end, back, 7) : `M${xy(along(end, back, 0, 6))} L${xy(along(end, back, 12))} L${xy(along(end, back, 0, -6))}`}" ${mark}/>`);
-      s.push(number(down ? { x: end.x + 8, y: end.y - 9 } : { x: end.x - 6, y: end.y - 8 }, r.one ? "1" : "N", down ? "start" : "end"));
-    }
+    s.push(linkSvg(link, path, down ? DOWN : RIGHT, down ? UP : LEFT, edges, () => boxes.filter((b) => b.table !== r.parent && b.table !== r.child)));
     s.push("</g>");
   });
   s.push("</g>", '<g class="rz-tables">');
@@ -1276,5 +1441,6 @@ export async function toSvg(model: Model, elk: ElkLike, options: SvgOptions = {}
     s.push(`<g class="rz-t" data-t="${esc(v.table.name)}"${service} transform="translate(${b.x},${b.y})"${fade}>${card(v, L, id, painted)}${edge}</g>`);
   });
   s.push("</g></svg>");
-  return { svg: s.join(""), width: W, height: H, background: L.stage?.base ?? null, boxes };
+  const scene: SvgScene = { look, edges, direction: down ? "down" : "right", idPrefix: prefix, width: W, height: H, boxes: boxes.map((b) => ({ ...b })), links, areas };
+  return { svg: s.join(""), width: W, height: H, background: L.stage?.base ?? null, boxes, scene };
 }

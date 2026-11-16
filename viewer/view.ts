@@ -1,9 +1,10 @@
 // The diagram viewport: pan and zoom over the rendered SVG, and click-to-focus.
 //
 // Pan and zoom move a CSS transform on a wrapper, so the SVG stays vector-sharp at any scale.
-// The wheel zooms around the pointer, dragging pans, double-click fits. A press that does not move
-// is a tap: it is handed to the focus logic, which is why focus does not listen for clicks itself
-// (pointer capture during a drag would send those clicks to the viewport anyway).
+// The wheel zooms around the pointer, dragging pans, double-click fits. A drag that starts where the
+// page lets a card be moved (a card's header, on the canvas) moves the card instead. A press that does
+// not move is a tap: it is handed to the focus logic, which is why focus does not listen for clicks
+// itself (pointer capture during a drag would send those clicks to the viewport anyway).
 
 const MIN = 0.1;
 const MAX = 4;
@@ -11,6 +12,15 @@ const MAX = 4;
 const DRAG_THRESHOLD = 4;
 /** How long an animated pan or zoom takes (zoom buttons, fit, bringing a table into view) */
 export const MOVE_MS = 200;
+
+/** Moving a card by dragging it, for a page that lets the cards be moved */
+export interface CardDrag {
+  /** A drag starts on `target`: true when it moves a card, false to pan */
+  start(target: Element): boolean;
+  /** How far the pointer has gone since the press, in the drawing's units */
+  move(dx: number, dy: number): void;
+  end(): void;
+}
 
 export class PanZoom {
   scale = 1;
@@ -25,6 +35,9 @@ export class PanZoom {
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private pinch: { dist: number; scale: number; x: number; y: number } | null = null;
   private press: { x: number; y: number; target: Element; dragged: boolean } | null = null;
+  /** The drag moves a card */
+  private moving = false;
+  private readonly drag: CardDrag | null;
   /** Still fitted: keep fitting when the viewport resizes, until the user pans or zooms */
   private auto = true;
   private readonly abort = new AbortController();
@@ -35,11 +48,13 @@ export class PanZoom {
     content: HTMLElement,
     onChange: (animate: boolean) => void,
     onTap: (target: Element, x: number, y: number) => void,
+    drag?: CardDrag,
   ) {
     this.viewport = viewport;
     this.content = content;
     this.onChange = onChange;
     this.onTap = onTap;
+    this.drag = drag ?? null;
     const signal = this.abort.signal;
     viewport.addEventListener("wheel", (e) => this.wheel(e), { passive: false, signal });
     viewport.addEventListener("pointerdown", (e) => this.down(e), { signal });
@@ -143,6 +158,7 @@ export class PanZoom {
     this.pointers.set(e.pointerId, p);
     if (this.pointers.size === 1) this.press = { ...p, target: e.target as Element, dragged: false };
     if (this.pointers.size === 2) {
+      this.stopMoving();
       this.startPinch();
       if (this.press) this.press.dragged = true;
     }
@@ -168,9 +184,15 @@ export class PanZoom {
     if (this.press && !this.press.dragged) {
       if (Math.hypot(p.x - this.press.x, p.y - this.press.y) < DRAG_THRESHOLD) return;
       this.press.dragged = true;
-      this.viewport.classList.add("is-panning");
+      this.moving = this.drag?.start(this.press.target) ?? false;
+      this.viewport.classList.add(this.moving ? "is-moving" : "is-panning");
     }
     this.pointers.set(e.pointerId, p);
+    // A moved card stays under the pointer: it goes as far as the pointer has since the press
+    if (this.moving && this.press) {
+      this.drag!.move((p.x - this.press.x) / this.scale, (p.y - this.press.y) / this.scale);
+      return;
+    }
     this.auto = false;
     this.x += p.x - prev.x;
     this.y += p.y - prev.y;
@@ -182,11 +204,19 @@ export class PanZoom {
     if (this.pointers.size >= 2) this.startPinch();
     else this.pinch = null;
     if (this.pointers.size === 0) {
+      this.stopMoving();
       this.viewport.classList.remove("is-panning");
       const press = this.press;
       this.press = null;
       if (press && !press.dragged && !cancelled) this.onTap(press.target, press.x, press.y);
     }
+  }
+
+  private stopMoving(): void {
+    if (!this.moving) return;
+    this.moving = false;
+    this.viewport.classList.remove("is-moving");
+    this.drag!.end();
   }
 
   /** Rebase when a finger leaves, without moving the drawing or admitting a third finger as a drag */

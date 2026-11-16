@@ -478,6 +478,12 @@ export class LiveGlass {
     this.kick();
   }
 
+  /** A card of the drawing now on the canvas moved (its box changed in place): its glass goes with it */
+  moved(): void {
+    this.write();
+    this.kick();
+  }
+
   setView(scale: number, x: number, y: number, animate = false): void {
     this.view = { scale, x, y };
     this.tween = animate && !this.reduce.matches ? { from: { ...this.shown }, start: performance.now() } : null;

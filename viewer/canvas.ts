@@ -1,9 +1,10 @@
-// The canvas a page puts a resin drawing on: pan and zoom, focus by dimming, and, where the browser
-// has WebGL2, the live glass painted under the cards. It is the playground's own canvas, so a page
+// The canvas a page puts a resin drawing on: pan and zoom, focus by dimming, moving a card by its
+// header, and, where the browser has WebGL2, the live glass painted under the cards. A moved card keeps
+// its place until the page shows another drawing. It is the playground's own canvas, so a page
 // that embeds it shows a schema the way the playground does. The page keeps its own controls and
 // panels; it learns what was pressed from `onTap` and answers with the methods below.
 
-import { type SvgBox, type SvgLook, type SvgOptions, type SvgResult, glassOf, serviceCardId, stageOf } from "../src/svg.ts";
+import { type SvgBox, type SvgLook, type SvgOptions, type SvgResult, type SvgScene, glassOf, moveCard, serviceCardId, stageOf } from "../src/svg.ts";
 import { LiveGlass } from "./glass.ts";
 import { type Focus, PanZoom, createFocus } from "./view.ts";
 
@@ -36,7 +37,7 @@ export interface CanvasOptions {
 }
 
 /** A drawing that was on the canvas, kept so the page can put it back without drawing it again */
-export interface MountedDrawing extends Pick<SvgResult, "width" | "height" | "background" | "boxes"> {
+export interface MountedDrawing extends Pick<SvgResult, "width" | "height" | "background" | "boxes" | "scene"> {
   element: SVGSVGElement | null;
   /** How many elements it has, for a page that limits how many it keeps */
   nodes: number;
@@ -67,6 +68,11 @@ export class Canvas {
   /** Where the cards of the drawing now shown are */
   boxes: SvgBox[] = [];
   private tables = new Map<string, SVGGElement>();
+  /** The drawing now shown, as the page keeps it, and its connectors in the drawing's order */
+  private mounted: MountedDrawing | null = null;
+  private links: SVGGElement[] = [];
+  /** The card being moved, and where it was when the drag began */
+  private moving: { table: string; x: number; y: number } | null = null;
   private stage: CanvasStage = "aurora";
   private dark = false;
 
@@ -102,6 +108,7 @@ export class Canvas {
         this.glass?.refresh();
         this.glass?.ripple(x, y);
       },
+      { start: (target) => this.grab(target), move: (dx, dy) => this.drag(dx, dy), end: () => (this.moving = null) },
     );
   }
 
@@ -126,7 +133,8 @@ export class Canvas {
 
   /** Put a drawing on the canvas: a `toSvg` result drawn with `drawOptions()`, or one shown before */
   show(drawing: SvgResult | MountedDrawing, fit = false): MountedDrawing {
-    const { width, height, background, boxes } = drawing;
+    const { width, height, background, boxes, scene } = drawing;
+    this.moving = null;
     this.viewport.style.backgroundColor = background ?? "";
     this.focus?.clear();
     if ("svg" in drawing) {
@@ -136,12 +144,53 @@ export class Canvas {
     } else this.content.replaceChildren(...(drawing.element ? [drawing.element] : []));
     const element = this.content.querySelector("svg");
     this.tables = new Map([...this.content.querySelectorAll<SVGGElement>(".rz-t")].map((t) => [t.dataset.t!, t]));
+    this.links = [...this.content.querySelectorAll<SVGGElement>(".rz-r")];
     this.view.setSize(width, height);
     if (fit) this.view.fit();
     this.focus = element ? createFocus(element) : null;
-    this.boxes = element ? boxes : [];
+    // Moving a card changes its box here and in the drawing the page keeps, never in the page's result
+    this.boxes = element ? boxes.map((b) => ({ ...b })) : [];
     this.glass?.setBoxes(this.boxes, element);
-    return { element, width, height, background, boxes, nodes: "nodes" in drawing ? drawing.nodes : this.content.querySelectorAll("*").length };
+    this.mounted = { element, width, height, background, boxes: this.boxes, scene, nodes: "nodes" in drawing ? drawing.nodes : this.content.querySelectorAll("*").length };
+    return this.mounted;
+  }
+
+  /** A drag that starts on a card's header moves that card */
+  private grab(target: Element): boolean {
+    const card = target.closest(".rz-head")?.closest<SVGGElement>(".rz-t");
+    const box = card && this.boxes.find((b) => b.table === card.dataset.t);
+    if (!this.mounted?.scene || !box) return false;
+    this.moving = { table: box.table, x: box.x, y: box.y };
+    return true;
+  }
+
+  private drag(dx: number, dy: number): void {
+    const m = this.moving;
+    const drawing = this.mounted;
+    const svg = drawing?.element;
+    if (!m || !drawing || !svg) return;
+    const moved = moveCard(drawing.scene, this.boxes, m.table, m.x + dx, m.y + dy);
+    if (!moved) return;
+    const { box } = moved;
+    this.tables.get(m.table)?.setAttribute("transform", `translate(${box.x},${box.y})`);
+    // The still drawing's shadow and frosted glass under the card
+    const shadow = svg.querySelector(`.rz-s[data-t="${CSS.escape(m.table)}"]`);
+    shadow?.setAttribute("x", String(box.x));
+    shadow?.setAttribute("y", String(box.y));
+    const frost = svg.querySelector(`mask[id="${CSS.escape(drawing.scene.idPrefix)}cards"]`)?.children[this.boxes.indexOf(box) + 1];
+    frost?.setAttribute("x", String(box.x));
+    frost?.setAttribute("y", String(box.y));
+    for (const [n, inner] of moved.links) this.links[n].innerHTML = inner;
+    if (moved.areas !== null) redrawAreas(svg, drawing.scene, moved.areas);
+    if (moved.width !== drawing.width || moved.height !== drawing.height) {
+      drawing.width = moved.width;
+      drawing.height = moved.height;
+      svg.setAttribute("width", String(moved.width));
+      svg.setAttribute("height", String(moved.height));
+      svg.setAttribute("viewBox", `0 0 ${moved.width} ${moved.height}`);
+      this.view.setSize(moved.width, moved.height);
+    }
+    this.glass?.moved();
   }
 
   /** A card on the drawing: a table's, or a folded service's (`serviceCardId`) */
@@ -225,4 +274,11 @@ export class Canvas {
     this.content.replaceChildren();
     this.focus = null;
   }
+}
+
+/** Put the service areas drawn again where the old ones were: their masks and their group, under the connectors */
+function redrawAreas(svg: SVGSVGElement, scene: SvgScene, areas: string): void {
+  for (const name of ["areas", "names"]) svg.querySelector(`mask[id="${CSS.escape(scene.idPrefix + name)}"]`)?.remove();
+  svg.querySelector(".rz-services")?.remove();
+  svg.querySelector(".rz-rels")?.insertAdjacentHTML("beforebegin", areas);
 }

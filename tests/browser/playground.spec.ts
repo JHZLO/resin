@@ -44,6 +44,32 @@ test("applies a link whose document is unchanged but whose view changed", async 
   await expect(page.locator("#content .rz-t")).toHaveCount(2);
 });
 
+test("moves a card by its header and draws its connectors to it, while its body pans", async ({ page }) => {
+  await open(page);
+  const card = page.locator('#content .rz-t[data-t="orders"]');
+  const line = page.locator('#content .rz-r[data-b="orders"] > path').first();
+  const [placed, routed] = [await card.getAttribute("transform"), await line.getAttribute("d")];
+  const drag = async (from: { x: number; y: number }, by: number) => {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + by / 2, from.y + by, { steps: 4 });
+    await page.mouse.move(from.x + by, from.y + by * 2, { steps: 4 });
+    await page.mouse.up();
+  };
+  const head = (await card.locator(".rz-head").boundingBox())!;
+  const pan = await page.locator("#content").evaluate((el) => el.style.transform);
+  await drag({ x: head.x + 24, y: head.y + head.height / 2 }, 60);
+  await expect(card).not.toHaveAttribute("transform", placed!);
+  await expect(line).not.toHaveAttribute("d", routed!);
+  expect(await page.locator("#content").evaluate((el) => el.style.transform)).toBe(pan);
+  await expect(page.locator("#inspector")).toBeHidden();
+  const moved = await card.getAttribute("transform");
+  const row = (await card.locator(".rz-c").first().boundingBox())!;
+  await drag({ x: row.x + 24, y: row.y + row.height / 2 }, 40);
+  await expect(card).toHaveAttribute("transform", moved!);
+  expect(await page.locator("#content").evaluate((el) => el.style.transform)).not.toBe(pan);
+});
+
 test("compares a new document against an empty base", async ({ page }) => {
   await open(page, { base: "" });
   await expect(page.locator("#compare-bar")).toBeVisible();
